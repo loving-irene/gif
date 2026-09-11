@@ -134,7 +134,7 @@ BACKUP_DIR=/var/backups/gif ./scripts/deploy.sh
 ```bash
 systemctl status gif
 journalctl -u gif -n 100 --no-pager
-tail -n 50 /var/www/gif/auto_deploy.log
+tail -n 50 /var/www/gif/logs/auto_deploy-$(date +%F).log
 BRANCH=main SCHEDULE='*/5 * * * *' ./scripts/install_cron.sh
 ```
 

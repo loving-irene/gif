@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCHEDULE="${SCHEDULE:-*/5 * * * *}"
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-LINE="${SCHEDULE} cd ${APP_DIR} && ./scripts/auto_deploy.sh >> ${APP_DIR}/auto_deploy.log 2>&1"
+LINE="${SCHEDULE} cd ${APP_DIR} && ./scripts/auto_deploy.sh"
 BEGIN_MARKER="# BEGIN GIF AUTO DEPLOY"
 END_MARKER="# END GIF AUTO DEPLOY"
 
