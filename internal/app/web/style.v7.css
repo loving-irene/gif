@@ -1035,6 +1035,32 @@ select {
 .draft-image .download {
   margin-top: 8px;
 }
+.draft-candidates {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  margin-top: 12px;
+}
+.draft-candidates button {
+  flex: 0 0 auto;
+  width: 78px;
+  height: 78px;
+  padding: 0;
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+  overflow: hidden;
+  cursor: pointer;
+}
+.draft-candidates button.selected {
+  border-color: #ba8864;
+  background: #f5e7d7;
+}
+.draft-candidates img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 .button-row {
   display: flex;
   flex-wrap: wrap;

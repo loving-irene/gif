@@ -83,6 +83,9 @@ export async function refreshAccount() {
 let toastTimer;
 export function toast(message) {
   const node = $("toast");
+  // 弹窗处于浏览器顶层，普通元素会被遮罩挡住；把提示移入弹窗内保证可见。
+  const host = document.querySelector("dialog:modal") || document.body;
+  if (node.parentElement !== host) host.appendChild(node);
   node.textContent = message;
   node.hidden = false;
   clearTimeout(toastTimer);

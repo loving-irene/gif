@@ -300,8 +300,41 @@ function showDraft() {
   draftURL = URL.createObjectURL(profile.draft);
   $("draftImage").src = draftURL;
   $("saveDraft").href = draftURL;
+  renderCandidates();
   step(2);
   updateControls();
+}
+let candidateURLs = [];
+function renderCandidates() {
+  for (const u of candidateURLs) URL.revokeObjectURL(u);
+  candidateURLs = [];
+  const strip = $("draftCandidates");
+  const list = profile?.candidates || [];
+  strip.hidden = list.length < 2;
+  strip.replaceChildren();
+  for (const c of list) {
+    const b = element("button", { className: "candidate", type: "button" });
+    const img = element("img", { alt: "历史定稿候选" });
+    const url = URL.createObjectURL(c.draft);
+    candidateURLs.push(url);
+    img.src = url;
+    b.append(img);
+    const s = c.selection || {};
+    b.title = `${s.clothes || ""} · ${s.color || ""}${c.accepted ? " · 已确认" : ""}`;
+    b.setAttribute("aria-pressed", String(c.draft === profile.draft));
+    b.classList.toggle("selected", c.draft === profile.draft);
+    b.onclick = () => switchCandidate(c);
+    strip.append(b);
+  }
+}
+async function switchCandidate(c) {
+  if (c.draft === profile.draft) return;
+  profile.draft = c.draft;
+  profile.receipt = c.receipt;
+  profile.selection = c.selection;
+  profile.accepted = Boolean(c.accepted);
+  await local("profiles", "put", profile);
+  showDraft();
 }
 function showActions() {
   selectedActions.clear();
@@ -432,13 +465,27 @@ async function makeDraft() {
   }
 }
 async function receiveDraft(result, pending) {
+  const previous = (profile?.candidates || []).filter(
+    (c) => c.receipt !== result.receipt,
+  );
+  const draft = dataBlob(result.image);
   profile = {
     uid: account.id,
     selfie: dataBlob(pending.input.selfie),
-    draft: dataBlob(result.image),
+    draft,
     receipt: result.receipt,
     selection: pending.input.selection,
     accepted: false,
+    // 保留历史定稿为候选，修改造型重新生成不会丢失之前的定稿图。
+    candidates: [
+      {
+        draft,
+        receipt: result.receipt,
+        selection: pending.input.selection,
+        accepted: false,
+      },
+      ...previous,
+    ].slice(0, 8),
   };
   await local("profiles", "put", profile);
   await local("pending", "delete", account.id);
@@ -641,6 +688,17 @@ async function renderGallery() {
 async function restoreProfile() {
   profile = await local("profiles", "get", account.id);
   if (!profile) return;
+  if (profile.draft && !profile.candidates) {
+    // 兼容旧数据：把已有定稿转入候选列表。
+    profile.candidates = [
+      {
+        draft: profile.draft,
+        receipt: profile.receipt,
+        selection: profile.selection,
+        accepted: profile.accepted,
+      },
+    ];
+  }
   selfie = profile.selfie;
   showPhoto(selfie);
   chooseCategory(profile.selection.category, true);
@@ -716,6 +774,11 @@ function events() {
       const result = await api("/api/accept", { receipt: profile.receipt });
       profile.receipt = result.receipt;
       profile.accepted = true;
+      for (const c of profile.candidates || [])
+        if (c.draft === profile.draft) {
+          c.receipt = result.receipt;
+          c.accepted = true;
+        }
       await local("profiles", "put", profile);
       showActions();
     });
