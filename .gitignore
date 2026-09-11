@@ -10,3 +10,6 @@ work/
 
 .deploy.lock
 .auto-deploy.lock
+backups/
+__pycache__/
+*.pyc

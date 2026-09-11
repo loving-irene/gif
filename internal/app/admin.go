@@ -1,6 +1,7 @@
 package app
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -164,24 +165,26 @@ func (a *App) adminCodesCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	codes := []string{}
+	items := []map[string]string{}
 	for i := 0; i < in.Count; i++ {
 		c := strings.ToUpper(token(16))
-		_, err = tx.Exec("INSERT INTO codes(hash,label,credits,created) VALUES(?,?,?,?)", a.mac("code:"+c), in.Label, in.Credits, time.Now().Unix())
+		_, err = tx.Exec("INSERT INTO codes(hash,label,credits,created,encrypted_code) VALUES(?,?,?,?,?)", a.mac("code:"+c), in.Label, in.Credits, time.Now().Unix(), a.encrypt(c))
 		if err != nil {
 			fail(w, 500, "创建失败")
 			return
 		}
 		codes = append(codes, c[:8]+"-"+c[8:16]+"-"+c[16:24]+"-"+c[24:])
+		items = append(items, map[string]string{"id": a.mac("code:" + c), "code": codes[len(codes)-1]})
 	}
 	if tx.Commit() != nil {
 		fail(w, 500, "创建失败")
 		return
 	}
 	a.audit(current(r).User.ID, "codes_created", fmt.Sprintf("count=%d credits=%d", in.Count, in.Credits))
-	respond(w, 200, map[string]any{"codes": codes})
+	respond(w, 200, map[string]any{"codes": codes, "items": items})
 }
 func (a *App) adminCodes(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.db.Query("SELECT label,credits,COALESCE(used_by,''),COALESCE(used_at,0),created FROM codes ORDER BY created DESC LIMIT 200")
+	rows, err := a.db.Query("SELECT hash,label,credits,COALESCE(used_by,''),COALESCE(used_at,0),created,marked,encrypted_code<>'' FROM codes ORDER BY created DESC,rowid DESC LIMIT 200")
 	if err != nil {
 		fail(w, 500, "读取失败")
 		return
@@ -189,14 +192,50 @@ func (a *App) adminCodes(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var label, used string
+		var id, label, used string
+		var marked bool
+		var copyAvailable bool
 		var credits int
 		var usedAt, created int64
-		if rows.Scan(&label, &credits, &used, &usedAt, &created) == nil {
-			out = append(out, map[string]any{"label": label, "credits": credits, "usedBy": used, "usedAt": usedAt, "created": created})
+		if rows.Scan(&id, &label, &credits, &used, &usedAt, &created, &marked, &copyAvailable) == nil {
+			status := "unredeemed"
+			if used != "" {
+				status = "redeemed"
+			} else if marked {
+				status = "marked"
+			}
+			out = append(out, map[string]any{"id": id, "label": label, "credits": credits, "usedBy": used, "usedAt": usedAt, "created": created, "status": status, "copyAvailable": copyAvailable})
 		}
 	}
 	respond(w, 200, out)
+}
+
+func (a *App) adminCodeMark(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		ID     string `json:"id"`
+		Marked *bool  `json:"marked"`
+	}
+	if decode(w, r, &in, 1024) != nil || !hexPattern.MatchString(in.ID) || in.Marked == nil {
+		fail(w, 400, "兑换码编号或标记状态无效")
+		return
+	}
+	var id string
+	err := a.db.QueryRow("UPDATE codes SET marked=? WHERE hash=? AND used_by IS NULL RETURNING hash", *in.Marked, in.ID).Scan(&id)
+	if err == sql.ErrNoRows {
+		fail(w, 409, "兑换码不存在或已经兑换，请刷新列表")
+		return
+	}
+	if err != nil {
+		fail(w, 500, "标记更新失败")
+		return
+	}
+	event := "code_marked"
+	status := "marked"
+	if !*in.Marked {
+		event, status = "code_unmarked", "unredeemed"
+	}
+	a.audit(current(r).User.ID, event, id)
+	respond(w, 200, map[string]string{"status": status})
 }
 func (a *App) adminAudit(w http.ResponseWriter, r *http.Request) {
 	rows, err := a.db.Query("SELECT actor,event,target,created FROM audit ORDER BY id DESC LIMIT 100")

@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="robots" content="noindex,nofollow" />
     <title>管理工作台 · 拾光 GIF</title>
-    <link rel="stylesheet" href="/assets/style.v3.css" />
+    <link rel="stylesheet" href="/assets/style.v4.css" />
     <link rel="icon" href="/assets/icon.v1.svg" />
-    <script type="module" src="/assets/admin.v1.js"></script>
+    <script type="module" src="/assets/admin.v7.js"></script>
   </head>
   <body>
     <header class="header wrap admin-wrap">
@@ -47,6 +47,17 @@
         <form id="settingsForm">
           <section id="configSection" class="admin-section">
             <h2>基础设置与图像接口</h2>
+            <label
+              >获取兑换码内容<textarea
+                id="redeemHelp"
+                rows="4"
+                maxlength="2000"
+                placeholder="例如：🎁 如需兑换码，请通过首页底部「联系我」咨询。"
+              ></textarea>
+            </label>
+            <p class="hint">
+              展示在前台兑换弹窗的“获取兑换码”区域，支持多行文字和emoji，最多2000字；留空则隐藏。保存全部配置后生效。
+            </p>
             <p class="hint">
               默认次数仅影响新账号。接口密钥加密保存在服务器，页面不会回显已保存密钥。
             </p>
@@ -168,7 +179,8 @@
         <section id="codeSection" class="admin-section">
           <h2>兑换码</h2>
           <p class="hint">
-            永久有效，每码一次。仅在创建时显示完整兑换码，请立即下载；服务器只保存兑换码校验摘要。
+            永久有效，每码一次。新兑换码加密保存，管理员可以按需复制；旧码需补录原码后复制。
+            状态为未兑换、已Mark、已兑换。Mark时自动复制并变色，不影响兑换；兑换后不可更改标记。下载文件中的编号与列表对应。
           </p>
           <form id="codesForm">
             <div class="admin-grid">
@@ -212,11 +224,13 @@
             <table class="admin-table">
               <thead>
                 <tr>
+                  <th>编号</th>
                   <th>备注</th>
                   <th>次数</th>
                   <th>状态</th>
                   <th>使用账号</th>
                   <th>创建时间</th>
+                  <th>操作</th>
                 </tr>
               </thead>
               <tbody id="codesRows"></tbody>
@@ -270,6 +284,55 @@
         </section>
       </div>
     </main>
+    <dialog id="restoreCodeDialog" aria-labelledby="restoreCodeTitle">
+      <h2 id="restoreCodeTitle">补录旧兑换码</h2>
+      <p>
+        编号：<strong id="restoreCodeID"></strong
+        >。这张旧码没有保存原文，请粘贴之前导出的对应兑换码。校验通过后继续复制。
+      </p>
+      <p class="hint">
+        如果没有保留原码，就无法恢复或复制。现有兑换记录和次数不会被更改。
+      </p>
+      <form id="restoreCodeForm">
+        <label
+          >原始兑换码<input
+            id="restoreCodeInput"
+            required
+            maxlength="40"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX"
+        /></label>
+        <p id="restoreCodeError" class="warning-text" role="alert" hidden></p>
+        <div class="button-row">
+          <button id="restoreCodeSubmit" type="submit" class="primary">
+            补录并继续复制</button
+          ><button id="restoreCodeCancel" type="button" class="secondary">
+            取消
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="manualCopyDialog" aria-labelledby="manualCopyTitle">
+      <h2 id="manualCopyTitle">复制兑换码</h2>
+      <p>浏览器限制了自动复制，请点击下方按钮重试，或选中原码手动复制。</p>
+      <label
+        >兑换码<input
+          id="manualCopyValue"
+          readonly
+          autocomplete="off"
+          spellcheck="false"
+      /></label>
+      <p id="manualCopyError" class="warning-text" role="alert" hidden>
+        网络异常，请稍后重试~
+      </p>
+      <div class="button-row">
+        <button id="manualCopyButton" type="button" class="primary">复制</button
+        ><button id="manualCopyCancel" type="button" class="secondary">
+          关闭
+        </button>
+      </div>
+    </dialog>
     <div id="toast" class="toast" role="status" hidden></div>
   </body>
 </html>

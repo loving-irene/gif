@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 func publicIP(ip net.IP) bool {
@@ -51,28 +52,120 @@ func safeClient() *http.Client {
 }
 
 type providerResponse struct {
-	TaskID string `json:"task_id"`
-	Status string `json:"task_status"`
-	Data   []struct {
+	TaskID  string          `json:"task_id"`
+	Status  string          `json:"task_status"`
+	Code    json.RawMessage `json:"code"`
+	Message string          `json:"message"`
+	Error   json.RawMessage `json:"error"`
+	Data    []struct {
 		URL    string `json:"url"`
 		Base64 string `json:"b64_json"`
 	} `json:"data"`
 }
 
-func readProvider(res *http.Response) (providerResponse, error) {
+func (a *App) readProvider(ctx context.Context, res *http.Response, phase string) (providerResponse, error) {
 	defer res.Body.Close()
 	var p providerResponse
+	limit := int64(29 * 1024 * 1024)
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return p, fmt.Errorf("provider returned HTTP %d", res.StatusCode)
+		limit = 64 * 1024
 	}
-	body, err := io.ReadAll(io.LimitReader(res.Body, 29*1024*1024+1))
-	if err != nil || len(body) > 29*1024*1024 {
-		return p, errors.New("provider response too large")
+	body, readErr := io.ReadAll(io.LimitReader(res.Body, limit+1))
+	parseErr := json.Unmarshal(body, &p)
+	code, message := providerErrorInfo(p)
+	a.debug(ctx, "provider_response", map[string]any{"phase": phase, "http_status": res.StatusCode, "content_type": res.Header.Get("Content-Type"), "request_id": res.Header.Get("X-Request-Id"), "response_bytes": len(body), "provider_task_id": p.TaskID, "task_status": p.Status, "image_count": len(p.Data), "error_code": code, "error_message": message, "json_error": errorText(parseErr), "read_error": errorText(readErr), "body_truncated": int64(len(body)) > limit})
+	if res.StatusCode < 200 || res.StatusCode >= 300 || p.Status == "failed" || p.Status == "canceled" {
+		if message == "" {
+			message = "provider request failed"
+		}
+		if parseErr != nil {
+			message = "provider returned non-JSON or invalid JSON error response"
+		}
+		sensitive, _ := ctx.Value(debugSensitiveKey{}).([]string)
+		return p, &providerFailure{Phase: phase, Status: res.StatusCode, Code: safeDebugText(code, sensitive), Message: safeDebugText(message, sensitive)}
 	}
-	err = json.Unmarshal(body, &p)
-	return p, err
+	if readErr != nil {
+		return p, fmt.Errorf("%s: read provider response: %w", phase, readErr)
+	}
+	if int64(len(body)) > limit {
+		return p, fmt.Errorf("%s: provider response too large", phase)
+	}
+	if parseErr != nil {
+		return p, fmt.Errorf("%s: invalid provider JSON: %w", phase, parseErr)
+	}
+	return p, nil
 }
+
+func providerErrorInfo(p providerResponse) (string, string) {
+	code, message := providerScalar(p.Code), p.Message
+	if len(p.Error) > 0 && string(p.Error) != "null" {
+		var nested struct {
+			Code    json.RawMessage `json:"code"`
+			Message string          `json:"message"`
+			Type    string          `json:"type"`
+		}
+		if json.Unmarshal(p.Error, &nested) == nil {
+			if c := providerScalar(nested.Code); c != "" {
+				code = c
+			} else if code == "" {
+				code = nested.Type
+			}
+			if nested.Message != "" {
+				message = nested.Message
+			}
+		} else {
+			var text string
+			if json.Unmarshal(p.Error, &text) == nil {
+				message = text
+			}
+		}
+	}
+	return code, message
+}
+
+func providerScalar(raw json.RawMessage) string {
+	var value any
+	if json.Unmarshal(raw, &value) != nil {
+		return ""
+	}
+	switch v := value.(type) {
+	case string:
+		return v
+	case float64:
+		return fmt.Sprint(v)
+	}
+	return ""
+}
+
+func (a *App) providerHTTP(ctx context.Context, client *http.Client, req *http.Request, phase string) (*http.Response, error) {
+	started := time.Now()
+	a.debug(ctx, "provider_http_start", map[string]any{"phase": phase, "method": req.Method, "host": req.URL.Hostname()})
+	req = req.WithContext(a.networkTrace(ctx, phase))
+	res, err := client.Do(req)
+	status := 0
+	if res != nil {
+		status = res.StatusCode
+	}
+	a.debug(ctx, "provider_http_end", map[string]any{"phase": phase, "http_status": status, "elapsed_ms": time.Since(started).Milliseconds(), "error": errorText(err)})
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", phase, err)
+	}
+	return res, nil
+}
+
 func (a *App) callProvider(ctx context.Context, cfg Settings, prompt string, images []string) (string, error) {
+	if ctx.Value(debugTraceKey{}) == nil {
+		ctx = context.WithValue(ctx, debugTraceKey{}, token(8))
+	}
+	key := a.secret("api_key")
+	sensitive := []string{key, prompt, a.env.Secret}
+	for _, data := range images {
+		sensitive = append(sensitive, data)
+		if _, body, ok := strings.Cut(data, ","); ok {
+			sensitive = append(sensitive, body)
+		}
+	}
+	ctx = context.WithValue(ctx, debugSensitiveKey{}, sensitive)
 	client := a.providerClient()
 	defer client.CloseIdleConnections()
 	payload := map[string]any{"model": cfg.Model, "prompt": prompt, "size": "1024x1024", "quality": cfg.Quality, "n": 1, "output_format": "png", "response_format": "b64_json", "background": "transparent", "async": true, "retries": 0}
@@ -85,7 +178,7 @@ func (a *App) callProvider(ctx context.Context, cfg Settings, prompt string, ima
 	if err != nil {
 		return "", err
 	}
-	key := a.secret("api_key")
+	a.debug(ctx, "provider_request", map[string]any{"model": cfg.Model, "endpoint": "/api/v1/images/generations", "quality": cfg.Quality, "size": "1024x1024", "output_format": "png", "response_format": "b64_json", "background": "transparent", "async": true, "retries": 0, "key_configured": key != "", "image_count": len(images), "images": imageSummaries(images), "prompt_chars": utf8.RuneCountInString(prompt), "request_bytes": len(b)})
 	req, err := http.NewRequestWithContext(ctx, "POST", cfg.APIBase+"/images/generations", bytes.NewReader(b))
 	if err != nil {
 		return "", err
@@ -93,15 +186,18 @@ func (a *App) callProvider(ctx context.Context, cfg Settings, prompt string, ima
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+key)
 	// Never retry a generation POST: one dispatch is one user credit.
-	res, err := client.Do(req)
+	res, err := a.providerHTTP(ctx, client, req, "submit")
 	if err != nil {
-		return "", errors.New("image provider connection failed")
+		return "", err
 	}
-	p, err := readProvider(res)
+	p, err := a.readProvider(ctx, res, "submit")
 	if err != nil {
 		return "", err
 	}
 	for len(p.Data) == 0 && p.TaskID != "" && p.Status != "failed" && p.Status != "canceled" {
+		if p.Status == "succeed" {
+			return "", errors.New("poll: task succeeded without an image")
+		}
 		if !idPattern.MatchString(p.TaskID) {
 			return "", errors.New("invalid provider task ID")
 		}
@@ -116,11 +212,11 @@ func (a *App) callProvider(ctx context.Context, cfg Settings, prompt string, ima
 			return "", err
 		}
 		req.Header.Set("Authorization", "Bearer "+key)
-		res, err = client.Do(req)
+		res, err = a.providerHTTP(ctx, client, req, "poll")
 		if err != nil {
-			return "", errors.New("image status request failed")
+			return "", err
 		}
-		p, err = readProvider(res)
+		p, err = a.readProvider(ctx, res, "poll")
 		if err != nil {
 			return "", err
 		}
@@ -129,31 +225,39 @@ func (a *App) callProvider(ctx context.Context, cfg Settings, prompt string, ima
 		}
 	}
 	if p.Status == "failed" || p.Status == "canceled" || len(p.Data) != 1 {
-		return "", errors.New("provider did not return exactly one image")
+		code, message := providerErrorInfo(p)
+		return "", &providerFailure{Phase: "result", Status: res.StatusCode, Code: safeDebugText(code, sensitive), Message: safeDebugText("expected exactly one image; "+message, sensitive)}
 	}
 	item := p.Data[0]
 	if item.Base64 != "" {
+		a.debug(ctx, "provider_image", map[string]any{"format": "b64_json", "encoded_chars": len(item.Base64)})
 		return "data:image/png;base64," + item.Base64, nil
 	}
 	u, err := url.Parse(item.URL)
+	assetHost := ""
+	if u != nil {
+		assetHost = u.Hostname()
+	}
 	if err != nil || u.Scheme != "https" || u.User != nil || u.Port() != "" && !strings.EqualFold(u.Port(), "443") || !contains(cfg.AssetHosts, u.Hostname()) {
+		a.debug(ctx, "download_rejected", map[string]any{"host": assetHost, "reason": "HTTPS host not in configured allowlist or invalid URL"})
 		return "", errors.New("image download host not allowed")
 	}
 	req, err = http.NewRequestWithContext(ctx, "GET", u.String(), nil)
 	if err != nil {
 		return "", err
 	}
-	res, err = client.Do(req)
+	res, err = a.providerHTTP(ctx, client, req, "download")
 	if err != nil {
-		return "", errors.New("image download failed")
+		return "", err
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
-		return "", errors.New("image download status invalid")
+		return "", fmt.Errorf("download: unexpected HTTP %d", res.StatusCode)
 	}
 	b, err = io.ReadAll(io.LimitReader(res.Body, 20*1024*1024+1))
 	if err != nil || len(b) > 20*1024*1024 {
 		return "", errors.New("image response too large")
 	}
+	a.debug(ctx, "provider_image", map[string]any{"format": "url", "host": assetHost, "bytes": len(b), "content_type": http.DetectContentType(b)})
 	return "data:" + http.DetectContentType(b) + ";base64," + base64.StdEncoding.EncodeToString(b), nil
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	_ "golang.org/x/image/webp"
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
@@ -38,14 +39,17 @@ type GenerateInput struct {
 	Receipt   string    `json:"receipt"`
 }
 type Job struct {
-	ID      string `json:"id"`
-	User    string `json:"-"`
-	Status  string `json:"status"`
-	Image   string `json:"image,omitempty"`
-	Receipt string `json:"receipt,omitempty"`
-	Error   string `json:"error,omitempty"`
-	Charged bool   `json:"charged"`
-	Expires int64  `json:"-"`
+	StartedAt      int64        `json:"startedAt"`
+	ElapsedSeconds int          `json:"elapsedSeconds"`
+	Estimate       TimeEstimate `json:"estimate"`
+	ID             string       `json:"id"`
+	User           string       `json:"-"`
+	Status         string       `json:"status"`
+	Image          string       `json:"image,omitempty"`
+	Receipt        string       `json:"receipt,omitempty"`
+	Error          string       `json:"error,omitempty"`
+	Charged        bool         `json:"charged"`
+	Expires        int64        `json:"-"`
 }
 
 func (a *App) signReceipt(v Receipt) string {
@@ -90,8 +94,8 @@ func (a *App) accept(w http.ResponseWriter, r *http.Request) {
 }
 func imageData(raw string, max int) ([]byte, error) {
 	header, data, ok := strings.Cut(raw, ",")
-	if !ok || (header != "data:image/png;base64" && header != "data:image/jpeg;base64") {
-		return nil, errors.New("仅支持PNG或JPEG图片")
+	if !ok || (header != "data:image/png;base64" && header != "data:image/jpeg;base64" && header != "data:image/webp;base64") {
+		return nil, errors.New("仅支持PNG、JPEG或WebP图片")
 	}
 	if len(data) > base64.StdEncoding.EncodedLen(max) {
 		return nil, errors.New("图片超过5MB，请压缩后重试")
@@ -101,10 +105,10 @@ func imageData(raw string, max int) ([]byte, error) {
 		return nil, errors.New("图片编码无效或超过限制")
 	}
 	cfg, format, err := image.DecodeConfig(bytes.NewReader(b))
-	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width > 4096 || cfg.Height > 4096 || cfg.Width*cfg.Height > 16777216 {
-		return nil, errors.New("图片损坏或尺寸过大，最长边请控制在4096像素内")
+	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width > 16384 || cfg.Height > 16384 || cfg.Width*cfg.Height > 50000000 {
+		return nil, errors.New("图片损坏或像素过大，请选择不超过5000万像素、最长边不超过16384像素的照片")
 	}
-	if (format == "png" && header != "data:image/png;base64") || (format == "jpeg" && header != "data:image/jpeg;base64") {
+	if (format == "png" && header != "data:image/png;base64") || (format == "jpeg" && header != "data:image/jpeg;base64") || (format == "webp" && header != "data:image/webp;base64") {
 		return nil, errors.New("图片格式与内容不一致")
 	}
 	return b, nil
@@ -210,6 +214,7 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 			fail(w, 409, "同一请求编号不能用于不同内容")
 			return
 		}
+		a.debug(context.WithValue(r.Context(), debugTraceKey{}, existing), "job_reused", map[string]any{"request_id": in.RequestID, "charged_again": false})
 		respond(w, 202, map[string]string{"id": existing})
 		return
 	}
@@ -263,18 +268,25 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "创建失败")
 		return
 	}
+	estimate := a.estimate(in.Kind, cfg)
+	startedAt := time.Now().UnixMilli()
 	a.jobsMu.Lock()
-	a.jobs[id] = &Job{ID: id, User: uid, Status: "running", Charged: true}
+	a.jobs[id] = &Job{ID: id, User: uid, Status: "running", Charged: true, StartedAt: startedAt, Estimate: estimate}
 	a.jobsMu.Unlock()
 	release = false
+	traceCtx := context.WithValue(a.ctx, debugTraceKey{}, id)
+	traceCtx = context.WithValue(traceCtx, debugSensitiveKey{}, []string{a.secret("api_key"), prompt, a.env.Secret})
+	a.debug(traceCtx, "job_queued", map[string]any{"request_id": in.RequestID, "kind": in.Kind, "action": in.Action, "model": cfg.Model, "charge_on_failure": cfg.ChargeOnFailure})
 	rec = Receipt{User: uid, Selfie: photoHash, Selection: in.Selection, Expires: time.Now().Add(30 * 24 * time.Hour).Unix()}
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
 		defer func() { <-a.slots }()
-		ctx, cancel := context.WithTimeout(a.ctx, 8*time.Minute)
+		started := time.Now()
+		ctx, cancel := context.WithTimeout(traceCtx, generationTimeout)
 		defer cancel()
 		output, e := a.provider(ctx, cfg, prompt, images)
+		callDuration := time.Since(started)
 		state := "succeeded"
 		receipt := ""
 		message := ""
@@ -292,8 +304,9 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if e != nil {
+			a.debug(ctx, "job_error", map[string]any{"error": e.Error(), "elapsed_ms": time.Since(started).Milliseconds()})
 			state = "failed"
-			message = "图片服务未能完成本次创作，请稍后重试或联系管理员。"
+			message = networkErrorMessage
 			output = ""
 			if !cfg.ChargeOnFailure {
 				refund, er := a.db.Begin()
@@ -313,7 +326,11 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		a.db.Exec("UPDATE jobs SET status=? WHERE id=?", state, id)
+		_, statusErr := a.db.Exec("UPDATE jobs SET status=? WHERE id=?", state, id)
+		timingErr := a.recordTiming(id, in.Kind, cfg, callDuration, state)
+		nextEstimate := a.estimate(in.Kind, cfg)
+		a.debug(ctx, "timing_recorded", map[string]any{"duration_ms": callDuration.Milliseconds(), "status": state, "estimate_seconds": nextEstimate.Seconds, "samples": nextEstimate.Samples, "error": errorText(timingErr)})
+		a.debug(ctx, "job_finished", map[string]any{"status": state, "charged": charged, "elapsed_ms": time.Since(started).Milliseconds(), "result_chars": len(output), "status_write_error": errorText(statusErr)})
 		a.jobsMu.Lock()
 		// Keep temporary results bounded even when many users generate at once.
 		var cached int
@@ -334,10 +351,10 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 			cached -= len(a.jobs[oldestID].Image)
 			delete(a.jobs, oldestID)
 		}
-		a.jobs[id] = &Job{ID: id, User: uid, Status: state, Image: output, Receipt: receipt, Error: message, Charged: charged, Expires: time.Now().Add(10 * time.Minute).Unix()}
+		a.jobs[id] = &Job{ID: id, User: uid, Status: state, Image: output, Receipt: receipt, Error: message, Charged: charged, Expires: time.Now().Add(10 * time.Minute).Unix(), StartedAt: startedAt, ElapsedSeconds: int(callDuration.Seconds()), Estimate: nextEstimate}
 		a.jobsMu.Unlock()
 	}()
-	respond(w, 202, map[string]string{"id": id})
+	respond(w, 202, map[string]any{"id": id, "estimate": estimate, "elapsedSeconds": 0})
 }
 func (a *App) getJob(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
@@ -352,9 +369,12 @@ func (a *App) getJob(w http.ResponseWriter, r *http.Request) {
 	if j != nil {
 		copy := *j
 		a.jobsMu.Unlock()
+		if copy.Status == "running" {
+			copy.ElapsedSeconds = int((time.Now().UnixMilli() - copy.StartedAt) / 1000)
+		}
 		respond(w, 200, copy)
 		return
 	}
 	a.jobsMu.Unlock()
-	respond(w, 200, map[string]any{"id": id, "status": "expired", "error": "临时图片已清理或服务已重启。请查看本机作品库；重试不会再次执行旧请求。", "previousStatus": status})
+	respond(w, 200, map[string]any{"id": id, "status": "expired", "error": networkErrorMessage, "previousStatus": status})
 }

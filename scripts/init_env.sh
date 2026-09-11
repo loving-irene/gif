@@ -12,6 +12,7 @@ GIF_DATABASE_PATH=/var/lib/gif/gif.db
 GIF_SECRET=${secret}
 GIF_COOKIE_SECURE=true
 GIF_TRUST_PROXY=true
+GIF_DEBUG=false
 GIF_ADMIN_PASSWORD=${admin_password}
 GEEKAI_API_KEY=
 MAIL_SERVER=

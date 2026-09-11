@@ -24,6 +24,8 @@ var idPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
 var hexPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 var hostPattern = regexp.MustCompile(`^[a-zA-Z0-9.-]+$`)
 
+const networkErrorMessage = "网络异常，请稍后重试~"
+
 type App struct {
 	db             *sql.DB
 	env            Env
@@ -78,6 +80,14 @@ func New(e Env) (*App, error) {
  COMMIT;`); err != nil {
 		db.Close()
 		cancel()
+		return nil, err
+	}
+	if err = a.migrateCodeMarks(); err != nil {
+		a.Close()
+		return nil, err
+	}
+	if err = a.migrateTimings(); err != nil {
+		a.Close()
 		return nil, err
 	}
 	raw, _ := json.Marshal(defaults(e))
@@ -149,29 +159,59 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("POST /api/admin/users", a.auth(a.adminUserUpdate, true))
 	mux.HandleFunc("GET /api/admin/codes", a.auth(a.adminCodes, true))
 	mux.HandleFunc("POST /api/admin/codes", a.auth(a.adminCodesCreate, true))
+	mux.HandleFunc("POST /api/admin/codes/mark", a.auth(a.adminCodeMark, true))
+	mux.HandleFunc("POST /api/admin/codes/copy", a.auth(a.adminCodeCopy, true))
+	mux.HandleFunc("POST /api/admin/codes/restore", a.auth(a.adminCodeRestore, true))
 	mux.HandleFunc("GET /api/admin/audit", a.auth(a.adminAudit, true))
+	mux.HandleFunc("GET /robots.txt", a.robots)
+	mux.HandleFunc("GET /sitemap.xml", a.sitemap)
+	mux.HandleFunc("GET /llms.txt", a.llms)
 	assets, _ := fs.Sub(web, "web")
 	files := http.FileServer(http.FS(assets))
-	mux.Handle("GET /assets/", http.StripPrefix("/assets/", files))
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		name := "index.html"
-		if r.URL.Path == "/admin" {
-			name = "admin.html"
-		} else if r.URL.Path != "/" {
+	mux.Handle("GET /assets/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// HTML页面只通过页面路由访问，不作为静态资源提供其他入口。
+		if strings.HasSuffix(r.URL.Path, ".html") || strings.HasSuffix(r.URL.Path, "/") {
 			http.NotFound(w, r)
 			return
 		}
-		b, _ := web.ReadFile("web/" + name)
+		http.StripPrefix("/assets/", files).ServeHTTP(w, r)
+	}))
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			a.home(w, r)
+			return
+		}
+		if r.URL.Path != "/who" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("X-Robots-Tag", "noindex, nofollow")
+		b, _ := web.ReadFile("web/admin.html")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(b)
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if a.env.Debug && (r.URL.Path == "/api/generate" || strings.HasPrefix(r.URL.Path, "/api/jobs/")) {
+			started := time.Now()
+			status := &debugStatusWriter{ResponseWriter: w, status: 200}
+			w = status
+			route := "/api/generate"
+			if strings.HasPrefix(r.URL.Path, "/api/jobs/") {
+				route = "/api/jobs/{id}"
+			}
+			defer func() {
+				a.debug(r.Context(), "local_http", map[string]any{"route": route, "method": r.Method, "http_status": status.status, "elapsed_ms": time.Since(started).Milliseconds()})
+			}()
+		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
 		w.Header().Set("Cache-Control", "no-store")
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			w.Header().Set("X-Robots-Tag", "noindex, nofollow")
+		}
 		if strings.HasPrefix(r.URL.Path, "/assets/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		}
@@ -234,6 +274,9 @@ func respond(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 func fail(w http.ResponseWriter, status int, message string) {
+	if status >= 500 {
+		message = networkErrorMessage
+	}
 	respond(w, status, map[string]string{"error": message})
 }
 func current(r *http.Request) session { return r.Context().Value(sessionKey{}).(session) }
@@ -295,7 +338,7 @@ func (a *App) catalog(w http.ResponseWriter, r *http.Request) {
 			s.Categories[i].Actions[j].Prompt = ""
 		}
 	}
-	respond(w, 200, map[string]any{"categories": s.Categories, "chargeOnFailure": s.ChargeOnFailure, "configured": a.secret("api_key") != "", "emailConfigured": s.MailHost != "" && s.MailFrom != "" && a.secret("mail_password") != ""})
+	respond(w, 200, map[string]any{"categories": s.Categories, "chargeOnFailure": s.ChargeOnFailure, "configured": a.secret("api_key") != "", "emailConfigured": s.MailHost != "" && s.MailFrom != "" && a.secret("mail_password") != "", "estimates": a.estimates(s), "redeemHelp": s.RedeemHelp})
 }
 func (a *App) logout(w http.ResponseWriter, r *http.Request) {
 	s := current(r)

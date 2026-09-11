@@ -4,14 +4,27 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="theme-color" content="#fcf8f2" />
-    <meta
-      name="description"
-      content="上传一张自拍，制作像你本人的专属角色和动态 GIF。古风武将、可爱日常、童趣动作，把小小心情动起来。"
-    />
-    <title>拾光 GIF · 让小小的你，动起来</title>
+    <meta name="description" content="{{.Description}}" />
+    <title>{{.Title}}</title>
+    <link rel="canonical" href="{{.Canonical}}" />
+    <meta name="robots" content="index,follow,max-image-preview:large" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="拾光 GIF" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:title" content="{{.Title}}" />
+    <meta property="og:description" content="{{.Description}}" />
+    <meta property="og:url" content="{{.Canonical}}" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="{{.Title}}" />
+    <meta name="twitter:description" content="{{.Description}}" />
+    <script type="application/ld+json" nonce="{{.Nonce}}">
+      {{.StructuredData}}
+    </script>
     <link rel="icon" href="/assets/icon.v1.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/assets/style.v3.css" />
-    <script src="/assets/app.v1.js" type="module"></script>
+    <link rel="stylesheet" href="/assets/style.v7.css" />
+    <script src="/assets/app.v6.js" type="module"></script>
+    <script src="/assets/share.v3.js" type="module"></script>
+    <script src="/assets/contact.v1.js" type="module"></script>
   </head>
   <body>
     <header class="header wrap">
@@ -20,6 +33,10 @@
         ><span>拾光 <b>GIF</b><small>一点灵感，很多可爱</small></span></a
       >
       <nav>
+        <button id="shareOpenBtn" class="share-open" aria-label="分享网站">
+          <span aria-hidden="true">↗</span
+          ><span class="share-open-label">分享</span>
+        </button>
         <a href="#collection">我的作品</a
         ><button id="creditsBtn" class="pill">
           <span>✦</span> <strong id="credits">—</strong> 次创作</button
@@ -142,8 +159,20 @@
             </div>
             <div class="creation-summary">
               <p>先看一眼，专属于你的新模样。</p>
-              <small>生成定稿消耗 1 次 · 确认满意后再选择动作</small
-              ><button id="draftBtn" class="primary" disabled>
+              <small>生成定稿消耗 1 次 · 确认满意后再选择动作</small>
+              <p id="draftEstimate" class="hint">正在获取时间预估…</p>
+              <p id="serviceStatus" class="hint" role="status" hidden>
+                图像服务尚未就绪。管理员完成配置后，请重新检查服务。
+              </p>
+              <button
+                id="refreshServiceBtn"
+                type="button"
+                class="text-button"
+                hidden
+              >
+                重新检查服务
+              </button>
+              <button id="draftBtn" class="primary" disabled>
                 ✦ 生成我的专属角色 <span>→</span>
               </button>
             </div>
@@ -194,6 +223,7 @@
             </div>
           </div>
           <p class="hint" id="chargeHint"></p>
+          <p class="hint" id="motionEstimate">选择动作后显示整组预计用时。</p>
         </section>
         <div
           id="progress"
@@ -206,6 +236,7 @@
           <div>
             <b id="progressTitle">正在准备</b>
             <p id="progressDetail">好作品值得一点等待。</p>
+            <p id="progressEstimate" class="hint" aria-live="off" hidden></p>
           </div>
         </div>
       </section>
@@ -248,12 +279,64 @@
           <p>下载 GIF，送给朋友，或留给喜欢生活的自己。</p>
         </div>
       </section>
+      <section class="gif-guide" id="gif-guide" aria-labelledby="guideTitle">
+        <span class="eyebrow">A SMALL GUIDE TO YOUR GIF</span>
+        <h2 id="guideTitle">从一张自拍，到专属于你的 GIF 动图</h2>
+        <p>
+          拾光 GIF
+          是一款在浏览器中使用的自拍动图生成工具。先把照片制作成可辨识的专属角色，再把挥手、比心、战斗或童趣动作做成循环
+          GIF 表情包。你可以逐个检查生成效果，下载喜欢的作品。
+        </p>
+        <a class="text-button" href="#studioTitle">开始制作我的 GIF →</a>
+        <div class="faq-grid" id="faq">
+          {{range .FAQ}}
+          <article class="faq-card">
+            <h3>{{.Question}}</h3>
+            <p>{{.Answer}}</p>
+          </article>
+          {{end}}
+        </div>
+      </section>
     </main>
     <footer class="wrap footer">
       <a class="brand" href="/"><span class="brand-mark">✳</span>拾光 GIF</a>
       <p>让普通的一天，多一点可爱。</p>
-      <a href="/admin">管理后台</a>
+      <button
+        id="contactOpenBtn"
+        class="text-button"
+        type="button"
+        aria-haspopup="dialog"
+      >
+        联系我
+      </button>
     </footer>
+    <dialog
+      id="contactDialog"
+      class="contact-dialog"
+      aria-labelledby="contactTitle"
+    >
+      <button
+        id="contactCloseBtn"
+        class="close"
+        type="button"
+        aria-label="关闭联系我"
+      >
+        ×
+      </button>
+      <span class="eyebrow">LET'S SAY HELLO</span>
+      <h2 id="contactTitle">联系我</h2>
+      <p>打开微信扫一扫，或保存二维码后在微信中识别。</p>
+      <p id="contactStatus" class="hint" role="status">正在载入二维码…</p>
+      <img id="contactQR" class="contact-qr" alt="联系我的微信二维码" />
+      <a
+        id="saveContactQR"
+        class="secondary contact-save"
+        href="/assets/wechat.v1.jpg"
+        download="微信联系二维码.jpg"
+        hidden
+        >↓ 保存二维码</a
+      >
+    </dialog>
     <dialog id="accountDialog">
       <button class="close" data-close aria-label="关闭">×</button
       ><span class="eyebrow">YOUR ACCOUNT</span>
@@ -294,6 +377,15 @@
       ><span class="eyebrow">A LITTLE MORE CREATIVITY</span>
       <h2>为下一份可爱，添一点次数</h2>
       <p>输入兑换码，领取更多创作次数。兑换码永久有效，每码限兑换一次。</p>
+      <section
+        id="redeemHelpSection"
+        class="redeem-help"
+        hidden
+        aria-labelledby="redeemHelpTitle"
+      >
+        <h3 id="redeemHelpTitle">获取兑换码</h3>
+        <p id="redeemHelpContent"></p>
+      </section>
       <form id="redeemForm">
         <label
           >兑换码<input
@@ -304,6 +396,84 @@
             autocomplete="off" /></label
         ><button class="primary" id="redeemBtn">兑换创作次数 ✦</button>
       </form>
+    </dialog>
+    <dialog id="shareDialog" class="share-dialog" aria-labelledby="shareTitle">
+      <button id="shareCloseBtn" class="close" aria-label="关闭分享">×</button>
+      <span class="eyebrow">SHARE A LITTLE JOY</span>
+      <h2 id="shareTitle">把这份可爱，分享出去</h2>
+      <p class="hint">选一段暖暖的文案，或带走一张能扫码的海报。</p>
+      <div class="share-tabs" role="tablist" aria-label="分享方式">
+        <button
+          id="shareTextTab"
+          role="tab"
+          aria-selected="true"
+          aria-controls="shareTextPanel"
+        >
+          💬 推广文案
+        </button>
+        <button
+          id="sharePosterTab"
+          role="tab"
+          aria-selected="false"
+          aria-controls="sharePosterPanel"
+          disabled
+        >
+          🖼 推广海报
+        </button>
+      </div>
+      <section
+        id="shareTextPanel"
+        role="tabpanel"
+        aria-labelledby="shareTextTab"
+      >
+        <label for="shareText">带上网站链接，分享你发现的可爱</label>
+        <textarea
+          id="shareText"
+          rows="10"
+          readonly
+          spellcheck="false"
+          placeholder="正在准备分享文案…"
+        ></textarea>
+        <div class="button-row">
+          <button id="copyShareText" class="primary" disabled>复制文案</button
+          ><button id="selectShareText" class="secondary">选择全部</button>
+        </div>
+      </section>
+      <section
+        id="sharePosterPanel"
+        role="tabpanel"
+        aria-labelledby="sharePosterTab"
+        hidden
+      >
+        <p id="sharePosterStatus" class="hint" role="status">正在载入海报…</p>
+        <img
+          id="sharePosterPreview"
+          class="share-poster"
+          alt="拾光GIF推广海报，包含古风武将、可爱日常和童趣角色插画，以及直达网站的二维码"
+          width="1080"
+          height="1440"
+        />
+        <a
+          id="downloadPoster"
+          class="primary"
+          download="拾光GIF-分享海报.png"
+          hidden
+          >↓ 保存海报</a
+        >
+        <p class="hint">
+          1080 × 1440 高清 PNG · 可下载后转发，扫码直接打开网站。
+        </p>
+      </section>
+      <p id="shareFeedback" class="hint" role="status" hidden></p>
+      <p id="shareError" class="warning-text" role="alert" hidden></p>
+      <p class="share-destination">
+        分享地址：<a
+          id="shareSiteLink"
+          target="_blank"
+          rel="noopener noreferrer"
+          >正在载入…</a
+        >
+      </p>
     </dialog>
     <div id="toast" class="toast" role="status" hidden></div>
   </body>

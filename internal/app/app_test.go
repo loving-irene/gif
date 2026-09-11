@@ -394,7 +394,7 @@ func TestBrowserHarness(t *testing.T) {
 		t.Skip("manual browser integration harness")
 	}
 	a := testApp(t)
-	a.env.BaseURL = "http://127.0.0.1:8097"
+	a.env.BaseURL = "http://localhost:8097"
 	cfg, _ := a.settings()
 	cfg.RegistrationDailyLimit = 100
 	cfg.DefaultCredits = 30
@@ -413,7 +413,11 @@ func TestBrowserHarness(t *testing.T) {
 		b, _ := imageData(sampleImage(false), 5*1024*1024)
 		os.WriteFile(filepath.Join(dir, "selfie-fixture.png"), b, 0600)
 	}
-	t.Log("browser harness at http://127.0.0.1:8097 ; image provider is simulated")
+	// 提供只有摘要的旧码，复现内置浏览器不支持prompt的补录路径；原码为32个A。
+	if _, err := a.db.Exec("INSERT INTO codes(hash,label,credits,created) VALUES(?,?,?,?)", a.mac("code:"+strings.Repeat("A", 32)), "旧码补录测试", 10, time.Now().Unix()); err != nil {
+		t.Fatal(err)
+	}
+	t.Log("browser harness at http://localhost:8097 ; image provider is simulated")
 	server := http.Server{Addr: "127.0.0.1:8097", Handler: a.Handler(), ReadHeaderTimeout: 5 * time.Second}
 	if err := server.ListenAndServe(); err != nil {
 		t.Fatal(err)

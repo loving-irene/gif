@@ -2,7 +2,10 @@ module gifstudio
 
 go 1.22.12
 
-require modernc.org/sqlite v1.34.5
+require (
+	golang.org/x/image v0.24.0
+	modernc.org/sqlite v1.34.5
+)
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect

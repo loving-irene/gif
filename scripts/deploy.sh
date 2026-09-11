@@ -5,6 +5,7 @@ APP_DIR="${APP_DIR:-/var/www/gif}"
 DATA_DIR="${DATA_DIR:-/var/lib/gif}"
 SERVICE_NAME="${SERVICE_NAME:-gif}"
 GOPROXY="${GOPROXY:-https://goproxy.cn,direct}"
+BACKUP_DIR="${BACKUP_DIR:-/var/backups/gif}"
 [[ "$PORT" =~ ^[0-9]+$ && "$SERVICE_NAME" =~ ^[a-zA-Z0-9_-]+$ ]] || exit 1
 [[ "$APP_DIR" =~ ^/[a-zA-Z0-9/_-]+$ && "$DATA_DIR" =~ ^/[a-zA-Z0-9/_-]+$ ]] || exit 1
 cd "$APP_DIR"
@@ -18,6 +19,8 @@ for pid in $(ss -ltnp "sport = :${PORT}" | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' |
 done
 GOPROXY="$GOPROXY" go test ./...
 GOPROXY="$GOPROXY" go build -trimpath -buildvcs=false -o gif-server.next ./cmd/server
+# 数据库备份成功后，才允许替换二进制、重启和运行新版本迁移。
+sudo python3 "$APP_DIR/scripts/backup_database.py" --app-dir "$APP_DIR" --config "$APP_DIR/.env" --backup-dir "$BACKUP_DIR"
 sudo install -d -m 750 -o www-data -g www-data "$DATA_DIR"
 sudo chown root:www-data .env
 sudo chmod 640 .env

@@ -1,0 +1,14 @@
+{
+  "name": "shiguang-gif-assets",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:share": "node scripts/build-share-poster.cjs"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "2.6.2",
+    "jsqr": "1.4.0",
+    "pngjs": "7.0.0",
+    "qrcode": "1.5.4"
+  }
+}

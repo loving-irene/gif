@@ -25,6 +25,9 @@ func main() {
 		log.Fatal(err)
 	}
 	defer a.Close()
+	if cfg.Debug {
+		log.Print("[gif-debug] enabled; request bodies, photos and credentials are not logged")
+	}
 	server := &http.Server{Addr: "127.0.0.1:" + *port, Handler: a.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 45 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)

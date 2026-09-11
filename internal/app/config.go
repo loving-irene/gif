@@ -18,7 +18,7 @@ import (
 
 type Env struct {
 	BaseURL, Database, Secret, AdminPassword, APIKey, MailHost, MailPort, MailUser, MailPassword, MailFrom string
-	Secure, TrustProxy                                                                                     bool
+	Secure, TrustProxy, Debug                                                                              bool
 }
 
 func LoadEnv(path string) (Env, error) {
@@ -53,6 +53,7 @@ func LoadEnv(path string) (Env, error) {
 		return def
 	}
 	e := Env{BaseURL: strings.TrimRight(get("GIF_BASE_URL", "http://127.0.0.1:8096"), "/"), Database: get("GIF_DATABASE_PATH", "gif.db"), Secret: get("GIF_SECRET", ""), AdminPassword: get("GIF_ADMIN_PASSWORD", ""), APIKey: get("GEEKAI_API_KEY", ""), Secure: get("GIF_COOKIE_SECURE", "false") == "true", TrustProxy: get("GIF_TRUST_PROXY", "false") == "true", MailHost: get("MAIL_SERVER", ""), MailPort: get("MAIL_PORT", "465"), MailUser: get("MAIL_USERNAME", ""), MailPassword: get("MAIL_PASSWORD", ""), MailFrom: get("MAIL_DEFAULT_SENDER", "")}
+	e.Debug = strings.EqualFold(get("GIF_DEBUG", "false"), "true")
 	if len(e.Secret) < 32 {
 		return e, errors.New("GIF_SECRET must contain at least 32 characters")
 	}
@@ -86,6 +87,7 @@ type Settings struct {
 	DefaultCredits         int        `json:"defaultCredits"`
 	RegistrationDailyLimit int        `json:"registrationDailyLimit"`
 	ChargeOnFailure        bool       `json:"chargeOnFailure"`
+	RedeemHelp             string     `json:"redeemHelp"`
 	APIBase                string     `json:"apiBase"`
 	Model                  string     `json:"model"`
 	Quality                string     `json:"quality"`
@@ -171,6 +173,9 @@ func (a *App) setSecret(name, value string) error {
 	return err
 }
 func validateSettings(s Settings) error {
+	if len([]rune(s.RedeemHelp)) > 2000 {
+		return errors.New("获取兑换码内容不能超过2000字")
+	}
 	if s.DefaultCredits < 0 || s.DefaultCredits > 1000 || s.RegistrationDailyLimit < 1 || s.RegistrationDailyLimit > 100 || len(s.Categories) != 3 {
 		return errors.New("次数或分类配置超出范围")
 	}
@@ -194,7 +199,7 @@ func validateSettings(s Settings) error {
 		seen[c.ID] = true
 		ids := map[string]bool{}
 		for _, ac := range c.Actions {
-			if !idPattern.MatchString(ac.ID) || ids[ac.ID] || len(ac.Name) > 50 || ac.Prompt == "" {
+			if !idPattern.MatchString(ac.ID) || ids[ac.ID] || strings.TrimSpace(ac.Name) == "" || len([]rune(ac.Name)) > 50 || strings.TrimSpace(ac.Prompt) == "" || len(ac.Prompt) > 12000 {
 				return errors.New("动作配置无效")
 			}
 			ids[ac.ID] = true
