@@ -1,0 +1,12 @@
+.env
+*.db*
+*.exe
+gif-server*
+.last_deployed_commit
+*.log
+.cache/
+node_modules/
+work/
+
+.deploy.lock
+.auto-deploy.lock

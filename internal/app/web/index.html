@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#fcf8f2" />
+    <meta
+      name="description"
+      content="上传一张自拍，制作像你本人的专属角色和动态 GIF。古风武将、可爱日常、童趣动作，把小小心情动起来。"
+    />
+    <title>拾光 GIF · 让小小的你，动起来</title>
+    <link rel="icon" href="/assets/icon.v1.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/assets/style.v3.css" />
+    <script src="/assets/app.v1.js" type="module"></script>
+  </head>
+  <body>
+    <header class="header wrap">
+      <a class="brand" href="/" aria-label="拾光 GIF 首页"
+        ><span class="brand-mark">✳</span
+        ><span>拾光 <b>GIF</b><small>一点灵感，很多可爱</small></span></a
+      >
+      <nav>
+        <a href="#collection">我的作品</a
+        ><button id="creditsBtn" class="pill">
+          <span>✦</span> <strong id="credits">—</strong> 次创作</button
+        ><button id="accountBtn" class="avatar" aria-label="账号与邮箱">
+          ☺
+        </button>
+      </nav>
+    </header>
+    <main class="wrap">
+      <section class="hero">
+        <div>
+          <span class="eyebrow"><i></i> 你的专属动态小分身</span>
+          <h1>让小小的你，<br /><em>可爱地动起来。</em></h1>
+          <p>
+            一张自拍，一点想象。<br />把英雄时刻、日常心情和童真瞬间，变成专属于你的
+            GIF。
+          </p>
+          <div class="hero-notes">
+            <span>✧ 保留你的模样</span><span>♡ 三种专属风格</span
+            ><span>↗ 随时下载收藏</span>
+          </div>
+        </div>
+        <div class="hero-art" aria-hidden="true">
+          <span class="doodle d1">✦</span><span class="doodle d2">♡</span
+          ><span class="doodle d3">✧</span>
+          <div class="art-card art-back">
+            <span>HELLO, LITTLE ME</span>
+            <div class="face mint"><i></i><b>⌣</b></div>
+            <small>今天也要开心呀</small>
+          </div>
+          <div class="art-card art-front">
+            <span class="art-label">YOUR LITTLE MOMENT</span>
+            <div class="face peach">
+              <i></i><b>⌣</b><span class="cheek left"></span
+              ><span class="cheek right"></span>
+            </div>
+            <div class="art-bottom">
+              <span>Hi, 很高兴遇见你</span><b>GIF ↗</b>
+            </div>
+          </div>
+          <div class="floating-note">✌ 把心情变成表情</div>
+        </div>
+      </section>
+      <div id="notice" class="notice" role="status" hidden></div>
+      <section class="studio" aria-labelledby="studioTitle">
+        <div class="studio-header">
+          <div>
+            <span class="eyebrow">LET'S MAKE SOMETHING YOU</span>
+            <h2 id="studioTitle">开始你的小小创作</h2>
+          </div>
+          <span class="local-tag">◉ 图片只留在这台设备</span>
+        </div>
+        <ol class="steps" aria-label="制作步骤">
+          <li class="active" id="step1"><b>1</b> 选择照片与造型</li>
+          <li id="step2"><b>2</b> 确认专属角色</li>
+          <li id="step3"><b>3</b> 让角色动起来</li>
+        </ol>
+        <div id="setup" class="setup-grid">
+          <div>
+            <label class="field-title" for="photo"
+              >01 <b>上传一张你喜欢的自拍</b></label
+            ><label class="upload" id="dropzone" for="photo"
+              ><input
+                id="photo"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+              />
+              <div id="uploadEmpty">
+                <span class="upload-icon">＋</span
+                ><strong>把你的照片放在这里</strong>
+                <p>点击选择，或拖入一张自拍</p>
+                <small>JPG / PNG / WebP · 超过 5 MB 自动压缩</small>
+              </div>
+              <img id="photoPreview" alt="选中的自拍预览" hidden /><span
+                class="replace"
+                id="replacePhoto"
+                hidden
+                >↻ 换一张照片</span
+              ></label
+            >
+            <p id="photoInfo" class="hint">
+              正脸清晰、光线均匀，会更像你哦。保留发型和眼镜，避免重度美颜。
+            </p>
+            <div class="privacy-card">
+              <span>♡</span>
+              <p>
+                <b>你的照片，值得被好好对待</b
+                ><br />照片仅在创作时发送给图像服务处理，本站不持久保存图片。作品保存在当前浏览器，记得及时下载。
+              </p>
+            </div>
+          </div>
+          <div>
+            <div class="field-title">
+              02 <b>选一个你喜欢的角色世界</b><span>必选</span>
+            </div>
+            <div
+              id="categories"
+              class="categories"
+              role="group"
+              aria-label="人物分类"
+            ></div>
+            <div class="options">
+              <label
+                >服装 <span>必选</span
+                ><select id="clothes" required>
+                  <option value="">先选择人物分类</option>
+                </select></label
+              ><label id="weaponField" hidden
+                >随身武器 <span>必选</span
+                ><select id="weapon">
+                  <option value="">请选择武器</option>
+                </select></label
+              >
+            </div>
+            <div class="field-title small">
+              <b>角色配色</b><span>必选</span>
+            </div>
+            <div id="colors" class="colors">
+              <p class="hint">选择角色分类后，挑一个心仪的配色。</p>
+            </div>
+            <div class="creation-summary">
+              <p>先看一眼，专属于你的新模样。</p>
+              <small>生成定稿消耗 1 次 · 确认满意后再选择动作</small
+              ><button id="draftBtn" class="primary" disabled>
+                ✦ 生成我的专属角色 <span>→</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <section id="draftSection" class="draft-section" hidden>
+          <div>
+            <span class="eyebrow">A LITTLE YOU</span>
+            <h3>这个小分身，像你吗？</h3>
+            <p>看看脸型、发型、眼镜和服装。<br />确认喜欢，再让它动起来。</p>
+            <p class="hint">AI 生成可能存在差异，请先核对人物辨识度。</p>
+            <div class="button-row">
+              <button id="acceptBtn" class="primary">很像我，选动作 →</button
+              ><button id="redraftBtn" class="secondary">重新生成 · 1 次</button
+              ><button id="editBtn" class="text-button">修改造型</button>
+            </div>
+          </div>
+          <div class="draft-image">
+            <img id="draftImage" alt="生成的角色定稿图" /><a
+              id="saveDraft"
+              class="download"
+              download="我的角色定稿.png"
+              >↓ 保存定稿</a
+            >
+          </div>
+        </section>
+        <section id="motionSection" hidden>
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">PICK YOUR LITTLE MOODS</span>
+              <h3>今天，想表达什么心情？</h3>
+              <p>可以多选，我们会一个一个为你制作。</p>
+            </div>
+            <button id="backDraft" class="text-button">查看角色定稿 ↗</button>
+          </div>
+          <div class="actions" id="actions"></div>
+          <div class="queue-bar">
+            <p>
+              已选 <b id="selectedCount">0</b> 个动作
+              <span>· 预计使用 <b id="cost">0</b> 次</span>
+            </p>
+            <div>
+              <button id="stopBtn" class="secondary" hidden>
+                完成当前后暂停</button
+              ><button id="motionBtn" class="primary" disabled>
+                让我的角色动起来 ✦
+              </button>
+            </div>
+          </div>
+          <p class="hint" id="chargeHint"></p>
+        </section>
+        <div
+          id="progress"
+          class="progress"
+          role="status"
+          aria-live="polite"
+          hidden
+        >
+          <span class="spinner"></span>
+          <div>
+            <b id="progressTitle">正在准备</b>
+            <p id="progressDetail">好作品值得一点等待。</p>
+          </div>
+        </div>
+      </section>
+      <section id="collection" class="collection">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">YOUR LITTLE COLLECTION</span>
+            <h2>我的小小作品集 <span id="galleryCount">0</span></h2>
+            <p>留住每一个属于你的生动瞬间。</p>
+          </div>
+          <button id="refreshGallery" class="text-button">↻ 刷新作品</button>
+        </div>
+        <div class="save-notice">
+          ☁ 作品仅保存在这台设备的当前浏览器，清理浏览器数据后可能丢失。<strong
+            >请及时下载保存。</strong
+          >
+          邮箱登录同步账号和次数，不同步图片。
+        </div>
+        <div id="gallery" class="gallery"></div>
+        <div id="galleryEmpty" class="empty">
+          <span>✿</span>
+          <h3>你的第一份可爱，即将出现</h3>
+          <p>完成上面的创作，把专属的小分身带回家。</p>
+        </div>
+      </section>
+      <section class="how-it-works">
+        <div>
+          <b>01</b>
+          <h3>留下你的模样</h3>
+          <p>轻度风格化，尽量保留你的脸型、发型与个人特点。</p>
+        </div>
+        <div>
+          <b>02</b>
+          <h3>选一个小小心情</h3>
+          <p>英气、可爱或童趣，每个动作都属于同一个你。</p>
+        </div>
+        <div>
+          <b>03</b>
+          <h3>把快乐带回家</h3>
+          <p>下载 GIF，送给朋友，或留给喜欢生活的自己。</p>
+        </div>
+      </section>
+    </main>
+    <footer class="wrap footer">
+      <a class="brand" href="/"><span class="brand-mark">✳</span>拾光 GIF</a>
+      <p>让普通的一天，多一点可爱。</p>
+      <a href="/admin">管理后台</a>
+    </footer>
+    <dialog id="accountDialog">
+      <button class="close" data-close aria-label="关闭">×</button
+      ><span class="eyebrow">YOUR ACCOUNT</span>
+      <h2>把创作次数，带到另一台设备</h2>
+      <p id="accountInfo" class="hint"></p>
+      <p class="hint">
+        邮箱验证码登录后，同步账号与剩余次数。作品仍保留在各自设备。已有邮箱账号不会叠加新设备免费次数。
+      </p>
+      <form id="emailForm">
+        <label
+          >邮箱地址<input
+            id="email"
+            type="email"
+            required
+            placeholder="you@example.com"
+            autocomplete="email"
+        /></label>
+        <div class="code-row">
+          <label
+            >验证码<input
+              id="emailCode"
+              inputmode="numeric"
+              pattern="[0-9]{6}"
+              maxlength="6"
+              autocomplete="one-time-code"
+              placeholder="6 位数字"
+              required /></label
+          ><button id="sendCodeBtn" type="button" class="secondary">
+            发送验证码
+          </button>
+        </div>
+        <button class="primary" id="verifyBtn">关联邮箱 / 登录</button>
+      </form>
+      <button id="logoutBtn" class="text-button">退出当前账号</button>
+    </dialog>
+    <dialog id="redeemDialog">
+      <button class="close" data-close aria-label="关闭">×</button
+      ><span class="eyebrow">A LITTLE MORE CREATIVITY</span>
+      <h2>为下一份可爱，添一点次数</h2>
+      <p>输入兑换码，领取更多创作次数。兑换码永久有效，每码限兑换一次。</p>
+      <form id="redeemForm">
+        <label
+          >兑换码<input
+            id="redeemCode"
+            required
+            maxlength="40"
+            placeholder="XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX"
+            autocomplete="off" /></label
+        ><button class="primary" id="redeemBtn">兑换创作次数 ✦</button>
+      </form>
+    </dialog>
+    <div id="toast" class="toast" role="status" hidden></div>
+  </body>
+</html>

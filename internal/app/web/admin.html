@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>管理工作台 · 拾光 GIF</title>
+    <link rel="stylesheet" href="/assets/style.v3.css" />
+    <link rel="icon" href="/assets/icon.v1.svg" />
+    <script type="module" src="/assets/admin.v1.js"></script>
+  </head>
+  <body>
+    <header class="header wrap admin-wrap">
+      <a class="brand" href="/"
+        ><span class="brand-mark">✳</span>拾光 GIF <small>管理工作台</small></a
+      >
+      <nav>
+        <a href="/">返回创作</a
+        ><button id="adminLogout" class="text-button" hidden>退出管理</button>
+      </nav>
+    </header>
+    <main class="wrap admin-wrap">
+      <section id="loginSection" class="admin-section">
+        <span class="eyebrow">STUDIO MANAGEMENT</span>
+        <h2>欢迎回来</h2>
+        <p class="hint">
+          使用部署环境中设置的管理密码登录，管理会话两小时后过期。
+        </p>
+        <form id="loginForm">
+          <label
+            >管理密码<input
+              id="adminPassword"
+              type="password"
+              autocomplete="current-password"
+              required
+              minlength="16" /></label
+          ><button class="primary" id="loginBtn">登录管理工作台</button>
+        </form>
+      </section>
+      <div id="adminContent" hidden>
+        <nav class="admin-tabs">
+          <a href="#configSection">基础与接口</a
+          ><a href="#promptSection">角色与提示词</a
+          ><a href="#codeSection">兑换码</a><a href="#userSection">账号管理</a
+          ><a href="#auditSection">操作记录</a>
+        </nav>
+        <form id="settingsForm">
+          <section id="configSection" class="admin-section">
+            <h2>基础设置与图像接口</h2>
+            <p class="hint">
+              默认次数仅影响新账号。接口密钥加密保存在服务器，页面不会回显已保存密钥。
+            </p>
+            <div class="admin-grid">
+              <label
+                >新账号默认次数<input
+                  id="defaultCredits"
+                  type="number"
+                  min="0"
+                  max="1000"
+                  required /></label
+              ><label
+                >每个网络24小时新设备额度上限<input
+                  id="registrationDailyLimit"
+                  type="number"
+                  min="1"
+                  max="100"
+                  required /></label
+              ><label
+                >扣次规则<select id="chargeOnFailure">
+                  <option value="true">请求发出即扣次，失败也计次</option>
+                  <option value="false">成功扣次，失败退回</option>
+                </select></label
+              ><label
+                >服务接口地址<input
+                  id="apiBase"
+                  type="url"
+                  value="https://geekai.co/api/v1"
+                  required
+                  readonly /></label
+              ><label
+                >GPT Image 2.5 模型<select id="model">
+                  <option value="gpt-image-2.5-sunburst">
+                    Sunburst · 精细编辑
+                  </option>
+                  <option value="gpt-image-2.5-flare">Flare · 快速生成</option>
+                </select></label
+              ><label
+                >图片质量<select id="quality">
+                  <option>low</option>
+                  <option>medium</option>
+                  <option>high</option>
+                  <option>xhigh</option>
+                  <option>max</option>
+                </select></label
+              ><label
+                >GeekAI API Key<input
+                  id="apiKey"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder="留空表示保留现有密钥" /><small
+                  id="keyState"
+                  class="secret-note"
+                ></small></label
+              ><label
+                >允许下载结果的域名（每行一个）<textarea
+                  id="assetHosts"
+                  rows="2"
+                  required
+                ></textarea>
+              </label>
+            </div>
+            <details>
+              <summary>邮箱发送配置 · 强制 TLS</summary>
+              <p class="hint">
+                可填写 card 使用的 SMTP 参数。465 使用 TLS 直连，587 使用
+                STARTTLS。
+              </p>
+              <div class="admin-grid">
+                <label
+                  >SMTP 主机<input
+                    id="mailHost"
+                    placeholder="smtp.163.com" /></label
+                ><label
+                  >端口<select id="mailPort">
+                    <option>465</option>
+                    <option>587</option>
+                  </select></label
+                ><label
+                  >SMTP 账号<input id="mailUser" autocomplete="off" /></label
+                ><label>发件邮箱<input id="mailFrom" type="email" /></label
+                ><label class="wide"
+                  >SMTP 授权码 / 密码<input
+                    id="mailPassword"
+                    type="password"
+                    autocomplete="new-password"
+                    placeholder="留空表示保留现有密码" /><small
+                    id="mailState"
+                    class="secret-note"
+                  ></small
+                ></label>
+              </div>
+            </details>
+            <button class="primary" type="submit">保存全部配置</button>
+          </section>
+          <section id="promptSection" class="admin-section">
+            <h2>角色模板与各步骤提示词</h2>
+            <p class="hint">
+              可用变量：{{category}}、{{clothes}}、{{color}}、{{weapon}}、{{action}}。动作图必须保留
+              4×4 共16格，否则浏览器无法按预期合成。修改仅作用于之后的请求。
+            </p>
+            <label
+              >照片处理 / 人物特征保留<textarea
+                id="identityPrompt"
+                required
+              ></textarea></label
+            ><label
+              >静态角色定稿<textarea
+                id="draftPrompt"
+                required
+              ></textarea></label
+            ><label
+              >动作序列图<textarea id="motionPrompt" required></textarea>
+            </label>
+            <div id="categoryEditors"></div>
+            <button class="primary" type="submit">保存全部模板与配置</button>
+          </section>
+        </form>
+        <section id="codeSection" class="admin-section">
+          <h2>兑换码</h2>
+          <p class="hint">
+            永久有效，每码一次。仅在创建时显示完整兑换码，请立即下载；服务器只保存兑换码校验摘要。
+          </p>
+          <form id="codesForm">
+            <div class="admin-grid">
+              <label
+                >批次备注<input
+                  id="codeLabel"
+                  maxlength="100"
+                  placeholder="例如：第一批体验用户" /></label
+              ><label
+                >生成数量<input
+                  id="codeCount"
+                  type="number"
+                  min="1"
+                  max="100"
+                  value="10"
+                  required /></label
+              ><label
+                >每个兑换码增加次数<input
+                  id="codeCredits"
+                  type="number"
+                  min="1"
+                  max="10000"
+                  value="10"
+                  required
+              /></label>
+            </div>
+            <button id="createCodesBtn" class="primary">创建兑换码</button>
+          </form>
+          <div id="newCodesSection" hidden>
+            <label
+              >刚刚生成的兑换码<textarea
+                id="newCodes"
+                readonly
+                rows="6"
+              ></textarea></label
+            ><button id="downloadCodes" class="secondary">
+              ↓ 下载兑换码文本
+            </button>
+          </div>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>备注</th>
+                  <th>次数</th>
+                  <th>状态</th>
+                  <th>使用账号</th>
+                  <th>创建时间</th>
+                </tr>
+              </thead>
+              <tbody id="codesRows"></tbody>
+            </table>
+          </div>
+        </section>
+        <section id="userSection" class="admin-section">
+          <h2>账号与创作次数</h2>
+          <form id="searchForm" class="code-row">
+            <label
+              >按邮箱或账号搜索<input
+                id="userSearch"
+                placeholder="邮箱或账号编号" /></label
+            ><button class="secondary">搜索</button>
+          </form>
+          <p class="hint">
+            最多显示最近100个账号。增加次数为非免费额度，合并邮箱时会保留。停用后会立即清除账号会话。
+          </p>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>账号</th>
+                  <th>邮箱</th>
+                  <th>余次</th>
+                  <th>增加次数</th>
+                  <th>停用</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="usersRows"></tbody>
+            </table>
+          </div>
+        </section>
+        <section id="auditSection" class="admin-section">
+          <h2>最近管理与兑换记录</h2>
+          <button id="refreshAudit" class="text-button">刷新记录</button>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>操作账号</th>
+                  <th>事件</th>
+                  <th>详情</th>
+                </tr>
+              </thead>
+              <tbody id="auditRows"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+    <div id="toast" class="toast" role="status" hidden></div>
+  </body>
+</html>
