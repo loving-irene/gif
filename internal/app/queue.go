@@ -354,7 +354,7 @@ func (a *App) runJob(id string, inline *jobInput) {
 	}
 	timingErr := a.recordTiming(id, kind, cfg, callDuration, jobState)
 	nextEstimate := a.estimate(kind, cfg)
-	a.debug(traceCtx, "timing_recorded", map[string]any{"duration_ms": callDuration.Milliseconds(), "status": jobState, "estimate_seconds": nextEstimate.Seconds, "samples": nextEstimate.Samples, "error": errorText(timingErr)})
+	a.debug(traceCtx, "timing_recorded", map[string]any{"duration_ms": callDuration.Milliseconds(), "status": jobState, "estimate_seconds": nextEstimate.Seconds, "min_seconds": nextEstimate.MinSeconds, "max_seconds": nextEstimate.MaxSeconds, "samples": nextEstimate.Samples, "error": errorText(timingErr)})
 	a.debug(traceCtx, "job_finished", map[string]any{"status": jobState, "charged": charged, "elapsed_ms": time.Since(started).Milliseconds(), "result_chars": len(output), "gif_chars": len(gifImage)})
 	a.jobsMu.Lock()
 	// Keep temporary results bounded even when many users generate at once.
