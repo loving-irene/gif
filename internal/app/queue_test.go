@@ -35,14 +35,18 @@ func TestServerGIFSynthesisMatchesBrowserEncoder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(g.Image) != gifOutputFrames || g.LoopCount != 0 || g.Config.Width != 256 || g.Config.Height != 256 {
+	if len(g.Image) != 16 || g.LoopCount != 0 || g.Config.Width != 256 || g.Config.Height != 256 {
 		t.Fatal("GIF animation metadata invalid")
 	}
 	for i, frame := range g.Image {
 		if g.Disposal[i] != gif.DisposalBackground {
 			t.Fatal("transparent frame disposal invalid")
 		}
-		if g.Delay[i] != gifFrameDelay {
+		delay := 10
+		if i >= 4 && i <= 7 {
+			delay = 6
+		}
+		if g.Delay[i] != delay {
 			t.Fatal("frame timing invalid")
 		}
 		if _, _, _, alpha := frame.At(128, 130).RGBA(); alpha == 0 {
@@ -401,7 +405,7 @@ func TestMotionJobDeliversServerGIF(t *testing.T) {
 		t.Fatal(err)
 	}
 	g, err := gif.DecodeAll(bytes.NewReader(raw))
-	if err != nil || len(g.Image) != gifOutputFrames {
+	if err != nil || len(g.Image) != 16 {
 		t.Fatal("server GIF invalid", err)
 	}
 	a.jobsMu.Lock()

@@ -1,6 +1,5 @@
 import { writeFile } from "node:fs/promises";
-import { encodeGIF } from "../internal/app/web/gif-worker.v2.js";
-// 16 格源帧：色块自左向右移动，编码器应补插为 32 帧并保持轮廓不透明。
+import { encodeGIF } from "../internal/app/web/gif-worker.v1.js";
 const frames = [];
 for (let frame = 0; frame < 16; frame++) {
   const pixels = new Uint8ClampedArray(256 * 256 * 4);
