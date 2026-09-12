@@ -52,6 +52,8 @@ type User struct {
 	Email    string `json:"email"`
 	Credits  int    `json:"credits"`
 	Disabled bool   `json:"disabled"`
+	// Created 只在管理后台账号列表填充；会话等场景保持零值并由 omitempty 隐藏。
+	Created int64 `json:"created,omitempty"`
 }
 type session struct {
 	User  User

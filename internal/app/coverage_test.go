@@ -666,6 +666,10 @@ func TestAdminUsersPagination(t *testing.T) {
 	if p1.Items[0].ID != "page-user-119" || p1.Items[99].ID != "page-user-020" {
 		t.Fatal("users ordering wrong:", p1.Items[0].ID, p1.Items[99].ID)
 	}
+	// 账号列表必须返回创建时间，供后台展示。
+	if p1.Items[0].Created != int64(2000000119) || p1.Items[99].Created != int64(2000000020) {
+		t.Fatal("users created missing:", p1.Items[0].Created, p1.Items[99].Created)
+	}
 	w = request(t, a, admin, "GET", "/api/admin/users?page=2", nil)
 	json.Unmarshal(w.Body.Bytes(), &p2)
 	if len(p2.Items) != 20+base || p2.Total != base+120 {

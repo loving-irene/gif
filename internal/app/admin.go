@@ -134,7 +134,7 @@ func (a *App) adminUsers(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "读取失败")
 		return
 	}
-	rows, err := a.db.Query("SELECT id,COALESCE(name,''),COALESCE(email,''),gift+paid,disabled FROM users WHERE "+where+" ORDER BY created DESC LIMIT ? OFFSET ?", like, like, like, adminPageSize, (page-1)*adminPageSize)
+	rows, err := a.db.Query("SELECT id,COALESCE(name,''),COALESCE(email,''),gift+paid,disabled,created FROM users WHERE "+where+" ORDER BY created DESC LIMIT ? OFFSET ?", like, like, like, adminPageSize, (page-1)*adminPageSize)
 	if err != nil {
 		fail(w, 500, "读取失败")
 		return
@@ -143,7 +143,7 @@ func (a *App) adminUsers(w http.ResponseWriter, r *http.Request) {
 	out := []User{}
 	for rows.Next() {
 		var u User
-		if rows.Scan(&u.ID, &u.Name, &u.Email, &u.Credits, &u.Disabled) == nil {
+		if rows.Scan(&u.ID, &u.Name, &u.Email, &u.Credits, &u.Disabled, &u.Created) == nil {
 			out = append(out, u)
 		}
 	}
