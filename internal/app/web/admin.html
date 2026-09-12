@@ -7,7 +7,7 @@
     <title>管理工作台 · 拾光 GIF</title>
     <link rel="stylesheet" href="/assets/style.v10.css" />
     <link rel="icon" href="/assets/icon.v1.svg" />
-    <script type="module" src="/assets/admin.v12.js"></script>
+    <script type="module" src="/assets/admin.v13.js"></script>
   </head>
   <body>
     <header class="header wrap admin-wrap">
@@ -230,6 +230,11 @@
             ><label
               >动作序列图<textarea id="motionPrompt" required></textarea>
             </label>
+            <p class="hint">
+              画风提示词按用户上传自拍后选择的画风生效，会同时加入角色定稿与动作
+              GIF 的提示词；「默认」保持原有的轻度Q版效果。前台只展示名称与说明，不返回提示词内容。
+            </p>
+            <div id="styleEditors"></div>
             <div id="categoryEditors"></div>
             <button class="primary" type="submit">保存全部模板与配置</button>
           </section>

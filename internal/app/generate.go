@@ -21,6 +21,8 @@ type Selection struct {
 	Clothes  string `json:"clothes"`
 	Color    string `json:"color"`
 	Weapon   string `json:"weapon"`
+	// Style 是上传自拍后选择的画风编号，参与定稿凭证校验，必须与定稿保持一致。
+	Style string `json:"style"`
 }
 type Receipt struct {
 	User      string    `json:"user"`
@@ -132,6 +134,20 @@ func selectionCategory(cfg Settings, s Selection) (Category, error) {
 	}
 	return Category{}, errors.New("请选择人物分类")
 }
+
+// styleOrDefault 解析画风编号：留空时使用默认画风（保持原有轻度Q版效果），
+// 其他未知编号一律拒绝，避免客户端自行指定画风。
+func styleOrDefault(cfg Settings, id string) (Style, error) {
+	if strings.TrimSpace(id) == "" {
+		id = defaultStyleID
+	}
+	for _, s := range cfg.Styles {
+		if s.ID == id {
+			return s, nil
+		}
+	}
+	return Style{}, errors.New("请选择有效的画风")
+}
 func renderPrompt(t string, s Selection, c Category, action string) string {
 	return strings.NewReplacer("{{category}}", c.Name, "{{clothes}}", s.Clothes, "{{color}}", s.Color, "{{weapon}}", s.Weapon, "{{action}}", action).Replace(t)
 }
@@ -168,6 +184,14 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err.Error())
 		return
 	}
+	// 画风在读取凭证与计算去重摘要之前归一化：留空按默认画风处理，
+	// 保证同一请求的摘要、定稿凭证与动作校验使用同一编号。
+	style, err := styleOrDefault(cfg, in.Selection.Style)
+	if err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	in.Selection.Style = style.ID
 	photo, err := imageData(in.Selfie, 5*1024*1024)
 	if err != nil {
 		fail(w, 400, err.Error())
@@ -175,7 +199,7 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 	}
 	photoHash := hash(string(photo))
 	var rec Receipt
-	prompt := cfg.IdentityPrompt + "\n" + cat.Prompt + "\n" + renderPrompt(cfg.DraftPrompt, in.Selection, cat, "")
+	prompt := cfg.IdentityPrompt + "\n" + style.Prompt + "\n" + cat.Prompt + "\n" + renderPrompt(cfg.DraftPrompt, in.Selection, cat, "")
 	images := []string{in.Selfie}
 	if in.Kind == "motion" {
 		rec, err = a.readReceipt(in.Receipt, uid)
@@ -202,9 +226,9 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, "请选择有效动作")
 			return
 		}
-		// 动作阶段只包含造型参数，避免将静态定稿的双视图要求带入16帧图。
+		// 动作阶段只包含造型参数，避免将静态定稿的双视图要求带入16帧图；画风在两个阶段保持一致。
 		appearance := "分类：{{category}}。服装：{{clothes}}。配色：{{color}}。武器：{{weapon}}。"
-		prompt = cfg.IdentityPrompt + "\n" + cat.Prompt + "\n" + renderPrompt(appearance, in.Selection, cat, "") + "\n" + renderPrompt(cfg.MotionPrompt, in.Selection, cat, action)
+		prompt = cfg.IdentityPrompt + "\n" + style.Prompt + "\n" + cat.Prompt + "\n" + renderPrompt(appearance, in.Selection, cat, "") + "\n" + renderPrompt(cfg.MotionPrompt, in.Selection, cat, action)
 		images = append(images, in.Draft)
 	}
 	raw, _ := json.Marshal(in)

@@ -83,6 +83,16 @@ type Category struct {
 	Prompt   string   `json:"prompt"`
 	Actions  []Action `json:"actions"`
 }
+
+// Style 是上传自拍后选择的画风。默认画风保持站点原有的轻度Q版效果，
+// Q版与水墨风格在此之上改变整体画风，三者在定稿和动作两个阶段都生效。
+type Style struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Subtitle string `json:"subtitle"`
+	Icon     string `json:"icon"`
+	Prompt   string `json:"prompt"`
+}
 type Settings struct {
 	DefaultCredits         int        `json:"defaultCredits"`
 	RegistrationDailyLimit int        `json:"registrationDailyLimit"`
@@ -96,11 +106,78 @@ type Settings struct {
 	IdentityPrompt         string     `json:"identityPrompt"`
 	DraftPrompt            string     `json:"draftPrompt"`
 	MotionPrompt           string     `json:"motionPrompt"`
+	Styles                 []Style    `json:"styles"`
 	Categories             []Category `json:"categories"`
 	MailHost               string     `json:"mailHost"`
 	MailPort               string     `json:"mailPort"`
 	MailUser               string     `json:"mailUser"`
 	MailFrom               string     `json:"mailFrom"`
+}
+
+// defaultStyleID 是未指定画风时使用的编号；界面上对应“默认”选项，效果与原有轻度Q版一致。
+const defaultStyleID = "default"
+
+// styleIDs 固定画风的顺序与编号：默认、Q版、水墨风格。
+var styleIDs = []string{defaultStyleID, "chibi", "ink"}
+
+func defaultStyles() []Style {
+	return []Style{
+		{ID: defaultStyleID, Name: "默认", Subtitle: "轻度Q版 · 保留本人特点", Icon: "✧", Prompt: "画风固定为精致二维插画：清晰轮廓、简洁阴影、轻度Q版身体比例（头身比约1:5），面部明显对应本人。前文若出现其他画风或比例描述，以此处为准，本人辨识度始终最高优先。"},
+		{ID: "chibi", Name: "Q版", Subtitle: "大头小身 · 更可爱", Icon: "☻", Prompt: "画风固定为明显Q版：头身比约1:3，头部放大、四肢短圆、五官可爱，眼睛稍大而明亮，保留本人脸型宽长比例、发型、发色、肤色与眼镜等辨识特征，不幼化成通用婴儿脸。前文若出现其他画风或比例描述，以此处为准。"},
+		{ID: "ink", Name: "水墨风格", Subtitle: "宣纸墨色 · 写意国风", Icon: "墨", Prompt: "画风固定为中国水墨写意：宣纸质感、墨色浓淡与飞白笔触，毛笔线条勾形，矿物淡彩点缀，背景大面积留白。保留本人五官结构、脸型比例、发型、发色与眼镜等辨识特征，不做厚重写实油画。前文若出现其他画风描述，以此处为准。"},
+	}
+}
+
+// normalizeStyles 保证画风始终是默认、Q版、水墨风格三项且顺序固定：
+// 旧配置没有该项时补入默认值，未知编号忽略，名称、说明或提示词留空时回落到默认值，
+// 避免前台出现无法选择或缺少说明的画风。
+func normalizeStyles(list []Style) []Style {
+	out := defaultStyles()
+	for i := range out {
+		for _, s := range list {
+			if s.ID != out[i].ID {
+				continue
+			}
+			if strings.TrimSpace(s.Name) != "" {
+				out[i].Name = s.Name
+			}
+			if strings.TrimSpace(s.Subtitle) != "" {
+				out[i].Subtitle = s.Subtitle
+			}
+			if strings.TrimSpace(s.Icon) != "" {
+				out[i].Icon = s.Icon
+			}
+			if strings.TrimSpace(s.Prompt) != "" {
+				out[i].Prompt = s.Prompt
+			}
+		}
+	}
+	return out
+}
+
+// validateStyles 允许完全不带画风配置的旧后台提交（保存前会补入默认值），
+// 但一旦提供就必须是完整、可用的三种画风。
+func validateStyles(list []Style) error {
+	if len(list) == 0 {
+		return nil
+	}
+	if len(list) != len(styleIDs) {
+		return errors.New("画风必须为默认、Q版、水墨风格三种")
+	}
+	seen := map[string]bool{}
+	for _, s := range list {
+		if !contains(styleIDs, s.ID) || seen[s.ID] {
+			return errors.New("画风配置无效")
+		}
+		seen[s.ID] = true
+		if strings.TrimSpace(s.Name) == "" || len([]rune(s.Name)) > 20 || len([]rune(s.Subtitle)) > 60 || len([]rune(s.Icon)) > 4 {
+			return errors.New("画风的名称、说明或图标无效")
+		}
+		if len(strings.TrimSpace(s.Prompt)) < 20 || len([]rune(s.Prompt)) > 4000 {
+			return errors.New("各画风提示词不可为空")
+		}
+	}
+	return nil
 }
 
 func defaults(e Env) Settings {
@@ -110,6 +187,7 @@ func defaults(e Env) Settings {
 		IdentityPrompt: "以自拍中的本人为身份参考，人物辨识度最高优先。保留脸型宽长比例、下颌轮廓、眉形、眼型、眼距、鼻形、嘴形、五官相对位置、发际线、发型、发色、肤色，以及清晰可见的眼镜、痣、雀斑。只做必要的裁切、曝光和白平衡调整，不瘦脸、不尖下巴、不放大眼睛、不美白、不改变年龄。不要变成通用动漫脸，不添加原图没有的身份特征。采用精致二维插画、清晰轮廓、简洁阴影、轻度Q版身体比例，面部明显对应本人。无法判断的衣服和身体依据下方设定设计。",
 		DraftPrompt:    "本轮只输出一张静态角色定稿图，同一张图内包含正面脸部近景和完整全身造型，供本人核对。纯净浅色背景，面部无遮挡，完整发型、手脚和装备入镜。无文字、无水印、无动作序列。分类：{{category}}。服装：{{clothes}}。配色：{{color}}。武器：{{weapon}}。",
 		MotionPrompt:   "图1是本人自拍，图2是已确认角色定稿。图1核对身份，图2固定画风、服装、比例、装备及配色，只改变动作表情。动作：{{action}}。输出一张1024×1024透明PNG，严格4列×4行共16格，每格256×256。仅全身角色连续动作，不包含定稿图的脸部近景。从左到右、从上到下排列同一次完整动作：1—4准备，5—8展开，9—12动作重点，13—16收势回位。镜头固定，大小稳定，地面基准线一致。允许合理位移，跳跃允许离地，结尾回起始位置，自然衔接第一帧。每格无边框无间隙无编号无文字，留安全边距，角色武器特效不跨格、不裁切。真实透明背景，不画棋盘格。脸部可见，避免转背、过度模糊、遮脸、五官变形、肢体错误和重复静止帧。",
+		Styles:         defaultStyles(),
 		Categories: []Category{
 			{ID: "male", Name: "男生", Subtitle: "披上铠甲，做自己的英雄", Icon: "⚔", Clothes: []string{"古代札甲", "古代鳞甲", "轻甲与短披风"}, Colors: []string{"玄黑与暗金", "银灰与藏蓝", "深红与铁灰"}, Weapons: []string{"长剑", "长枪", "关刀", "战斧"}, Prompt: "中国古代武将，英气精神有亲和力，保留年龄感，不添加胡须或夸张肌肉。护肩护腕腰带战裙战靴结构明确，细节简化。露出完整面部与发型，不用遮面头盔，短披风不挡动作。武器造型长度配色惯用手始终一致。", Actions: []Action{{"idle", "护卫待机", "🛡", "轻微呼吸，握持武器，短披风小幅摆动。"}, {"greet", "武者致意", "👋", "持械点头致意，武器远离脸部，再恢复原姿势。"}, {"attack", "蓄力攻击", "⚔", "压低重心、向前小幅踏步出招、收势回起点。长剑挥斩，长枪直刺，关刀横扫，战斧下劈；根据所选武器只做对应动作。"}, {"guard", "格挡防御", "🛡", "举起武器格挡，短促火花，恢复站姿。"}, {"win", "得胜庆祝", "✨", "将武器安全地举向侧上方，露出自信笑容，再回位。"}, {"rest", "收兵休息", "☕", "放松肩膀轻轻呼气，再恢复精神。"}}},
 			{ID: "female", Name: "女生", Subtitle: "把小小心情，变成可爱日常", Icon: "✿", Clothes: []string{"针织开衫与百褶裙", "宽松卫衣与长裤", "背带裙"}, Colors: []string{"奶油黄", "雾粉", "浅紫", "薄荷绿"}, Weapons: []string{}, Prompt: "可爱温暖的日常角色，通过动作服装配色体现可爱，保留本人年龄，不幼化面容。圆润简洁的休闲鞋，原有发型眼镜，小型发饰不挡发际线。微笑保留本人眼型嘴形，爱心星星不遮脸。", Actions: []Action{{"wave", "开心打招呼", "👋", "微笑，单手左右挥动两次再放下。"}, {"heart", "给你比心", "♡", "双手在胸前组成爱心，小爱心浮起消失，手放回原位。"}, {"clap", "开心鼓掌", "👏", "轻轻拍手两次，肩膀随动作起伏。"}, {"cheer", "加油打气", "✊", "双拳举到胸前上下轻动，眼神坚定，再放下。"}, {"shy", "害羞开心", "🌸", "轻微歪头，双手靠近脸颊，不遮脸，含蓄微笑再回正。"}, {"sleep", "晚安困困", "☾", "轻揉一只眼睛，捂嘴打小哈欠，恢复姿势。"}}},
@@ -163,6 +241,8 @@ func (a *App) settings() (Settings, error) {
 	if s.UserConcurrency < 1 {
 		s.UserConcurrency = 5
 	}
+	// 兼容较早的配置：缺少画风定义时补入默认的默认、Q版与水墨风格。
+	s.Styles = normalizeStyles(s.Styles)
 	return s, err
 }
 func (a *App) secret(name string) string {
@@ -198,6 +278,9 @@ func validateSettings(s Settings) error {
 	}
 	if len(s.IdentityPrompt) < 20 || len(s.DraftPrompt) < 20 || len(s.MotionPrompt) < 20 {
 		return errors.New("各步骤提示词不可为空")
+	}
+	if err := validateStyles(s.Styles); err != nil {
+		return err
 	}
 	seen := map[string]bool{}
 	for _, c := range s.Categories {

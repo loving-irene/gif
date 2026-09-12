@@ -59,6 +59,8 @@ func (a *App) adminSettingsSave(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err.Error())
 		return
 	}
+	// 兼容不带画风配置的旧后台页面：保存前补入默认的默认、Q版与水墨风格。
+	in.Settings.Styles = normalizeStyles(in.Settings.Styles)
 	if len(in.APIKey) > 1024 || len(in.MailPassword) > 1024 || strings.ContainsAny(in.APIKey, "\r\n") {
 		fail(w, 400, "密钥格式无效")
 		return

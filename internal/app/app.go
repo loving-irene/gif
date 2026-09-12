@@ -434,7 +434,11 @@ func (a *App) catalog(w http.ResponseWriter, r *http.Request) {
 			s.Categories[i].Actions[j].Prompt = ""
 		}
 	}
-	respond(w, 200, map[string]any{"categories": s.Categories, "chargeOnFailure": s.ChargeOnFailure, "configured": a.secret("api_key") != "", "emailConfigured": s.MailHost != "" && s.MailFrom != "" && a.secret("mail_password") != "", "estimates": a.estimates(s), "redeemHelp": s.RedeemHelp, "userConcurrency": s.UserConcurrency})
+	// 画风提示词只保留在服务端，前台只拿到编号、名称、说明与图标。
+	for i := range s.Styles {
+		s.Styles[i].Prompt = ""
+	}
+	respond(w, 200, map[string]any{"categories": s.Categories, "styles": s.Styles, "chargeOnFailure": s.ChargeOnFailure, "configured": a.secret("api_key") != "", "emailConfigured": s.MailHost != "" && s.MailFrom != "" && a.secret("mail_password") != "", "estimates": a.estimates(s), "redeemHelp": s.RedeemHelp, "userConcurrency": s.UserConcurrency})
 }
 func (a *App) logout(w http.ResponseWriter, r *http.Request) {
 	s := current(r)

@@ -254,6 +254,10 @@ func TestValidateSettingsRejectsBadConfigs(t *testing.T) {
 		{"男生分类缺武器", func(s *Settings) { s.Categories[0].Weapons = nil }},
 		{"下载域名为空", func(s *Settings) { s.AssetHosts = nil }},
 		{"下载域名不完整", func(s *Settings) { s.AssetHosts = []string{"geekai"} }},
+		{"画风数量错误", func(s *Settings) { s.Styles = s.Styles[:2] }},
+		{"画风编号非法", func(s *Settings) { s.Styles[1].ID = "other" }},
+		{"画风名称为空", func(s *Settings) { s.Styles[0].Name = " " }},
+		{"画风提示词过短", func(s *Settings) { s.Styles[2].Prompt = "太短" }},
 	}
 	for _, tc := range cases {
 		s := base
