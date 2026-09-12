@@ -606,7 +606,7 @@ async function encode(sheet) {
       frames.push(ctx.getImageData(0, 0, size, size).data.buffer);
     }
     return await new Promise((resolve, reject) => {
-      const worker = new Worker("/assets/gif-worker.v1.js", { type: "module" });
+      const worker = new Worker("/assets/gif-worker.v2.js", { type: "module" });
       worker.onmessage = (e) => {
         worker.terminate();
         if (e.data.error) reject(new Error(e.data.error));
@@ -639,7 +639,7 @@ async function saveMotion(result, pending) {
   if (!work.gif) {
     progress(
       "图片已生成，正在本机合成 GIF",
-      "16 帧连续动作正在拼接。这一步不调用图像服务，也不扣次数。",
+      "动作图正在补帧合成 32 帧动图。这一步不调用图像服务，也不扣次数。",
     );
     work.gif = await encode(work.sheet);
     await local("works", "put", work);
