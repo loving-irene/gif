@@ -43,6 +43,7 @@ type App struct {
 	cancel         context.CancelFunc
 	wg             sync.WaitGroup
 	mailSend       func(Settings, string, string) error
+	mailNotify     func(Settings, string, string, string) error
 	provider       func(context.Context, Settings, string, []string) (string, error)
 	providerClient func() *http.Client
 }
@@ -125,6 +126,7 @@ func New(e Env) (*App, error) {
 		}
 	}
 	a.mailSend = a.sendMail
+	a.mailNotify = a.sendMailMessage
 	a.provider = a.callProvider
 	a.providerClient = safeClient
 	a.wg.Add(1)
@@ -243,6 +245,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("POST /api/email/send", a.auth(a.emailSend, false))
 	mux.HandleFunc("POST /api/email/verify", a.auth(a.emailVerify, false))
 	mux.HandleFunc("POST /api/redeem", a.auth(a.redeem, false))
+	mux.HandleFunc("POST /api/feedback", a.auth(a.feedback, false))
 	mux.HandleFunc("POST /api/generate", a.auth(a.generate, false))
 	mux.HandleFunc("GET /api/jobs/{id}", a.auth(a.getJob, false))
 	mux.HandleFunc("GET /api/calls", a.auth(a.calls, false))
@@ -438,7 +441,7 @@ func (a *App) catalog(w http.ResponseWriter, r *http.Request) {
 	for i := range s.Styles {
 		s.Styles[i].Prompt = ""
 	}
-	respond(w, 200, map[string]any{"categories": s.Categories, "styles": s.Styles, "chargeOnFailure": s.ChargeOnFailure, "configured": a.secret("api_key") != "", "emailConfigured": s.MailHost != "" && s.MailFrom != "" && a.secret("mail_password") != "", "estimates": a.estimates(s), "redeemHelp": s.RedeemHelp, "userConcurrency": s.UserConcurrency})
+	respond(w, 200, map[string]any{"categories": s.Categories, "styles": s.Styles, "chargeOnFailure": s.ChargeOnFailure, "configured": a.secret("api_key") != "", "emailConfigured": s.MailHost != "" && s.MailFrom != "" && a.secret("mail_password") != "", "feedbackConfigured": a.feedbackConfigured(s), "estimates": a.estimates(s), "redeemHelp": s.RedeemHelp, "userConcurrency": s.UserConcurrency})
 }
 func (a *App) logout(w http.ResponseWriter, r *http.Request) {
 	s := current(r)

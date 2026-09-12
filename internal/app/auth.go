@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math/big"
+	"mime"
 	"net"
 	"net/http"
 	"net/mail"
@@ -311,6 +312,37 @@ func (a *App) emailVerify(w http.ResponseWriter, r *http.Request) {
 	respond(w, 200, map[string]any{"user": u, "csrf": a.mac("csrf:" + t), "mergedFrom": s.User.ID})
 }
 func (a *App) sendMail(s Settings, to, code string) error {
+	return a.sendMailMessage(s, to, "GIF Studio verification code", fmt.Sprintf("你的拾光 GIF 验证码：%s\r\n10 分钟内有效。请勿向他人透露。\r\n", code))
+}
+
+// headerLine 把可能来自配置或用户的文本压成单行，避免邮件头注入。
+func headerLine(value string) string {
+	return strings.NewReplacer("\r", " ", "\n", " ", "\x00", " ").Replace(value)
+}
+
+// encodeHeader 对含非ASCII字符的邮件头使用RFC 2047编码，避免客户端显示乱码。
+func encodeHeader(value string) string {
+	value = headerLine(value)
+	for _, r := range value {
+		if r > 127 {
+			return mime.QEncoding.Encode("UTF-8", value)
+		}
+	}
+	return value
+}
+
+// crlf 把正文换行统一为CRLF：SMTP要求CRLF，单个换行会被部分服务器截断。
+func crlf(value string) string {
+	return strings.NewReplacer("\r\n", "\n", "\r", "\n", "\n", "\r\n").Replace(value)
+}
+
+// mailMessage 组装一封纯文本UTF-8邮件（不含DATA结束点）。
+func mailMessage(from, to, subject, body string) string {
+	return fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n%s", headerLine(from), headerLine(to), encodeHeader(subject), crlf(body))
+}
+
+// sendMailMessage 通过已配置的SMTP账号投递一封纯文本邮件，主题与正文由调用方给出。
+func (a *App) sendMailMessage(s Settings, to, subject, body string) error {
 	address := net.JoinHostPort(s.MailHost, s.MailPort)
 	conf := &tls.Config{ServerName: s.MailHost, MinVersion: tls.VersionTLS12}
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
@@ -343,18 +375,21 @@ func (a *App) sendMail(s Settings, to, code string) error {
 	if err != nil {
 		return err
 	}
+	recipient, err := mail.ParseAddress(to)
+	if err != nil {
+		return err
+	}
 	if err = client.Mail(from.Address); err != nil {
 		return err
 	}
-	if err = client.Rcpt(to); err != nil {
+	if err = client.Rcpt(recipient.Address); err != nil {
 		return err
 	}
 	out, err := client.Data()
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(out, "From: %s\r\nTo: %s\r\nSubject: GIF Studio verification code\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n你的拾光 GIF 验证码：%s\r\n10 分钟内有效。请勿向他人透露。\r\n", from.Address, to, code)
-	if err != nil {
+	if _, err = out.Write([]byte(mailMessage(from.Address, recipient.Address, subject, body))); err != nil {
 		return err
 	}
 	if err = out.Close(); err != nil {

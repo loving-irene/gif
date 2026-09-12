@@ -112,6 +112,8 @@ type Settings struct {
 	MailPort               string     `json:"mailPort"`
 	MailUser               string     `json:"mailUser"`
 	MailFrom               string     `json:"mailFrom"`
+	// FeedbackEmail 是用户反馈的接收邮箱，留空时发送到 MailFrom。
+	FeedbackEmail string `json:"feedbackEmail"`
 }
 
 // defaultStyleID 是未指定画风时使用的编号；界面上对应“默认”选项，效果与原有轻度Q版一致。
@@ -281,6 +283,11 @@ func validateSettings(s Settings) error {
 	}
 	if err := validateStyles(s.Styles); err != nil {
 		return err
+	}
+	if s.FeedbackEmail != "" {
+		if _, ok := validEmail(s.FeedbackEmail); !ok {
+			return errors.New("反馈接收邮箱无效")
+		}
 	}
 	seen := map[string]bool{}
 	for _, c := range s.Categories {

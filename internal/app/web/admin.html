@@ -7,7 +7,7 @@
     <title>管理工作台 · 拾光 GIF</title>
     <link rel="stylesheet" href="/assets/style.v10.css" />
     <link rel="icon" href="/assets/icon.v1.svg" />
-    <script type="module" src="/assets/admin.v13.js"></script>
+    <script type="module" src="/assets/admin.v14.js"></script>
   </head>
   <body>
     <header class="header wrap admin-wrap">
@@ -178,7 +178,8 @@
               <summary>邮箱发送配置 · 强制 TLS</summary>
               <p class="hint">
                 可填写 card 使用的 SMTP 参数。465 使用 TLS 直连，587 使用
-                STARTTLS。
+                STARTTLS。邮箱验证码与首页用户反馈通知共用这里的 SMTP
+                配置；反馈接收邮箱留空时发送到发件邮箱。
               </p>
               <div class="admin-grid">
                 <label
@@ -193,6 +194,11 @@
                 ><label
                   >SMTP 账号<input id="mailUser" autocomplete="off" /></label
                 ><label>发件邮箱<input id="mailFrom" type="email" /></label
+                ><label
+                  >反馈接收邮箱<input
+                    id="feedbackEmail"
+                    type="email"
+                    placeholder="留空则发送到发件邮箱" /></label
                 ><label class="wide"
                   >SMTP 授权码 / 密码<input
                     id="mailPassword"

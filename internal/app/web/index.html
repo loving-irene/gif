@@ -21,8 +21,8 @@
       {{.StructuredData}}
     </script>
     <link rel="icon" href="/assets/icon.v1.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/assets/style.v12.css" />
-    <script src="/assets/app.v12.js" type="module"></script>
+    <link rel="stylesheet" href="/assets/style.v13.css" />
+    <script src="/assets/app.v13.js" type="module"></script>
     <script src="/assets/share.v3.js" type="module"></script>
     <script src="/assets/contact.v1.js" type="module"></script>
   </head>
@@ -36,6 +36,10 @@
         <button id="shareOpenBtn" class="share-open" aria-label="分享网站">
           <span aria-hidden="true">↗</span
           ><span class="share-open-label">分享</span>
+        </button>
+        <button id="feedbackOpenBtn" class="share-open" aria-label="提交反馈">
+          <span aria-hidden="true">✉</span
+          ><span class="share-open-label">反馈</span>
         </button>
         <a href="#collection">我的作品</a
         ><button id="redeemOpenBtn" class="nav-link" type="button">
@@ -554,6 +558,43 @@
           >正在载入…</a
         >
       </p>
+    </dialog>
+    <dialog
+      id="feedbackDialog"
+      class="feedback-dialog"
+      aria-labelledby="feedbackTitle"
+    >
+      <button
+        id="feedbackCloseBtn"
+        class="close"
+        type="button"
+        data-close
+        aria-label="关闭反馈"
+      >
+        ×
+      </button>
+      <span class="eyebrow">TELL ME WHAT YOU THINK</span>
+      <h2 id="feedbackTitle">说说你的想法</h2>
+      <p>
+        遇到问题、想要的动作或画风，都可以写在这里，最多 200
+        字。提交后会直接发到我的邮箱，并附带你的账号信息，方便必要时回复。
+      </p>
+      <form id="feedbackForm">
+        <label
+          >反馈内容<textarea
+            id="feedbackContent"
+            rows="5"
+            maxlength="200"
+            required
+            placeholder="例如：希望增加更多动作；某张图生成得不太像；页面哪里不太好用…"
+          ></textarea></label
+        >
+        <p id="feedbackCount" class="hint" aria-live="polite">0 / 200 字</p>
+        <p id="feedbackState" class="hint" role="status" hidden></p>
+        <button class="primary" id="feedbackSubmitBtn" disabled>
+          提交反馈 ✦
+        </button>
+      </form>
     </dialog>
     <div id="toast" class="toast" role="status" hidden></div>
   </body>
