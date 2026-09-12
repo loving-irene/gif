@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const source = fs
   .readFileSync(
-    process.argv[2] || path.join(root, "internal/app/web/app.v8.js"),
+    process.argv[2] || path.join(root, "internal/app/web/app.v9.js"),
     "utf8",
   )
   .replace(/^import[\s\S]*?from "\.\/common\.v2\.js";\s*/, "")

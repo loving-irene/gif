@@ -13,7 +13,7 @@ const source = fs
 const node = { textContent: "", hidden: true };
 let response;
 const context = vm.createContext({
-  document: { getElementById: () => node },
+  document: { getElementById: () => node, querySelector: () => null },
   fetch: async () => {
     if (response instanceof Error) throw response;
     return response;
