@@ -384,10 +384,14 @@ func TestUserConcurrencyConfigAndLimit(t *testing.T) {
 	if cfg.UserConcurrency != 5 {
 		t.Fatal("default user concurrency should be 5")
 	}
-	// 前台配置接口应返回并发数。
+	// 前台配置接口应返回并发数与服务器生成槽位（动作批次据此估算并行宽度）。
 	s := loginDevice(t, a, "concurrency-one")
-	if w := request(t, a, s, "GET", "/api/catalog", nil); w.Code != 200 || !strings.Contains(w.Body.String(), `"userConcurrency":5`) {
+	w := request(t, a, s, "GET", "/api/catalog", nil)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"userConcurrency":5`) {
 		t.Fatal("catalog missing userConcurrency", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), fmt.Sprintf(`"generationSlots":%d`, generationSlots)) {
+		t.Fatal("catalog missing generationSlots", w.Code, w.Body.String())
 	}
 	a.db.Exec("UPDATE users SET gift=20 WHERE id=?", s.User.ID)
 	release := blockingProvider(a)

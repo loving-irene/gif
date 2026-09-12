@@ -414,3 +414,49 @@ func TestMotionJobDeliversServerGIF(t *testing.T) {
 		t.Fatal("stored motion result not restored")
 	}
 }
+
+// 同一账号的多个动作可以同时制作（“让我的角色动起来”整批并行提交）：
+// 动作配置摘要包含动作编号，因此不同动作并行提交不会被“同款配置重复提交”拦截，
+// 服务端只按单账号并发上限与全局生成槽位排队，不会被串行化成一个一个做。
+func TestParallelMotionActionsRunTogether(t *testing.T) {
+	a := testApp(t)
+	s := loginDevice(t, a, "motion-parallel")
+	a.db.Exec("UPDATE users SET gift=10 WHERE id=?", s.User.ID)
+	a.providerCall = asProviderCall(func(context.Context, Settings, string, []string) (string, error) {
+		return sampleImage(false), nil
+	})
+	input := draftInput()
+	draft := waitJob(t, a, s, jobID(t, request(t, a, s, "POST", "/api/generate", input)))
+	w := request(t, a, s, "POST", "/api/accept", map[string]string{"receipt": draft.Receipt})
+	var accepted map[string]string
+	json.Unmarshal(w.Body.Bytes(), &accepted)
+	// 两个动作都先卡在上游：能同时处于“排队/生成中”，说明没有被串行化。
+	release := make(chan struct{})
+	a.providerCall = asProviderCall(func(context.Context, Settings, string, []string) (string, error) {
+		<-release
+		return sampleImage(true), nil
+	})
+	ids := make([]string, 0, 2)
+	for _, action := range []string{"attack", "guard"} {
+		ids = append(ids, jobID(t, request(t, a, s, "POST", "/api/generate", GenerateInput{
+			RequestID: token(16), Kind: "motion", Selection: input.Selection, Action: action,
+			Selfie: input.Selfie, Draft: draft.Image, Receipt: accepted["receipt"],
+		})))
+	}
+	if ids[0] == ids[1] {
+		t.Fatal("parallel motions reused one job")
+	}
+	if n := countJobs(t, a, s.User.ID, "queued", "running"); n != 2 {
+		t.Fatalf("parallel motions were serialized: %d active", n)
+	}
+	close(release)
+	for _, id := range ids {
+		j := waitJob(t, a, s, id)
+		if j.Status != "succeeded" || len(j.Gif) == 0 {
+			t.Fatal("parallel motion did not finish", id, j.Status)
+		}
+	}
+	if u, _ := a.readUser(s.User.ID); u.Credits != 7 {
+		t.Fatalf("unexpected credits: %d", u.Credits)
+	}
+}
