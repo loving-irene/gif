@@ -21,8 +21,8 @@
       {{.StructuredData}}
     </script>
     <link rel="icon" href="/assets/icon.v1.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/assets/style.v9.css" />
-    <script src="/assets/app.v10.js" type="module"></script>
+    <link rel="stylesheet" href="/assets/style.v11.css" />
+    <script src="/assets/app.v11.js" type="module"></script>
     <script src="/assets/share.v3.js" type="module"></script>
     <script src="/assets/contact.v1.js" type="module"></script>
   </head>
@@ -93,9 +93,11 @@
           <span class="local-tag">✦ 任务在服务器后台执行，可关闭页面</span>
         </div>
         <ol class="steps" aria-label="制作步骤">
-          <li class="active" id="step1"><b>1</b> 选择照片与造型</li>
-          <li id="step2"><b>2</b> 确认专属角色</li>
-          <li id="step3"><b>3</b> 让角色动起来</li>
+          <li class="active" id="step1">
+            <button type="button"><b>1</b> 选择照片与造型</button>
+          </li>
+          <li id="step2"><button type="button"><b>2</b> 确认专属角色</button></li>
+          <li id="step3"><button type="button"><b>3</b> 让角色动起来</button></li>
         </ol>
         <div id="setup" class="setup-grid">
           <div>
@@ -184,7 +186,14 @@
           </div>
         </div>
         <section id="draftSection" class="draft-section" hidden>
-          <div>
+          <div id="draftEmpty" class="step-empty" hidden>
+            <h3>专属角色还没生成</h3>
+            <p>回到第 1 步上传照片、挑选造型，点击「生成我的专属角色」即可。</p>
+            <button id="draftEmptyBtn" class="secondary" type="button">
+              ← 返回第 1 步
+            </button>
+          </div>
+          <div id="draftInfo">
             <span class="eyebrow">A LITTLE YOU</span>
             <h3>这个小分身，像你吗？</h3>
             <p>看看脸型、发型、眼镜和服装。<br />确认喜欢，再让它动起来。</p>
@@ -195,7 +204,7 @@
               ><button id="editBtn" class="text-button">修改造型</button>
             </div>
           </div>
-          <div class="draft-image">
+          <div id="draftImageWrap" class="draft-image">
             <img id="draftImage" alt="生成的角色定稿图" /><a
               id="saveDraft"
               class="download"
@@ -214,11 +223,20 @@
             </div>
             <button id="backDraft" class="text-button">查看角色定稿 ↗</button>
           </div>
-          <div class="actions" id="actions"></div>
-          <div class="queue-bar">
+          <div id="motionEmpty" class="step-empty" hidden>
+            <h3>先确认你的专属角色</h3>
+            <p>在第 2 步确认角色定稿后，就可以来这里挑选动作，让小分身动起来。</p>
+            <button id="motionEmptyBtn" class="secondary" type="button">
+              ← 返回上一步
+            </button>
+          </div>
+          <div id="motionReady" hidden>
+            <div class="actions" id="actions"></div>
+            <div class="queue-bar">
             <p>
               已选 <b id="selectedCount">0</b> 个动作
               <span>· 预计使用 <b id="cost">0</b> 次</span>
+              <span>· 剩余 <b id="remainingCost">0</b> 次</span>
             </p>
             <div>
               <button id="stopBtn" class="secondary" hidden>
@@ -230,6 +248,7 @@
           </div>
           <p class="hint" id="chargeHint"></p>
           <p class="hint" id="motionEstimate">选择动作后显示整组预计用时。</p>
+          </div>
         </section>
         <div
           id="progress"
@@ -397,7 +416,22 @@
         </div>
         <button class="primary" id="verifyBtn">关联邮箱 / 登录</button>
       </form>
+      <button id="callsOpenBtn" class="text-button" type="button">
+        查看调用记录 →
+      </button>
       <button id="logoutBtn" class="text-button">退出当前账号</button>
+    </dialog>
+    <dialog id="callsDialog">
+      <button class="close" data-close aria-label="关闭">×</button
+      ><span class="eyebrow">MY ACTIVITY</span>
+      <h2>最近的调用记录</h2>
+      <p class="hint">仅保留最近 100 条创作调用（角色定稿与动作 GIF）。</p>
+      <ol id="callsList" class="calls"></ol>
+      <div id="callsEmpty" class="empty" hidden>
+        <span>✿</span>
+        <h3>还没有调用记录</h3>
+        <p>生成角色定稿或动作 GIF 后，这里会留下每一次足迹。</p>
+      </div>
     </dialog>
     <dialog id="redeemDialog">
       <button class="close" data-close aria-label="关闭">×</button

@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	_ "golang.org/x/image/webp"
 	"image"
 	_ "image/jpeg"
@@ -263,6 +264,16 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 		fail(w, 402, "创作次数不足，请先兑换次数")
 		return
 	}
+	// 单用户并发任务数由后台配置（默认5）：达到上限时拒绝新任务。
+	var active int
+	if tx.QueryRow("SELECT COUNT(*) FROM jobs WHERE user_id=? AND status IN ('queued','running')", uid).Scan(&active) != nil {
+		fail(w, 500, "创建失败")
+		return
+	}
+	if active >= cfg.UserConcurrency {
+		fail(w, 409, fmt.Sprintf("当前账号已有 %d 个任务在执行，请等待部分任务完成后再提交", cfg.UserConcurrency))
+		return
+	}
 	giftCost, paidCost := 0, 0
 	if gift > 0 {
 		giftCost = 1
@@ -274,7 +285,7 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 		status, started = "running", created
 	}
 	if _, err = tx.Exec("INSERT INTO jobs(id,user_id,request_id,digest,kind,status,gift_cost,paid_cost,refund_failure,created,started,action,receipt) VALUES(?,?,?,?,?,?,?,?,?,?,?,?, '')", id, uid, in.RequestID, digest, in.Kind, status, giftCost, paidCost, !cfg.ChargeOnFailure, created, started, in.Action); err != nil {
-		fail(w, 409, "当前账号已有任务，或请求已提交；请等待任务完成")
+		fail(w, 409, "创建失败，请稍后重试")
 		return
 	}
 	if _, err = tx.Exec("UPDATE users SET gift=gift-?,paid=paid-? WHERE id=?", giftCost, paidCost, uid); err != nil {
@@ -286,6 +297,8 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	estimate := a.estimate(in.Kind, cfg)
+	// 个人调用记录（jobs 表）按账号只保留最近的 100 条，超出部分按创建时间淘汰。
+	a.pruneCalls(uid)
 	a.jobsMu.Lock()
 	// 调度器可能在响应返回前就完成极短任务，避免用旧的排队状态覆盖结果。
 	if a.jobs[id] == nil {
@@ -339,6 +352,30 @@ func (a *App) getJob(w http.ResponseWriter, r *http.Request) {
 	default:
 		respond(w, 200, map[string]any{"id": id, "status": "expired", "error": networkErrorMessage, "previousStatus": status})
 	}
+}
+// pruneCalls 只保留当前账号最近 100 条创作调用记录（jobs 表即调用日志）。
+func (a *App) pruneCalls(uid string) {
+	a.db.Exec("DELETE FROM jobs WHERE user_id=? AND rowid NOT IN (SELECT rowid FROM jobs WHERE user_id=? ORDER BY created DESC, rowid DESC LIMIT 100)", uid, uid)
+}
+
+// calls 返回当前账号最近的创作调用记录（角色定稿 / 动作 GIF，最多 100 条）。
+func (a *App) calls(w http.ResponseWriter, r *http.Request) {
+	uid := current(r).User.ID
+	rows, err := a.db.Query("SELECT kind,COALESCE(action,''),status,gift_cost+paid_cost,created FROM jobs WHERE user_id=? ORDER BY created DESC,rowid DESC LIMIT 100", uid)
+	if err != nil {
+		fail(w, 500, "读取失败")
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var kind, action, status string
+		var cost, created int64
+		if rows.Scan(&kind, &action, &status, &cost, &created) == nil {
+			out = append(out, map[string]any{"kind": kind, "action": action, "status": status, "cost": cost, "created": created})
+		}
+	}
+	respond(w, 200, map[string]any{"items": out})
 }
 func (a *App) loadStoredJob(id, kind string, created int64, receipt string) (Job, error) {
 	b, err := a.readFile(id, "image")

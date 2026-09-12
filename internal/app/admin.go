@@ -217,7 +217,7 @@ func (a *App) adminCodes(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "读取失败")
 		return
 	}
-	rows, err := a.db.Query("SELECT hash,label,credits,COALESCE(used_by,''),COALESCE(used_at,0),created,marked,encrypted_code<>'' FROM codes ORDER BY created DESC,rowid DESC LIMIT ? OFFSET ?", adminPageSize, (page-1)*adminPageSize)
+	rows, err := a.db.Query("SELECT c.hash,c.label,c.credits,COALESCE(c.used_by,''),COALESCE(u.name,''),COALESCE(c.used_at,0),c.created,c.marked,c.encrypted_code<>'' FROM codes c LEFT JOIN users u ON u.id=c.used_by ORDER BY c.created DESC,c.rowid DESC LIMIT ? OFFSET ?", adminPageSize, (page-1)*adminPageSize)
 	if err != nil {
 		fail(w, 500, "读取失败")
 		return
@@ -225,19 +225,19 @@ func (a *App) adminCodes(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, label, used string
+		var id, label, used, usedName string
 		var marked bool
 		var copyAvailable bool
 		var credits int
 		var usedAt, created int64
-		if rows.Scan(&id, &label, &credits, &used, &usedAt, &created, &marked, &copyAvailable) == nil {
+		if rows.Scan(&id, &label, &credits, &used, &usedName, &usedAt, &created, &marked, &copyAvailable) == nil {
 			status := "unredeemed"
 			if used != "" {
 				status = "redeemed"
 			} else if marked {
 				status = "marked"
 			}
-			out = append(out, map[string]any{"id": id, "label": label, "credits": credits, "usedBy": used, "usedAt": usedAt, "created": created, "status": status, "copyAvailable": copyAvailable})
+			out = append(out, map[string]any{"id": id, "label": label, "credits": credits, "usedBy": used, "usedByName": usedName, "usedAt": usedAt, "created": created, "status": status, "copyAvailable": copyAvailable})
 		}
 	}
 	pageResult(w, page, total, out)
@@ -277,7 +277,7 @@ func (a *App) adminAudit(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "读取失败")
 		return
 	}
-	rows, err := a.db.Query("SELECT actor,event,target,created FROM audit ORDER BY id DESC LIMIT ? OFFSET ?", adminPageSize, (page-1)*adminPageSize)
+	rows, err := a.db.Query("SELECT a.actor,COALESCE(u.name,''),a.event,a.target,a.created FROM audit a LEFT JOIN users u ON u.id=a.actor ORDER BY a.id DESC LIMIT ? OFFSET ?", adminPageSize, (page-1)*adminPageSize)
 	if err != nil {
 		fail(w, 500, "读取失败")
 		return
@@ -285,10 +285,10 @@ func (a *App) adminAudit(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var actor, event, target string
+		var actor, actorName, event, target string
 		var created int64
-		if rows.Scan(&actor, &event, &target, &created) == nil {
-			out = append(out, map[string]any{"actor": actor, "event": event, "target": target, "created": created})
+		if rows.Scan(&actor, &actorName, &event, &target, &created) == nil {
+			out = append(out, map[string]any{"actor": actor, "actorName": actorName, "event": event, "target": target, "created": created})
 		}
 	}
 	pageResult(w, page, total, out)
@@ -302,7 +302,7 @@ func (a *App) adminJobs(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "读取失败")
 		return
 	}
-	rows, err := a.db.Query("SELECT id,user_id,kind,action,status,created,started FROM jobs WHERE status IN ('queued','running') ORDER BY created,rowid LIMIT ? OFFSET ?", adminPageSize, (page-1)*adminPageSize)
+	rows, err := a.db.Query("SELECT j.id,j.user_id,COALESCE(u.name,''),j.kind,j.action,j.status,j.created,j.started FROM jobs j LEFT JOIN users u ON u.id=j.user_id WHERE j.status IN ('queued','running') ORDER BY j.created,j.rowid LIMIT ? OFFSET ?", adminPageSize, (page-1)*adminPageSize)
 	if err != nil {
 		fail(w, 500, "读取失败")
 		return
@@ -311,12 +311,12 @@ func (a *App) adminJobs(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UnixMilli()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, user, kind, action, status string
+		var id, user, userName, kind, action, status string
 		var created, started int64
-		if rows.Scan(&id, &user, &kind, &action, &status, &created, &started) != nil {
+		if rows.Scan(&id, &user, &userName, &kind, &action, &status, &created, &started) != nil {
 			continue
 		}
-		item := map[string]any{"id": id, "user": user, "kind": kind, "action": action, "status": status, "created": created, "started": started}
+		item := map[string]any{"id": id, "user": user, "userName": userName, "kind": kind, "action": action, "status": status, "created": created, "started": started}
 		a.jobsMu.Lock()
 		if j := a.jobs[id]; j != nil {
 			if j.StartedAt > 0 {

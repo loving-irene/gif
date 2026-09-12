@@ -60,6 +60,8 @@ func (a *App) bootstrap(w http.ResponseWriter, r *http.Request) {
 			// 免费额度限流不阻止用户登录已有邮箱账号。
 			gift = 0
 		}
+		// 默认用户名须在开启事务前生成：数据库仅单连接，事务内再查询会死锁。
+		name := a.defaultName()
 		tx, e := a.db.Begin()
 		if e != nil {
 			fail(w, 500, "账号创建失败")
@@ -67,7 +69,7 @@ func (a *App) bootstrap(w http.ResponseWriter, r *http.Request) {
 		}
 		defer tx.Rollback()
 		uid = token(16)
-		if _, e = tx.Exec("INSERT INTO users(id,gift,created) VALUES(?,?,?)", uid, gift, time.Now().Unix()); e == nil {
+		if _, e = tx.Exec("INSERT INTO users(id,name,gift,created) VALUES(?,?,?,?)", uid, name, gift, time.Now().Unix()); e == nil {
 			_, e = tx.Exec("INSERT INTO devices(credential,fingerprint,user_id,created) VALUES(?,?,?,?)", cred, a.mac("fp:"+in.Fingerprint), uid, time.Now().Unix())
 		}
 		if e != nil || tx.Commit() != nil {
@@ -114,6 +116,25 @@ func validName(raw string) (string, bool) {
 		}
 	}
 	return s, true
+}
+
+// defaultName 为新账号生成默认用户名：前缀“用户”+ 当天年月日 + 4 位随机数（如 用户202609123847），
+// 与已有用户名重复时自动重试，尽量避免新账号默认名冲突。
+func (a *App) defaultName() string {
+	day := time.Now().Format("20060102")
+	for i := 0; i < 5; i++ {
+		n, err := rand.Int(rand.Reader, big.NewInt(10000))
+		if err != nil {
+			break
+		}
+		name := fmt.Sprintf("用户%s%04d", day, n.Int64())
+		var exists int
+		if a.db.QueryRow("SELECT 1 FROM users WHERE name=? LIMIT 1", name).Scan(&exists) == sql.ErrNoRows {
+			return name
+		}
+	}
+	n, _ := rand.Int(rand.Reader, big.NewInt(100000000))
+	return fmt.Sprintf("用户%s%08d", day, n.Int64())
 }
 
 func (a *App) accountNameSave(w http.ResponseWriter, r *http.Request) {

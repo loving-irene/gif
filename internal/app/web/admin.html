@@ -7,7 +7,7 @@
     <title>管理工作台 · 拾光 GIF</title>
     <link rel="stylesheet" href="/assets/style.v10.css" />
     <link rel="icon" href="/assets/icon.v1.svg" />
-    <script type="module" src="/assets/admin.v10.js"></script>
+    <script type="module" src="/assets/admin.v11.js"></script>
   </head>
   <body>
     <header class="header wrap admin-wrap">
@@ -65,6 +65,7 @@
                   <th>类型</th>
                   <th>动作</th>
                   <th>账号</th>
+                  <th>用户名</th>
                   <th>创建时间</th>
                   <th>已等待</th>
                   <th>预计耗时</th>
@@ -121,6 +122,13 @@
                   type="number"
                   min="1"
                   max="100"
+                  required /></label
+              ><label
+                >单用户并发任务数<input
+                  id="userConcurrency"
+                  type="number"
+                  min="1"
+                  max="20"
                   required /></label
               ><label
                 >扣次规则<select id="chargeOnFailure">
@@ -279,6 +287,7 @@
                   <th>次数</th>
                   <th>状态</th>
                   <th>使用账号</th>
+                  <th>用户名</th>
                   <th>创建时间</th>
                   <th>操作</th>
                 </tr>
@@ -313,6 +322,7 @@
               <thead>
                 <tr>
                   <th>账号</th>
+                  <th>用户名</th>
                   <th>邮箱</th>
                   <th>余次</th>
                   <th>增加次数</th>
@@ -342,6 +352,7 @@
                 <tr>
                   <th>时间</th>
                   <th>操作账号</th>
+                  <th>用户名</th>
                   <th>事件</th>
                   <th>详情</th>
                 </tr>

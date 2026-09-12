@@ -86,6 +86,7 @@ type Category struct {
 type Settings struct {
 	DefaultCredits         int        `json:"defaultCredits"`
 	RegistrationDailyLimit int        `json:"registrationDailyLimit"`
+	UserConcurrency        int        `json:"userConcurrency"`
 	ChargeOnFailure        bool       `json:"chargeOnFailure"`
 	RedeemHelp             string     `json:"redeemHelp"`
 	APIBase                string     `json:"apiBase"`
@@ -104,7 +105,7 @@ type Settings struct {
 
 func defaults(e Env) Settings {
 	return Settings{
-		DefaultCredits: 5, RegistrationDailyLimit: 3, ChargeOnFailure: true,
+		DefaultCredits: 5, RegistrationDailyLimit: 3, UserConcurrency: 5, ChargeOnFailure: true,
 		APIBase: "https://geekai.co/api/v1", Model: "gpt-image-2.5-sunburst", Quality: "high", AssetHosts: []string{"static.geekai.co", "geekai.co"}, MailHost: e.MailHost, MailPort: e.MailPort, MailUser: e.MailUser, MailFrom: e.MailFrom,
 		IdentityPrompt: "以自拍中的本人为身份参考，人物辨识度最高优先。保留脸型宽长比例、下颌轮廓、眉形、眼型、眼距、鼻形、嘴形、五官相对位置、发际线、发型、发色、肤色，以及清晰可见的眼镜、痣、雀斑。只做必要的裁切、曝光和白平衡调整，不瘦脸、不尖下巴、不放大眼睛、不美白、不改变年龄。不要变成通用动漫脸，不添加原图没有的身份特征。采用精致二维插画、清晰轮廓、简洁阴影、轻度Q版身体比例，面部明显对应本人。无法判断的衣服和身体依据下方设定设计。",
 		DraftPrompt:    "本轮只输出一张静态角色定稿图，同一张图内包含正面脸部近景和完整全身造型，供本人核对。纯净浅色背景，面部无遮挡，完整发型、手脚和装备入镜。无文字、无水印、无动作序列。分类：{{category}}。服装：{{clothes}}。配色：{{color}}。武器：{{weapon}}。",
@@ -158,6 +159,10 @@ func (a *App) settings() (Settings, error) {
 	if err == nil {
 		err = json.Unmarshal([]byte(raw), &s)
 	}
+	// 兼容较早的配置：未设置单用户并发任务数时使用默认值 5。
+	if s.UserConcurrency < 1 {
+		s.UserConcurrency = 5
+	}
 	return s, err
 }
 func (a *App) secret(name string) string {
@@ -178,6 +183,9 @@ func validateSettings(s Settings) error {
 	}
 	if s.DefaultCredits < 0 || s.DefaultCredits > 1000 || s.RegistrationDailyLimit < 1 || s.RegistrationDailyLimit > 100 || len(s.Categories) != 3 {
 		return errors.New("次数或分类配置超出范围")
+	}
+	if s.UserConcurrency < 1 || s.UserConcurrency > 20 {
+		return errors.New("单用户并发任务数需在1到20之间")
 	}
 	if s.APIBase != "https://geekai.co/api/v1" {
 		return errors.New("接口地址必须为 https://geekai.co/api/v1")

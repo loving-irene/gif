@@ -83,7 +83,6 @@ func New(e Env) (*App, error) {
  CREATE TABLE IF NOT EXISTS email_codes(user_id TEXT NOT NULL,email TEXT NOT NULL,code TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,expires INTEGER NOT NULL,PRIMARY KEY(user_id,email));
  CREATE TABLE IF NOT EXISTS codes(hash TEXT PRIMARY KEY,label TEXT NOT NULL,credits INTEGER NOT NULL CHECK(credits>0),used_by TEXT REFERENCES users(id),used_at INTEGER,created INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),request_id TEXT NOT NULL,digest TEXT NOT NULL,kind TEXT NOT NULL,status TEXT NOT NULL,gift_cost INTEGER NOT NULL,paid_cost INTEGER NOT NULL,refund_failure INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL,started INTEGER NOT NULL DEFAULT 0,action TEXT NOT NULL DEFAULT '',receipt TEXT NOT NULL DEFAULT '',UNIQUE(user_id,request_id));
- CREATE UNIQUE INDEX IF NOT EXISTS one_active_job ON jobs(user_id) WHERE status IN ('queued','running');
  CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT,actor TEXT NOT NULL,event TEXT NOT NULL,target TEXT NOT NULL,created INTEGER NOT NULL);
  BEGIN;
  UPDATE users SET gift=gift+COALESCE((SELECT SUM(gift_cost) FROM jobs WHERE jobs.user_id=users.id AND status IN ('queued','running') AND refund_failure=1),0),paid=paid+COALESCE((SELECT SUM(paid_cost) FROM jobs WHERE jobs.user_id=users.id AND status IN ('queued','running') AND refund_failure=1),0);
@@ -206,11 +205,12 @@ func (a *App) migrateJobs() error {
 			}
 		}
 	}
+	// 单用户并发任务数改为后台可配置（settings.userConcurrency，默认5），
+	// 由创建任务时按数量校验，不再使用唯一索引限制单任务。
 	if _, err = a.db.Exec("DROP INDEX IF EXISTS one_active_job"); err != nil {
 		return err
 	}
-	_, err = a.db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS one_active_job ON jobs(user_id) WHERE status IN ('queued','running')")
-	return err
+	return nil
 }
 func (a *App) Close() { a.cancel(); a.wg.Wait(); a.db.Close() }
 func (a *App) cleanup() {
@@ -243,6 +243,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("POST /api/redeem", a.auth(a.redeem, false))
 	mux.HandleFunc("POST /api/generate", a.auth(a.generate, false))
 	mux.HandleFunc("GET /api/jobs/{id}", a.auth(a.getJob, false))
+	mux.HandleFunc("GET /api/calls", a.auth(a.calls, false))
 	mux.HandleFunc("POST /api/accept", a.auth(a.accept, false))
 	mux.HandleFunc("POST /api/admin/login", a.auth(a.adminLogin, false))
 	mux.HandleFunc("GET /api/admin/settings", a.auth(a.adminSettingsGet, true))
@@ -431,7 +432,7 @@ func (a *App) catalog(w http.ResponseWriter, r *http.Request) {
 			s.Categories[i].Actions[j].Prompt = ""
 		}
 	}
-	respond(w, 200, map[string]any{"categories": s.Categories, "chargeOnFailure": s.ChargeOnFailure, "configured": a.secret("api_key") != "", "emailConfigured": s.MailHost != "" && s.MailFrom != "" && a.secret("mail_password") != "", "estimates": a.estimates(s), "redeemHelp": s.RedeemHelp})
+	respond(w, 200, map[string]any{"categories": s.Categories, "chargeOnFailure": s.ChargeOnFailure, "configured": a.secret("api_key") != "", "emailConfigured": s.MailHost != "" && s.MailFrom != "" && a.secret("mail_password") != "", "estimates": a.estimates(s), "redeemHelp": s.RedeemHelp, "userConcurrency": s.UserConcurrency})
 }
 func (a *App) logout(w http.ResponseWriter, r *http.Request) {
 	s := current(r)

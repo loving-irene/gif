@@ -1,15 +1,17 @@
 package app
 
 // 补齐各功能模块的测试覆盖：结果文件过期、任务越权、排队任务重启/输入丢失、
-// 限流窗口、请求解码、配置校验、管理用户与邮箱配置、旧库索引迁移。
+// 限流窗口、请求解码、配置校验、管理用户与邮箱配置、旧库索引迁移、单用户并发配置。
 import (
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -326,7 +328,7 @@ func TestAdminSettingsRejectBadMailConfig(t *testing.T) {
 	}
 }
 
-func TestLegacyJobsSchemaUpgradesActiveIndex(t *testing.T) {
+func TestLegacyJobsSchemaDropsActiveIndex(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "legacy-jobs.db")
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -355,9 +357,71 @@ func TestLegacyJobsSchemaUpgradesActiveIndex(t *testing.T) {
 	if _, err = a.db.Exec("INSERT INTO jobs(id,user_id,request_id,digest,kind,status,gift_cost,paid_cost,created,started,action,receipt) VALUES('q1','legacy-user','r1','d','draft','queued',0,0,0,0,'','')"); err != nil {
 		t.Fatal("new columns missing after migration:", err)
 	}
-	if _, err = a.db.Exec("INSERT INTO jobs(id,user_id,request_id,digest,kind,status,gift_cost,paid_cost,created,started,action,receipt) VALUES('q2','legacy-user','r2','d','draft','queued',0,0,0,0,'','')"); err == nil {
-		t.Fatal("second queued job for same user should violate upgraded unique index")
+	// 单用户并发数改为后台按数量校验，旧库的唯一索引应被删除。
+	var indexes int
+	if err = a.db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='one_active_job'").Scan(&indexes); err != nil {
+		t.Fatal(err)
 	}
+	if indexes != 0 {
+		t.Fatal("legacy one_active_job index should be dropped after migration")
+	}
+	if _, err = a.db.Exec("INSERT INTO jobs(id,user_id,request_id,digest,kind,status,gift_cost,paid_cost,created,started,action,receipt) VALUES('q2','legacy-user','r2','d','draft','queued',0,0,0,0,'','')"); err != nil {
+		t.Fatal("multiple active jobs should be allowed after migration:", err)
+	}
+}
+
+func TestUserConcurrencyConfigAndLimit(t *testing.T) {
+	a := testApp(t)
+	cfg, _ := a.settings()
+	if cfg.UserConcurrency != 5 {
+		t.Fatal("default user concurrency should be 5")
+	}
+	// 前台配置接口应返回并发数。
+	s := loginDevice(t, a, "concurrency-one")
+	if w := request(t, a, s, "GET", "/api/catalog", nil); w.Code != 200 || !strings.Contains(w.Body.String(), `"userConcurrency":5`) {
+		t.Fatal("catalog missing userConcurrency", w.Code, w.Body.String())
+	}
+	a.db.Exec("UPDATE users SET gift=20 WHERE id=?", s.User.ID)
+	release := blockingProvider(a)
+	ids := make([]string, 5)
+	for i := range ids {
+		ids[i] = jobID(t, request(t, a, s, "POST", "/api/generate", draftInput()))
+	}
+	// 默认并发5：第6个任务被拒绝且不扣次。
+	if w := request(t, a, s, "POST", "/api/generate", draftInput()); w.Code != 409 {
+		t.Fatal("over-limit job accepted:", w.Code, w.Body.String())
+	}
+	if u, _ := a.readUser(s.User.ID); u.Credits != 15 {
+		t.Fatalf("over-limit job charged credits: %d", u.Credits)
+	}
+	close(release)
+	for _, id := range ids {
+		if j := waitJob(t, a, s, id); j.Status != "succeeded" {
+			t.Fatal(j)
+		}
+	}
+	// 后台可调整并发数，范围外拒绝；调整后按新上限校验。
+	admin := codeAdmin(t, a, loginDevice(t, a, "admin-concurrency"))
+	for _, bad := range []int{0, 21} {
+		badCfg := cfg
+		badCfg.UserConcurrency = bad
+		if w := request(t, a, admin, "POST", "/api/admin/settings", map[string]any{"settings": badCfg}); w.Code != 400 {
+			t.Fatal("invalid concurrency accepted:", bad, w.Code, w.Body.String())
+		}
+	}
+	newCfg := cfg
+	newCfg.UserConcurrency = 2
+	if w := request(t, a, admin, "POST", "/api/admin/settings", map[string]any{"settings": newCfg}); w.Code != 200 {
+		t.Fatal("valid concurrency rejected:", w.Code, w.Body.String())
+	}
+	release2 := blockingProvider(a)
+	for i := 0; i < 2; i++ {
+		jobID(t, request(t, a, s, "POST", "/api/generate", draftInput()))
+	}
+	if w := request(t, a, s, "POST", "/api/generate", draftInput()); w.Code != 409 {
+		t.Fatal("configured limit not enforced:", w.Code, w.Body.String())
+	}
+	close(release2)
 }
 
 func TestAccountNameSaveAndValidation(t *testing.T) {
@@ -408,6 +472,79 @@ func TestAccountNameSaveAndValidation(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &list)
 	if len(list.Items) != 1 || list.Items[0].Name != name || list.Total != 1 {
 		t.Fatal("admin search by name failed:", w.Body.String())
+	}
+}
+
+func TestDefaultUserNameInitialized(t *testing.T) {
+	a := testApp(t)
+	// 新账号注册即初始化默认用户名：前缀“用户”+ 当天年月日 + 4 位随机数。
+	day := time.Now().Format("20060102")
+	one := loginDevice(t, a, "default-name-one")
+	if !regexp.MustCompile(`^用户` + day + `\d{4}$`).MatchString(one.User.Name) {
+		t.Fatal("unexpected default name:", one.User.Name)
+	}
+	// 不同新账号的默认用户名互不重复。
+	two := loginDevice(t, a, "default-name-two")
+	if two.User.Name == one.User.Name {
+		t.Fatal("duplicated default name:", one.User.Name)
+	}
+	// 功能上线前的旧账号未设置用户名，保持为空，由管理端列表展示“-”。
+	if _, err := a.db.Exec("INSERT INTO users(id,gift,created) VALUES('legacy-user',5,0)"); err != nil {
+		t.Fatal(err)
+	}
+	admin := codeAdmin(t, a, one)
+	w := request(t, a, admin, "GET", "/api/admin/users?q="+url.QueryEscape(one.User.Name), nil)
+	var list struct {
+		Items []User `json:"items"`
+		Total int    `json:"total"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil || list.Total != 1 || len(list.Items) != 1 || list.Items[0].Name != one.User.Name {
+		t.Fatal("admin search by default name failed:", w.Body.String())
+	}
+	w = request(t, a, admin, "GET", "/api/admin/users?q=legacy-user", nil)
+	json.Unmarshal(w.Body.Bytes(), &list)
+	if list.Total != 1 || len(list.Items) != 1 || list.Items[0].Name != "" {
+		t.Fatal("legacy user should keep empty name:", w.Body.String())
+	}
+}
+
+// TestCallsListAndRetention 验证个人调用记录接口与按账号仅保留最近 100 条的策略。
+func TestCallsListAndRetention(t *testing.T) {
+	a := testApp(t)
+	one := loginDevice(t, a, "calls-one")
+	uid := one.User.ID
+	// 105 条历史调用：前 5 条角色定稿，其余为动作 GIF，created 递增。
+	for i := 0; i < 105; i++ {
+		kind, action := "motion", "wave"
+		if i < 5 {
+			kind, action = "draft", ""
+		}
+		if _, err := a.db.Exec("INSERT INTO jobs(id,user_id,request_id,digest,kind,status,gift_cost,paid_cost,refund_failure,created,started,action,receipt) VALUES(?,?,?,?,?,?,?,?,0,?,0,?,'')",
+			fmt.Sprintf("job-%03d", i), uid, fmt.Sprintf("req-%03d", i), "", kind, "succeeded", 1, 0, i, action); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w := request(t, a, one, "GET", "/api/calls", nil)
+	var list struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil || len(list.Items) != 100 {
+		t.Fatal("calls list wrong:", w.Body.String())
+	}
+	// 最新记录在前：created=104 的动作 GIF 排第一，仅保留窗口内的记录可见。
+	first := list.Items[0]
+	if first["created"].(float64) != 104 || first["kind"] != "motion" || first["action"] != "wave" || first["status"] != "succeeded" || first["cost"].(float64) != 1 {
+		t.Fatal("newest call wrong:", first)
+	}
+	// 淘汰后每个账号仅保留最近 100 条调用记录。
+	a.pruneCalls(uid)
+	var n int
+	if err := a.db.QueryRow("SELECT COUNT(*) FROM jobs WHERE user_id=?", uid).Scan(&n); err != nil || n != 100 {
+		t.Fatal("retention wrong:", n, err)
+	}
+	// 未登录不可访问。
+	if w = request(t, a, nil, "GET", "/api/calls", nil); w.Code != 401 {
+		t.Fatal("calls should require auth")
 	}
 }
 
@@ -576,4 +713,43 @@ func TestAdminAuditPagination(t *testing.T) {
 	if len(p3.Items) != 50+base || p3.Page != 3 || p3.Total != base+250 {
 		t.Fatal("audit page 3 wrong:", w.Body.String())
 	}
+}
+
+// TestAdminListsIncludeUserName 验证任务、兑换码、操作记录列表均返回账号对应的用户名。
+func TestAdminListsIncludeUserName(t *testing.T) {
+	a := testApp(t)
+	admin := codeAdmin(t, a, loginDevice(t, a, "admin"))
+	if _, err := a.db.Exec("INSERT INTO users(id,email,name,gift,paid,disabled,created) VALUES('named-user','named@example.com','有名字','5',0,0,0)"); err != nil {
+		t.Fatal(err)
+	}
+	// 任务列表：排队任务展示所属账号的用户名。
+	if _, err := a.db.Exec("INSERT INTO jobs(id,user_id,request_id,digest,kind,status,gift_cost,paid_cost,created,started,action,receipt) VALUES('job-named','named-user','req-named','d','draft','queued',1,0,1,0,'','')"); err != nil {
+		t.Fatal(err)
+	}
+	// 兑换码列表：已兑换的码展示使用者用户名。
+	if _, err := a.db.Exec("INSERT INTO codes(hash,label,credits,used_by,used_at,created,marked,encrypted_code) VALUES('hash-named','名单',5,'named-user',10,10,0,'')"); err != nil {
+		t.Fatal(err)
+	}
+	// 操作记录：展示操作人用户名。
+	if _, err := a.db.Exec("INSERT INTO audit(actor,event,target,created) VALUES('named-user','redeem','5',1)"); err != nil {
+		t.Fatal(err)
+	}
+	type page struct {
+		Items []map[string]any `json:"items"`
+		Total int              `json:"total"`
+	}
+	check := func(path, key string) {
+		t.Helper()
+		w := request(t, a, admin, "GET", path, nil)
+		var p page
+		if err := json.Unmarshal(w.Body.Bytes(), &p); err != nil || len(p.Items) == 0 {
+			t.Fatal(path, "empty:", w.Body.String())
+		}
+		if p.Items[0][key] != "有名字" {
+			t.Fatal(path, "missing", key, ":", w.Body.String())
+		}
+	}
+	check("/api/admin/jobs", "userName")
+	check("/api/admin/codes", "usedByName")
+	check("/api/admin/audit", "actorName")
 }
