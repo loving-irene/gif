@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 2026-09-12 · 0.1.17
+
+- 新增 `scripts/clean_disk.sh`：磁盘不足或部署卡死时释放空间。默认清理Go构建缓存、构建中断残留的`gif-server.next`与本机`*.exe`、`logs/`下超过2天的`auto_deploy-*.log`，以及npm下载缓存、apt缓存和systemd journal；`--aggressive`追加Go模块缓存、snap缓存、轮转系统日志与超量自动备份；`--dry-run`只统计不删除，`--no-system`只动应用目录。
+- 新增 `scripts/check_deploy_version.sh`：用`.last_deployed_commit`状态文件与`origin/<branch>`比较，输出up-to-date(0)、newer-commit-available(3)、stuck(4)、unknown(1)与用法错误(64)，非零状态附中文处理提示；`--quiet`只输出状态关键字。二进制不支持`version`子命令，已部署提交只能来自状态文件。
+- 两个脚本都要求应用目录存在`go.mod`或`.git`，且永不删除`gif.db`（含`-wal`/`-shm`）、`gif-server`、`gif-server.previous`、`.env`、`node_modules/`、`work/`与源码；系统清理在无root且无免密sudo时跳过并warning。
+- 新增自包含、无网络、打桩系统命令的`scripts/tests/clean_disk_test.sh`与`scripts/tests/check_deploy_version_test.sh`；README补充“磁盘清理与部署版本检查”小节及`/var/backups/gif`保留策略现状（仍由`scripts/backup_database.py`只保留最近2份自动快照，本脚本不改变该策略）。
+
 ## 2026-09-12 · 0.1.16
 
 - 上传自拍照成功后立即存入本机IndexedDB（沿用profiles记录），关闭网页后重新进入会自动展示上次上传的照片，可直接使用或换一张；本地保存失败仅提示，不影响本次上传。

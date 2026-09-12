@@ -140,6 +140,52 @@ BRANCH=main SCHEDULE='*/5 * * * *' ./scripts/install_cron.sh
 
 上线后打开 `/who` 配置GeekAI和SMTP。SMTP参数可手动使用card的配置值；不要复制card的会话密钥，GIF应使用独立随机密钥。
 
+### 磁盘清理与部署版本检查
+
+`scripts/clean_disk.sh` 在 `go build` 报“no space left on device”或部署卡死时释放空间，只回收可安全重建的内容：
+
+| 档位 | 清理内容 |
+| --- | --- |
+| 默认（应用目录） | Go构建缓存（优先`GOCACHE`，否则`go env GOCACHE`，再回退`$HOME/.cache/go-build`）、构建中断残留的`gif-server.next`与本机`*.exe`、`logs/`下超过`AVS_LOG_KEEP_DAYS`天（默认2）的`auto_deploy-*.log`（`auto_deploy.sh`自身用`-mtime +1`保留今天与昨天，本脚本按“超过N天”判定，默认值略保守，只多留一天） |
+| 默认（系统，需root或免密sudo） | npm下载缓存`$HOME/.npm/_cacache`、apt包缓存、systemd journal（`journalctl --vacuum-size=${AVS_JOURNAL_MAX_SIZE}`，默认50M） |
+| `--aggressive`追加 | Go模块缓存（优先`GOMODCACHE`，下次构建重新下载）、snap包缓存`/var/lib/snapd/cache`、logrotate轮转的历史系统日志、`/var/backups/gif`中超过`AVS_BACKUP_KEEP_COUNT`（默认3）份的自动快照 |
+
+```bash
+sudo ./scripts/clean_disk.sh              # 生产环境释放空间
+./scripts/clean_disk.sh --dry-run         # 只统计可回收空间，不删除任何文件
+./scripts/clean_disk.sh --aggressive      # 追加模块缓存、snap缓存与历史系统日志
+./scripts/clean_disk.sh --no-system       # 只处理应用目录内的文件
+```
+
+选项与退出码：`--dry-run`（每条清理项带`[dry-run]`前缀，不删除）、`--aggressive`、`--no-system`、`-h|--help`，以及可选位置参数应用目录（默认`${APP_DIR:-/var/www/gif}`）。退出码`0`成功、`1`有文件删除失败、`64`用法错误或拒绝危险的清理目录（`/`、空、`.`）、`66`应用目录不存在或不像gif应用（既无`go.mod`也无`.git`）。输出为 application/mode → 每条“标签+回收大小+路径” → summary汇总与`df -h <app>`；剩余空间低于`AVS_MIN_FREE_MB`（默认300）时额外warning。所有阈值（`AVS_LOG_KEEP_DAYS`、`AVS_BACKUP_KEEP_COUNT`、`AVS_JOURNAL_MAX_SIZE`、`AVS_MIN_FREE_MB`、`AVS_NPM_CACHE_DIR`、`AVS_APT_CACHE_DIR`、`AVS_JOURNAL_DIR`、`AVS_SNAP_CACHE_DIR`、`AVS_ROTATED_LOG_DIR`、`AVS_BACKUP_DIR`）都可用环境变量覆盖，便于测试注入。
+
+安全边界：`gif.db`（含`-wal`/`-shm`）、`gif-server`、`gif-server.previous`、`.env`、`node_modules/`、`work/`、`files/`与源码永远不会被删除；无root且无免密sudo时只跳过apt/journal/snap/系统日志/备份这些需要提权的部分（npm缓存位于用户目录，仍会清理）并warning，不影响应用目录清理。清理对象只用固定的文件（`gif-server.next`、`*.exe`、`auto_deploy-*.log`）与缓存目录，不做递归通配；缓存路径必须是绝对路径且不等于应用目录或家目录，否则拒绝删除（例如`GOCACHE=off`）。
+
+`scripts/check_deploy_version.sh` 判断线上是否已经运行`origin/<branch>`的最新提交。`gif-server`不支持`version`子命令，所以“已部署提交”只能取自`auto_deploy.sh`部署成功后写入的`.last_deployed_commit`状态文件（可用`DEPLOY_STATE_FILE`覆盖，相对路径按应用目录解析）。
+
+```bash
+./scripts/check_deploy_version.sh                 # 完整诊断输出
+./scripts/check_deploy_version.sh --quiet         # 只输出状态关键字，便于cron或监控
+./scripts/check_deploy_version.sh --fetch         # 先git fetch，比较远端最新提交
+./scripts/check_deploy_version.sh --branch main   # 指定跟踪分支（默认main，也支持BRANCH环境变量）
+```
+
+输出字段对齐为 application / branch / state file / deployed commit（`git log -1 --format='%h %s'`摘要，解析不到显示unknown）/ local HEAD / origin分支 / 运行二进制（`gif-server`与`gif-server.previous`是否存在）/ status。状态与退出码：
+
+| 退出码 | 状态 | 含义与处理 |
+| --- | --- | --- |
+| 0 | `up-to-date` | 状态文件记录的提交等于`origin/<branch>` |
+| 3 | `newer-commit-available` | `origin/<branch>`有未上线提交，等待5分钟cron或手工执行`scripts/auto_deploy.sh` |
+| 4 | `stuck` | HEAD已等于`origin/<branch>`，但状态文件仍是旧提交：上一次部署失败或被跳过。先跑`scripts/clean_disk.sh`释放空间，再手工`scripts/auto_deploy.sh`（它比较的是状态文件，所以会重新构建） |
+| 1 | `unknown` | 状态文件缺失或内容无法解析、无法解析`origin/<branch>`、`--fetch`失败、或不是git仓库 |
+| 64 | 用法错误 | 未知选项、`--branch`缺参数、分支名为空 |
+
+每种非0状态都会附带中文处理提示。
+
+`/var/backups/gif`的保留策略现状：由`scripts/deploy.sh`调用的`scripts/backup_database.py`在每次部署前创建一致性快照，并在备份成功后只保留最近 **2份**`gif-auto-*.sqlite3`自动快照（`prune_backups`，手动或其他文件不动）。`clean_disk.sh`不接管这个策略；它的`--aggressive`只会清理严格匹配同一命名规则、且超出`AVS_BACKUP_KEEP_COUNT`（默认3）的历史遗留快照，由于默认阈值高于备份脚本自身的2份，常规运行不会删除任何备份。
+
+这两个脚本的测试（自包含、无网络、打桩系统命令与`go`）为`scripts/tests/clean_disk_test.sh`与`scripts/tests/check_deploy_version_test.sh`。目前`auto_deploy.sh`只构建并调用`deploy.sh`，尚未接入这两个测试，需要在上线前或手工排查时按“本地检查”一节显式运行；如需让每次部署都跑，可在`auto_deploy.sh`的部署分支中加两行调用。
+
 ## 安全措施与边界
 
 - HttpOnly/SameSite=Strict会话，生产Secure Cookie；Origin+CSRF双重校验。
@@ -202,7 +248,9 @@ go vet ./...
 
 ```bash
 bash scripts/tests/install_cron_test.sh
-for f in scripts/*.sh; do bash -n "$f"; done
+bash scripts/tests/clean_disk_test.sh
+bash scripts/tests/check_deploy_version_test.sh
+for f in scripts/*.sh scripts/tests/*.sh; do bash -n "$f"; done
 ```
 
 浏览器集成测试工具只在Go测试二进制内存在，生产二进制无法启用：
