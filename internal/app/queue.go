@@ -236,6 +236,26 @@ func upstreamTimedOut(err error) bool {
 // upstreamRetention 是上游任务可继续认领的时长：超过后按失败收口，不再无限期占用生成槽位。
 const upstreamRetention = 30 * time.Minute
 
+// failReasonText 把任务失败原因整理成管理后台可安全展示的文本：
+// 已知内部错误给出中文说明，其余保留错误摘要并复用调试日志的脱敏规则（去密钥、URL 等）。
+func failReasonText(err error) string {
+	if err == nil {
+		return ""
+	}
+	switch err.Error() {
+	case "job input unavailable":
+		return "任务输入缺失（服务重启后无法恢复）"
+	case "upstream result window exhausted":
+		return "等待上游结果超时，已按失败收口"
+	}
+	text := safeDebugText(err.Error(), nil)
+	runes := []rune(text)
+	if len(runes) > 300 {
+		return string(runes[:300]) + "…"
+	}
+	return text
+}
+
 // runJob 执行一次生成任务：调用图像服务、合成 GIF、把结果写入服务器文件并更新状态。
 // 调用方必须已经占用生成槽位；任务结束时在这里释放并触发下一次调度。
 // 上游超过单次等待时间时，任务转为“等待上游结果”，不再重发请求，稍后按同一个上游任务号继续认领。
@@ -269,6 +289,8 @@ func (a *App) runJob(id string, inline *jobInput) {
 	started := time.Now()
 	output, receipt, gifImage := "", "", ""
 	jobState, message := "succeeded", ""
+	// reason 是给管理后台任务历史看的失败原因；用户侧仍然只拿统一的网络异常文案。
+	reason := ""
 	// upstream 记录本次实际使用的上游任务号：首次提交由回调写入，续查沿用数据库里的值。
 	upstream := state.Upstream
 	charged := true
@@ -324,6 +346,7 @@ func (a *App) runJob(id string, inline *jobInput) {
 		a.debug(traceCtx, "job_error", map[string]any{"error": jobErr.Error(), "elapsed_ms": time.Since(started).Milliseconds()})
 		jobState = "failed"
 		message = networkErrorMessage
+		reason = failReasonText(jobErr)
 		output = ""
 		gifImage = ""
 		receipt = ""
@@ -346,10 +369,10 @@ func (a *App) runJob(id string, inline *jobInput) {
 		}
 	}
 	if receipt != "" {
-		if _, err := a.db.Exec("UPDATE jobs SET status=?,receipt=? WHERE id=?", jobState, receipt, id); err != nil {
+		if _, err := a.db.Exec("UPDATE jobs SET status=?,receipt=?,error_message=? WHERE id=?", jobState, receipt, reason, id); err != nil {
 			a.debug(traceCtx, "status_write_error", map[string]any{"error": errorText(err)})
 		}
-	} else if _, err := a.db.Exec("UPDATE jobs SET status=? WHERE id=?", jobState, id); err != nil {
+	} else if _, err := a.db.Exec("UPDATE jobs SET status=?,error_message=? WHERE id=?", jobState, reason, id); err != nil {
 		a.debug(traceCtx, "status_write_error", map[string]any{"error": errorText(err)})
 	}
 	timingErr := a.recordTiming(id, kind, cfg, callDuration, jobState)

@@ -340,3 +340,30 @@ func (a *App) adminJobs(w http.ResponseWriter, r *http.Request) {
 	}
 	pageResult(w, page, total, out)
 }
+
+// adminJobHistory 返回所有账号的全部任务历史（含完成、失败与中断），按创建时间倒序分页；
+// 失败/中断任务附带 error_message 中的原因，费用为 0 表示失败已退回次数。
+func (a *App) adminJobHistory(w http.ResponseWriter, r *http.Request) {
+	page := pageParam(r)
+	var total int
+	if err := a.db.QueryRow("SELECT COUNT(*) FROM jobs").Scan(&total); err != nil {
+		fail(w, 500, "读取失败")
+		return
+	}
+	rows, err := a.db.Query("SELECT j.id,j.user_id,COALESCE(u.name,''),j.kind,j.action,j.status,j.created,j.gift_cost+j.paid_cost,COALESCE(j.error_message,'') FROM jobs j LEFT JOIN users u ON u.id=j.user_id ORDER BY j.created DESC,j.rowid DESC LIMIT ? OFFSET ?", adminPageSize, (page-1)*adminPageSize)
+	if err != nil {
+		fail(w, 500, "读取失败")
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id, user, userName, kind, action, status, reason string
+		var created int64
+		var cost int
+		if rows.Scan(&id, &user, &userName, &kind, &action, &status, &created, &cost, &reason) == nil {
+			out = append(out, map[string]any{"id": id, "user": user, "userName": userName, "kind": kind, "action": action, "status": status, "created": created, "cost": cost, "reason": reason})
+		}
+	}
+	pageResult(w, page, total, out)
+}

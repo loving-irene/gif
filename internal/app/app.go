@@ -95,7 +95,7 @@ func New(e Env) (*App, error) {
  CREATE TABLE IF NOT EXISTS rate_limits(bucket TEXT PRIMARY KEY,count INTEGER NOT NULL,expires INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS email_codes(user_id TEXT NOT NULL,email TEXT NOT NULL,code TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,expires INTEGER NOT NULL,PRIMARY KEY(user_id,email));
  CREATE TABLE IF NOT EXISTS codes(hash TEXT PRIMARY KEY,label TEXT NOT NULL,credits INTEGER NOT NULL CHECK(credits>0),used_by TEXT REFERENCES users(id),used_at INTEGER,created INTEGER NOT NULL);
- CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),request_id TEXT NOT NULL,digest TEXT NOT NULL,kind TEXT NOT NULL,status TEXT NOT NULL,gift_cost INTEGER NOT NULL,paid_cost INTEGER NOT NULL,refund_failure INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL,started INTEGER NOT NULL DEFAULT 0,action TEXT NOT NULL DEFAULT '',receipt TEXT NOT NULL DEFAULT '',dup_digest TEXT NOT NULL DEFAULT '',upstream_task_id TEXT NOT NULL DEFAULT '',upstream_wait_ms INTEGER NOT NULL DEFAULT 0,timing_recorded INTEGER NOT NULL DEFAULT 0,UNIQUE(user_id,request_id));
+ CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),request_id TEXT NOT NULL,digest TEXT NOT NULL,kind TEXT NOT NULL,status TEXT NOT NULL,gift_cost INTEGER NOT NULL,paid_cost INTEGER NOT NULL,refund_failure INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL,started INTEGER NOT NULL DEFAULT 0,action TEXT NOT NULL DEFAULT '',receipt TEXT NOT NULL DEFAULT '',dup_digest TEXT NOT NULL DEFAULT '',upstream_task_id TEXT NOT NULL DEFAULT '',upstream_wait_ms INTEGER NOT NULL DEFAULT 0,timing_recorded INTEGER NOT NULL DEFAULT 0,error_message TEXT NOT NULL DEFAULT '',UNIQUE(user_id,request_id));
  CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT,actor TEXT NOT NULL,event TEXT NOT NULL,target TEXT NOT NULL,created INTEGER NOT NULL);
  BEGIN;
  UPDATE users SET gift=gift+COALESCE((SELECT SUM(gift_cost) FROM jobs WHERE jobs.user_id=users.id AND status IN ('queued','running','pending_upstream') AND refund_failure=1),0),paid=paid+COALESCE((SELECT SUM(paid_cost) FROM jobs WHERE jobs.user_id=users.id AND status IN ('queued','running','pending_upstream') AND refund_failure=1),0);
@@ -235,12 +235,18 @@ func (a *App) migrateJobs() error {
 		// timing_recorded 记录该任务是否已经计入耗时统计：统计只保留聚合值时，
 		// 用它保证同一任务不会被重复计入（替代原来按 job_id 去重的一次性记录表）。
 		{"timing_recorded", "ALTER TABLE jobs ADD COLUMN timing_recorded INTEGER NOT NULL DEFAULT 0"},
+		// error_message 记录任务失败/中断原因，仅供管理后台任务历史展示，用户侧仍统一提示网络异常。
+		{"error_message", "ALTER TABLE jobs ADD COLUMN error_message TEXT NOT NULL DEFAULT ''"},
 	} {
 		if !cols[column.name] {
 			if _, err = a.db.Exec(column.ddl); err != nil {
 				return err
 			}
 		}
+	}
+	// 补写历史遗留中断任务的原因：本列新增之前发生的服务重启中断没有记录可循。
+	if _, err = a.db.Exec("UPDATE jobs SET error_message='服务重启时任务被中断' WHERE status='interrupted' AND error_message=''"); err != nil {
+		return err
 	}
 	// 为迁移前就存在的排队/进行中任务补写配置摘要，使重复提交检测覆盖进行中的旧任务。
 	// 排队的输入存在 input.json（生成中任务的输入只在内存里，无法补写，保持空值兜底）。
@@ -261,7 +267,7 @@ func (a *App) cleanup() {
 	a.db.Exec("DELETE FROM email_codes WHERE expires<?", now)
 	a.db.Exec("DELETE FROM rate_limits WHERE expires<?", now)
 	// 上游一直没有结果的等待任务超过认领时效后收口为失败，不再占用并发额度与槽位。
-	a.db.Exec("UPDATE jobs SET status='failed' WHERE status=? AND created<?", statusPendingUpstream, now-int64(a.waitBudget.Seconds()))
+	a.db.Exec("UPDATE jobs SET status='failed',error_message='等待上游结果超时，已按失败收口' WHERE status=? AND created<?", statusPendingUpstream, now-int64(a.waitBudget.Seconds()))
 	a.cleanupFiles()
 	a.jobsMu.Lock()
 	defer a.jobsMu.Unlock()
@@ -302,6 +308,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("POST /api/admin/codes/restore", a.auth(a.adminCodeRestore, true))
 	mux.HandleFunc("GET /api/admin/audit", a.auth(a.adminAudit, true))
 	mux.HandleFunc("GET /api/admin/jobs", a.auth(a.adminJobs, true))
+	mux.HandleFunc("GET /api/admin/jobs/history", a.auth(a.adminJobHistory, true))
 	mux.HandleFunc("GET /robots.txt", a.robots)
 	mux.HandleFunc("GET /sitemap.xml", a.sitemap)
 	mux.HandleFunc("GET /llms.txt", a.llms)
