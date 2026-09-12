@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -268,9 +269,11 @@ func TestAdminUserSearchUpdateAndDisable(t *testing.T) {
 	two := loginDevice(t, a, "user-two")
 	a.db.Exec("UPDATE users SET email='person@example.com' WHERE id=?", one.User.ID)
 	w := request(t, a, admin, "GET", "/api/admin/users?q=person@example.com", nil)
-	users := []User{}
-	json.Unmarshal(w.Body.Bytes(), &users)
-	if len(users) != 1 || users[0].ID != one.User.ID {
+	var found struct {
+		Items []User `json:"items"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &found)
+	if len(found.Items) != 1 || found.Items[0].ID != one.User.ID {
 		t.Fatal("email search wrong", w.Body.String())
 	}
 	if w = request(t, a, admin, "POST", "/api/admin/users", map[string]any{"id": one.User.ID, "add": 3, "disabled": false}); w.Code != 200 {
@@ -354,5 +357,223 @@ func TestLegacyJobsSchemaUpgradesActiveIndex(t *testing.T) {
 	}
 	if _, err = a.db.Exec("INSERT INTO jobs(id,user_id,request_id,digest,kind,status,gift_cost,paid_cost,created,started,action,receipt) VALUES('q2','legacy-user','r2','d','draft','queued',0,0,0,0,'','')"); err == nil {
 		t.Fatal("second queued job for same user should violate upgraded unique index")
+	}
+}
+
+func TestAccountNameSaveAndValidation(t *testing.T) {
+	a := testApp(t)
+	one := loginDevice(t, a, "name-one")
+	// 有安全隐患或不合规的账户名一律拒绝：HTML/注入字符、空格、表情、超长、纯空白。
+	for _, bad := range []string{
+		"<script>",
+		"a&b",
+		"who/am I",
+		`"quote"`,
+		"emoji😀",
+		strings.Repeat("长", 21),
+		"   ",
+	} {
+		w := request(t, a, one, "POST", "/api/account/name", map[string]string{"name": bad})
+		if w.Code != 400 {
+			t.Fatal("bad name accepted:", bad, w.Code, w.Body.String())
+		}
+	}
+	// 合法账户名（中文/字母/数字/_/-/·）保存成功并回读。
+	name := "小可爱_01·好"
+	w := request(t, a, one, "POST", "/api/account/name", map[string]string{"name": name})
+	if w.Code != 200 {
+		t.Fatal("valid name rejected:", w.Code, w.Body.String())
+	}
+	var saved struct {
+		User User `json:"user"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &saved); err != nil || saved.User.Name != name {
+		t.Fatal("name not saved:", w.Body.String())
+	}
+	w = request(t, a, one, "GET", "/api/me", nil)
+	var me struct {
+		User User `json:"user"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &me)
+	if me.User.Name != name {
+		t.Fatal("name missing in /api/me:", w.Body.String())
+	}
+	// 管理端可按账户名搜索到用户。
+	admin := codeAdmin(t, a, one)
+	w = request(t, a, admin, "GET", "/api/admin/users?q=%E5%B0%8F%E5%8F%AF%E7%88%B1", nil)
+	var list struct {
+		Items []User `json:"items"`
+		Total int    `json:"total"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &list)
+	if len(list.Items) != 1 || list.Items[0].Name != name || list.Total != 1 {
+		t.Fatal("admin search by name failed:", w.Body.String())
+	}
+}
+
+func TestAdminListPagination(t *testing.T) {
+	a := testApp(t)
+	admin := codeAdmin(t, a, loginDevice(t, a, "admin"))
+	// 创建 101 个兑换码，验证列表分页：第 1 页 100 条，第 2 页 1 条。
+	for _, count := range []int{100, 1} {
+		w := request(t, a, admin, "POST", "/api/admin/codes", map[string]any{"count": count, "credits": 1, "label": "分页"})
+		if w.Code != 200 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	}
+	type page struct {
+		Items    []map[string]any `json:"items"`
+		Page     int              `json:"page"`
+		PageSize int              `json:"pageSize"`
+		Total    int              `json:"total"`
+	}
+	w := request(t, a, admin, "GET", "/api/admin/codes?page=1", nil)
+	var p1 page
+	json.Unmarshal(w.Body.Bytes(), &p1)
+	if len(p1.Items) != 100 || p1.Page != 1 || p1.PageSize != 100 || p1.Total != 101 {
+		t.Fatal("codes page 1 wrong:", w.Body.String()[:min(300, len(w.Body.String()))])
+	}
+	w = request(t, a, admin, "GET", "/api/admin/codes?page=2", nil)
+	var p2 page
+	json.Unmarshal(w.Body.Bytes(), &p2)
+	if len(p2.Items) != 1 || p2.Page != 2 || p2.Total != 101 {
+		t.Fatal("codes page 2 wrong:", w.Body.String())
+	}
+	// 非法页码回落到第 1 页。
+	w = request(t, a, admin, "GET", "/api/admin/codes?page=abc", nil)
+	var p0 page
+	json.Unmarshal(w.Body.Bytes(), &p0)
+	if p0.Page != 1 || len(p0.Items) != 100 {
+		t.Fatal("bad page fallback wrong:", w.Body.String())
+	}
+}
+
+// TestAdminJobsPagination 验证任务列表分页与总数：每用户一个活跃任务，排队任务 150 个分两页，完成不计入。
+func TestAdminJobsPagination(t *testing.T) {
+	a := testApp(t)
+	admin := codeAdmin(t, a, loginDevice(t, a, "admin"))
+	for i := 0; i < 150; i++ {
+		id := fmt.Sprintf("page-user-%03d", i)
+		if _, err := a.db.Exec("INSERT INTO users(id,email,name,gift,paid,disabled,created) VALUES(?,?,'','0',0,0,0)", id, id+"@example.invalid"); err != nil {
+			t.Fatal(err)
+		}
+		kind := "draft"
+		if i%2 == 1 {
+			kind = "motion"
+		}
+		if _, err := a.db.Exec("INSERT INTO jobs(id,user_id,request_id,digest,kind,status,gift_cost,paid_cost,created,started,action,receipt) VALUES(?,?,?,'d',?,'queued',1,0,?,0,'','')",
+			fmt.Sprintf("job-%03d", i), id, fmt.Sprintf("req-%03d", i), kind, int64(1000+i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	type page struct {
+		Items    []map[string]any `json:"items"`
+		Page     int              `json:"page"`
+		PageSize int              `json:"pageSize"`
+		Total    int              `json:"total"`
+	}
+	var p1, p2 page
+	w := request(t, a, admin, "GET", "/api/admin/jobs?page=1", nil)
+	json.Unmarshal(w.Body.Bytes(), &p1)
+	if len(p1.Items) != 100 || p1.Page != 1 || p1.PageSize != 100 || p1.Total != 150 {
+		t.Fatal("jobs page 1 wrong:", w.Body.String())
+	}
+	// 排序按创建时间升序：第 1 页应从最早的 job-000 开始。
+	if p1.Items[0]["id"] != "job-000" || p1.Items[99]["id"] != "job-099" {
+		t.Fatal("jobs ordering wrong:", w.Body.String())
+	}
+	w = request(t, a, admin, "GET", "/api/admin/jobs?page=2", nil)
+	json.Unmarshal(w.Body.Bytes(), &p2)
+	if len(p2.Items) != 50 || p2.Page != 2 || p2.Total != 150 {
+		t.Fatal("jobs page 2 wrong:", w.Body.String())
+	}
+	// 完成后的任务从列表消失且不计入总数。
+	if _, err := a.db.Exec("UPDATE jobs SET status='succeeded' WHERE id IN (SELECT id FROM jobs LIMIT 50)"); err != nil {
+		t.Fatal(err)
+	}
+	var p3 page
+	w = request(t, a, admin, "GET", "/api/admin/jobs", nil)
+	json.Unmarshal(w.Body.Bytes(), &p3)
+	if p3.Total != 100 || len(p3.Items) != 100 {
+		t.Fatal("completed jobs should not count:", w.Body.String())
+	}
+}
+
+// TestAdminUsersPagination 验证账号管理分页：总数含既有账号，排序按创建时间倒序，搜索可叠加分页。
+func TestAdminUsersPagination(t *testing.T) {
+	a := testApp(t)
+	admin := codeAdmin(t, a, loginDevice(t, a, "admin"))
+	var base int
+	if err := a.db.QueryRow("SELECT COUNT(*) FROM users").Scan(&base); err != nil {
+		t.Fatal(err)
+	}
+	// created 取远大于当前时间戳的值，保证插入用户占据列表最前且顺序确定。
+	for i := 0; i < 120; i++ {
+		id := fmt.Sprintf("page-user-%03d", i)
+		if _, err := a.db.Exec("INSERT INTO users(id,email,name,gift,paid,disabled,created) VALUES(?,?,?,'2',0,0,?)",
+			id, id+"@example.com", fmt.Sprintf("用户%03d", i), int64(2000000000+i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	type page struct {
+		Items []User `json:"items"`
+		Page  int    `json:"page"`
+		Total int    `json:"total"`
+	}
+	var p1, p2 page
+	w := request(t, a, admin, "GET", "/api/admin/users?page=1", nil)
+	json.Unmarshal(w.Body.Bytes(), &p1)
+	if len(p1.Items) != 100 || p1.Page != 1 || p1.Total != base+120 {
+		t.Fatal("users page 1 wrong:", w.Body.String())
+	}
+	if p1.Items[0].ID != "page-user-119" || p1.Items[99].ID != "page-user-020" {
+		t.Fatal("users ordering wrong:", p1.Items[0].ID, p1.Items[99].ID)
+	}
+	w = request(t, a, admin, "GET", "/api/admin/users?page=2", nil)
+	json.Unmarshal(w.Body.Bytes(), &p2)
+	if len(p2.Items) != 20+base || p2.Total != base+120 {
+		t.Fatal("users page 2 wrong:", w.Body.String())
+	}
+	// 搜索命中子集：page-user-11 前缀匹配 110~119 共 10 个账号。
+	w = request(t, a, admin, "GET", "/api/admin/users?q=page-user-11", nil)
+	var p3 page
+	json.Unmarshal(w.Body.Bytes(), &p3)
+	if len(p3.Items) != 10 || p3.Total != 10 {
+		t.Fatal("users search wrong:", w.Body.String())
+	}
+}
+
+// TestAdminAuditPagination 验证操作记录分页：第 1 页最新在前，第 3 页为剩余 50 条。
+func TestAdminAuditPagination(t *testing.T) {
+	a := testApp(t)
+	admin := codeAdmin(t, a, loginDevice(t, a, "admin"))
+	var base int
+	if err := a.db.QueryRow("SELECT COUNT(*) FROM audit").Scan(&base); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 250; i++ {
+		if _, err := a.db.Exec("INSERT INTO audit(actor,event,target,created) VALUES('admin','pagination',?,?)", fmt.Sprintf("t-%03d", i), int64(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	type page struct {
+		Items []map[string]any `json:"items"`
+		Page  int              `json:"page"`
+		Total int              `json:"total"`
+	}
+	var p1, p3 page
+	w := request(t, a, admin, "GET", "/api/admin/audit?page=1", nil)
+	json.Unmarshal(w.Body.Bytes(), &p1)
+	if len(p1.Items) != 100 || p1.Total != base+250 {
+		t.Fatal("audit page 1 wrong:", w.Body.String())
+	}
+	// ORDER BY id DESC：最新插入的记录在最前。
+	if p1.Items[0]["target"] != "t-249" {
+		t.Fatal("audit ordering wrong:", w.Body.String())
+	}
+	w = request(t, a, admin, "GET", "/api/admin/audit?page=3", nil)
+	json.Unmarshal(w.Body.Bytes(), &p3)
+	if len(p3.Items) != 50+base || p3.Page != 3 || p3.Total != base+250 {
+		t.Fatal("audit page 3 wrong:", w.Body.String())
 	}
 }

@@ -13,6 +13,8 @@ import (
 	"net/smtp"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 func constantEqual(x, y string) bool { return subtle.ConstantTimeCompare([]byte(x), []byte(y)) == 1 }
@@ -90,8 +92,59 @@ func (a *App) bootstrap(w http.ResponseWriter, r *http.Request) {
 }
 func validEmail(raw string) (string, bool) {
 	s := strings.ToLower(strings.TrimSpace(raw))
-	m, err := mail.ParseAddress(s)
-	return s, err == nil && m.Address == s && len(s) <= 254 && !strings.ContainsAny(s, "\r\n")
+	at := strings.LastIndexByte(s, '@')
+	// 严格校验：仅接受真实合法的邮箱地址（标准 local@domain.tld 形式，域名必须带点且顶级域为字母），
+	// 拒绝 mail.ParseAddress 会放行的引号本地部分、IP 字面量、无点域名、注释等变体。
+	if at < 1 || at > 64 || len(s) > 254 || !emailPattern.MatchString(s) {
+		return s, false
+	}
+	return s, true
+}
+
+// validName 校验自定义账户名：白名单机制，仅允许中文/各国字母/数字及“_”“-”“·”，
+// 最长 20 个字符；<>\"'&/\\、空格、控制字符、表情等有安全隐患或易引起混淆的字符一律拒绝。
+func validName(raw string) (string, bool) {
+	s := strings.TrimSpace(raw)
+	if s == "" || utf8.RuneCountInString(s) > 20 {
+		return "", false
+	}
+	for _, r := range s {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' && r != '-' && r != '·' {
+			return "", false
+		}
+	}
+	return s, true
+}
+
+func (a *App) accountNameSave(w http.ResponseWriter, r *http.Request) {
+	s := current(r)
+	var in struct {
+		Name string `json:"name"`
+	}
+	if decode(w, r, &in, 256) != nil {
+		fail(w, 400, "账户名格式无效")
+		return
+	}
+	name, ok := validName(in.Name)
+	if !ok {
+		fail(w, 400, "账户名最长 20 个字符，仅支持中文、字母、数字及 _ - ·，不含空格或其他特殊符号")
+		return
+	}
+	if !a.limit("account-name:"+s.User.ID, 5, time.Hour) {
+		fail(w, 429, "修改过于频繁，请稍后再试")
+		return
+	}
+	if _, err := a.db.Exec("UPDATE users SET name=? WHERE id=?", name, s.User.ID); err != nil {
+		fail(w, 500, "账户名保存失败")
+		return
+	}
+	a.audit(s.User.ID, "name_changed", name)
+	u, err := a.readUser(s.User.ID)
+	if err != nil {
+		fail(w, 500, "账号读取失败")
+		return
+	}
+	respond(w, 200, map[string]any{"user": u})
 }
 func (a *App) emailSend(w http.ResponseWriter, r *http.Request) {
 	s := current(r)

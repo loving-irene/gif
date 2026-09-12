@@ -77,12 +77,14 @@ func TestJobsQueueWhenSlotsFullAndAdminListsActive(t *testing.T) {
 		t.Fatal("third job was not queued", queued.Status)
 	}
 	w := request(t, a, admin, "GET", "/api/admin/jobs", nil)
-	var jobs []map[string]any
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &jobs) != nil || len(jobs) != 3 {
+	var list struct {
+		Items []map[string]any `json:"items"`
+	}
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &list) != nil || len(list.Items) != 3 {
 		t.Fatal("admin job list wrong", w.Code, w.Body.String())
 	}
 	states := map[string]int{}
-	for _, j := range jobs {
+	for _, j := range list.Items {
 		states[j["status"].(string)]++
 	}
 	if states["running"] != 2 || states["queued"] != 1 {
@@ -102,8 +104,8 @@ func TestJobsQueueWhenSlotsFullAndAdminListsActive(t *testing.T) {
 		}
 	}
 	w = request(t, a, admin, "GET", "/api/admin/jobs", nil)
-	json.Unmarshal(w.Body.Bytes(), &jobs)
-	if len(jobs) != 0 {
+	json.Unmarshal(w.Body.Bytes(), &list)
+	if len(list.Items) != 0 {
 		t.Fatal("completed jobs should disappear from admin list")
 	}
 }

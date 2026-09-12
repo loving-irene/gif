@@ -25,14 +25,16 @@ func codeStatus(t *testing.T, a *App, admin *testSession, id string) string {
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	var codes []struct {
-		ID     string `json:"id"`
-		Status string `json:"status"`
+	var list struct {
+		Items []struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+		} `json:"items"`
 	}
-	if err := json.Unmarshal(w.Body.Bytes(), &codes); err != nil {
+	if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
 		t.Fatal(err)
 	}
-	for _, c := range codes {
+	for _, c := range list.Items {
 		if c.ID == id {
 			return c.Status
 		}

@@ -21,8 +21,8 @@
       {{.StructuredData}}
     </script>
     <link rel="icon" href="/assets/icon.v1.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/assets/style.v8.css" />
-    <script src="/assets/app.v9.js" type="module"></script>
+    <link rel="stylesheet" href="/assets/style.v9.css" />
+    <script src="/assets/app.v10.js" type="module"></script>
     <script src="/assets/share.v3.js" type="module"></script>
     <script src="/assets/contact.v1.js" type="module"></script>
   </head>
@@ -38,6 +38,9 @@
           ><span class="share-open-label">分享</span>
         </button>
         <a href="#collection">我的作品</a
+        ><button id="redeemOpenBtn" class="nav-link" type="button">
+          获取兑换码
+        </button
         ><button id="creditsBtn" class="pill">
           <span>✦</span> <strong id="credits">—</strong> 次创作</button
         ><button id="accountBtn" class="avatar" aria-label="账号与邮箱">
@@ -346,6 +349,23 @@
       ><span class="eyebrow">YOUR ACCOUNT</span>
       <h2>把创作次数，带到另一台设备</h2>
       <p id="accountInfo" class="hint"></p>
+      <form id="nameForm">
+        <label
+          >账户名<input
+            id="accountName"
+            maxlength="20"
+            placeholder="选填，如：小可爱_01"
+            autocomplete="nickname"
+        /></label>
+        <p class="hint">
+          最长 20
+          个字符，仅支持中文、字母、数字及 _ - ·；空格、特殊符号（如
+          &lt;&gt;&quot;'&amp;/）和表情不可用。
+        </p>
+        <button id="saveNameBtn" type="submit" class="secondary">
+          保存账户名
+        </button>
+      </form>
       <p class="hint">
         邮箱验证码登录后，同步账号与剩余次数。作品仍保留在各自设备。已有邮箱账号不会叠加新设备免费次数。
       </p>
@@ -355,6 +375,9 @@
             id="email"
             type="email"
             required
+            pattern="[A-Za-z0-9_%+-]+(?:\.[A-Za-z0-9_%+-]+)*@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}"
+            title="请输入真实有效的邮箱地址，例如 you@example.com"
+            maxlength="254"
             placeholder="you@example.com"
             autocomplete="email"
         /></label>
@@ -381,6 +404,15 @@
       ><span class="eyebrow">A LITTLE MORE CREATIVITY</span>
       <h2>为下一份可爱，添一点次数</h2>
       <p>输入兑换码，领取更多创作次数。兑换码永久有效，每码限兑换一次。</p>
+      <p class="hint redeem-hint">
+        可联系微信获取兑换码<button
+          id="redeemContactBtn"
+          class="text-button"
+          type="button"
+        >
+          查看微信二维码 ↗</button
+        >
+      </p>
       <section
         id="redeemHelpSection"
         class="redeem-help"

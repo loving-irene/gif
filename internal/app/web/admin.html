@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="robots" content="noindex,nofollow" />
     <title>管理工作台 · 拾光 GIF</title>
-    <link rel="stylesheet" href="/assets/style.v4.css" />
+    <link rel="stylesheet" href="/assets/style.v10.css" />
     <link rel="icon" href="/assets/icon.v1.svg" />
-    <script type="module" src="/assets/admin.v8.js"></script>
+    <script type="module" src="/assets/admin.v10.js"></script>
   </head>
   <body>
     <header class="header wrap admin-wrap">
@@ -38,14 +38,17 @@
         </form>
       </section>
       <div id="adminContent" hidden>
-        <nav class="admin-tabs">
-          <a href="#jobSection">任务列表</a
-          ><a href="#configSection">基础与接口</a
-          ><a href="#promptSection">角色与提示词</a
-          ><a href="#codeSection">兑换码</a><a href="#userSection">账号管理</a
-          ><a href="#auditSection">操作记录</a>
+        <nav class="admin-tabs" id="adminTabs">
+          <button type="button" class="active" data-tab="jobSection">
+            任务列表
+          </button>
+          <button type="button" data-tab="configSection">基础与接口</button>
+          <button type="button" data-tab="promptSection">角色与提示词</button>
+          <button type="button" data-tab="codeSection">兑换码</button>
+          <button type="button" data-tab="userSection">账号管理</button>
+          <button type="button" data-tab="auditSection">操作记录</button>
         </nav>
-        <section id="jobSection" class="admin-section">
+        <section id="jobSection" class="admin-section admin-panel">
           <h2>任务列表</h2>
           <p class="hint">
             展示排队等待和正在生成的任务，每 8 秒自动刷新。任务完成后不再显示；定稿与
@@ -73,9 +76,22 @@
           <p id="jobsEmpty" class="hint" hidden>
             当前没有排队或进行中的任务。
           </p>
+          <div class="pager">
+            <button id="jobsPrev" class="secondary" type="button" disabled>
+              上一页
+            </button>
+            <span id="jobsPageInfo" class="hint">第 1 / 1 页 · 共 0 条</span>
+            <button id="jobsNext" class="secondary" type="button" disabled>
+              下一页
+            </button>
+          </div>
         </section>
         <form id="settingsForm">
-          <section id="configSection" class="admin-section">
+          <section
+            id="configSection"
+            class="admin-section admin-panel"
+            hidden
+          >
             <h2>基础设置与图像接口</h2>
             <label
               >获取兑换码内容<textarea
@@ -183,7 +199,11 @@
             </details>
             <button class="primary" type="submit">保存全部配置</button>
           </section>
-          <section id="promptSection" class="admin-section">
+          <section
+            id="promptSection"
+            class="admin-section admin-panel"
+            hidden
+          >
             <h2>角色模板与各步骤提示词</h2>
             <p class="hint">
               可用变量：{{category}}、{{clothes}}、{{color}}、{{weapon}}、{{action}}。动作图必须保留
@@ -206,7 +226,7 @@
             <button class="primary" type="submit">保存全部模板与配置</button>
           </section>
         </form>
-        <section id="codeSection" class="admin-section">
+        <section id="codeSection" class="admin-section admin-panel" hidden>
           <h2>兑换码</h2>
           <p class="hint">
             永久有效，每码一次。新兑换码加密保存，管理员可以按需复制；旧码需补录原码后复制。
@@ -266,18 +286,27 @@
               <tbody id="codesRows"></tbody>
             </table>
           </div>
+          <div class="pager">
+            <button id="codesPrev" class="secondary" type="button" disabled>
+              上一页
+            </button>
+            <span id="codesPageInfo" class="hint">第 1 / 1 页 · 共 0 条</span>
+            <button id="codesNext" class="secondary" type="button" disabled>
+              下一页
+            </button>
+          </div>
         </section>
-        <section id="userSection" class="admin-section">
+        <section id="userSection" class="admin-section admin-panel" hidden>
           <h2>账号与创作次数</h2>
           <form id="searchForm" class="code-row">
             <label
-              >按邮箱或账号搜索<input
+              >按邮箱、账户名或账号搜索<input
                 id="userSearch"
-                placeholder="邮箱或账号编号" /></label
+                placeholder="账户名、邮箱或账号编号" /></label
             ><button class="secondary">搜索</button>
           </form>
           <p class="hint">
-            最多显示最近100个账号。增加次数为非免费额度，合并邮箱时会保留。停用后会立即清除账号会话。
+            每页显示 100 个账号，可翻页查看。增加次数为非免费额度，合并邮箱时会保留。停用后会立即清除账号会话。
           </p>
           <div class="admin-table-wrap">
             <table class="admin-table">
@@ -294,8 +323,17 @@
               <tbody id="usersRows"></tbody>
             </table>
           </div>
+          <div class="pager">
+            <button id="usersPrev" class="secondary" type="button" disabled>
+              上一页
+            </button>
+            <span id="usersPageInfo" class="hint">第 1 / 1 页 · 共 0 条</span>
+            <button id="usersNext" class="secondary" type="button" disabled>
+              下一页
+            </button>
+          </div>
         </section>
-        <section id="auditSection" class="admin-section">
+        <section id="auditSection" class="admin-section admin-panel" hidden>
           <h2>最近管理与兑换记录</h2>
           <button id="refreshAudit" class="text-button">刷新记录</button>
           <div class="admin-table-wrap">
@@ -310,6 +348,15 @@
               </thead>
               <tbody id="auditRows"></tbody>
             </table>
+          </div>
+          <div class="pager">
+            <button id="auditPrev" class="secondary" type="button" disabled>
+              上一页
+            </button>
+            <span id="auditPageInfo" class="hint">第 1 / 1 页 · 共 0 条</span>
+            <button id="auditNext" class="secondary" type="button" disabled>
+              下一页
+            </button>
           </div>
         </section>
       </div>

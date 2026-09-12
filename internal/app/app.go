@@ -25,6 +25,8 @@ var web embed.FS
 var idPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
 var hexPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 var hostPattern = regexp.MustCompile(`^[a-zA-Z0-9.-]+$`)
+// 严格邮箱格式：本地部分不含首尾点与连续点，域名必须带点且顶级域为字母，拒绝引号、IP、无点域名等不真实地址。
+var emailPattern = regexp.MustCompile(`^[a-z0-9_%+-]+(?:\.[a-z0-9_%+-]+)*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$`)
 
 const networkErrorMessage = "网络异常，请稍后重试~"
 
@@ -46,6 +48,7 @@ type App struct {
 }
 type User struct {
 	ID       string `json:"id"`
+	Name     string `json:"name"`
 	Email    string `json:"email"`
 	Credits  int    `json:"credits"`
 	Disabled bool   `json:"disabled"`
@@ -72,7 +75,7 @@ func New(e Env) (*App, error) {
 	a := &App{db: db, env: e, files: files, jobs: map[string]*Job{}, slots: make(chan struct{}, 2), uploads: make(chan struct{}, 2), dispatch: make(chan struct{}, 1), ctx: ctx, cancel: cancel}
 	if _, err = db.Exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
  CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
- CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,email TEXT UNIQUE,gift INTEGER NOT NULL CHECK(gift>=0),paid INTEGER NOT NULL DEFAULT 0 CHECK(paid>=0),disabled INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL);
+ CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,email TEXT UNIQUE,name TEXT,gift INTEGER NOT NULL CHECK(gift>=0),paid INTEGER NOT NULL DEFAULT 0 CHECK(paid>=0),disabled INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS devices(credential TEXT PRIMARY KEY,fingerprint TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES users(id),created INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS aliases(old_id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id));
  CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),admin INTEGER NOT NULL DEFAULT 0,expires INTEGER NOT NULL);
@@ -92,6 +95,10 @@ func New(e Env) (*App, error) {
 		return nil, err
 	}
 	if err = a.migrateJobs(); err != nil {
+		a.Close()
+		return nil, err
+	}
+	if err = a.migrateUsers(); err != nil {
 		a.Close()
 		return nil, err
 	}
@@ -136,6 +143,35 @@ func New(e Env) (*App, error) {
 		}
 	}()
 	return a, nil
+}
+
+// migrateUsers 为旧数据库补齐自定义账户名列。
+func (a *App) migrateUsers() error {
+	rows, err := a.db.Query("PRAGMA table_info(users)")
+	if err != nil {
+		return err
+	}
+	cols := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull int
+		var dflt sql.NullString
+		var pk int
+		if rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk) == nil {
+			cols[name] = true
+		}
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	if !cols["name"] {
+		if _, err = a.db.Exec("ALTER TABLE users ADD COLUMN name TEXT"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // migrateJobs 为旧数据库补齐任务表的新列，并把“仅running唯一”索引升级为“排队+进行中唯一”。
@@ -201,6 +237,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /api/me", a.auth(a.me, false))
 	mux.HandleFunc("GET /api/catalog", a.auth(a.catalog, false))
 	mux.HandleFunc("POST /api/logout", a.auth(a.logout, false))
+	mux.HandleFunc("POST /api/account/name", a.auth(a.accountNameSave, false))
 	mux.HandleFunc("POST /api/email/send", a.auth(a.emailSend, false))
 	mux.HandleFunc("POST /api/email/verify", a.auth(a.emailVerify, false))
 	mux.HandleFunc("POST /api/redeem", a.auth(a.redeem, false))
@@ -338,7 +375,7 @@ func fail(w http.ResponseWriter, status int, message string) {
 func current(r *http.Request) session { return r.Context().Value(sessionKey{}).(session) }
 func (a *App) readUser(id string) (User, error) {
 	u := User{}
-	err := a.db.QueryRow("SELECT id,COALESCE(email,''),gift+paid,disabled FROM users WHERE id=?", id).Scan(&u.ID, &u.Email, &u.Credits, &u.Disabled)
+	err := a.db.QueryRow("SELECT id,COALESCE(name,''),COALESCE(email,''),gift+paid,disabled FROM users WHERE id=?", id).Scan(&u.ID, &u.Name, &u.Email, &u.Credits, &u.Disabled)
 	return u, err
 }
 func (a *App) auth(next http.HandlerFunc, admin bool) http.HandlerFunc {
@@ -349,7 +386,7 @@ func (a *App) auth(next http.HandlerFunc, admin bool) http.HandlerFunc {
 			return
 		}
 		s := session{Token: c.Value}
-		err = a.db.QueryRow(`SELECT u.id,COALESCE(u.email,''),u.gift+u.paid,u.disabled,s.admin FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>?`, hash(c.Value), time.Now().Unix()).Scan(&s.User.ID, &s.User.Email, &s.User.Credits, &s.User.Disabled, &s.Admin)
+		err = a.db.QueryRow(`SELECT u.id,COALESCE(u.name,''),COALESCE(u.email,''),u.gift+u.paid,u.disabled,s.admin FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>?`, hash(c.Value), time.Now().Unix()).Scan(&s.User.ID, &s.User.Name, &s.User.Email, &s.User.Credits, &s.User.Disabled, &s.Admin)
 		if err != nil || s.User.Disabled {
 			fail(w, 401, "账号不可用，请重新登录")
 			return

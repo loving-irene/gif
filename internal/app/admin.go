@@ -101,13 +101,40 @@ func (a *App) adminSettingsSave(w http.ResponseWriter, r *http.Request) {
 	a.audit(current(r).User.ID, "settings_updated", "")
 	respond(w, 200, map[string]bool{"ok": true})
 }
+// adminPageSize 是管理后台所有列表的统一分页大小。
+const adminPageSize = 100
+
+// pageParam 读取分页参数，非法值回落到第 1 页。
+func pageParam(r *http.Request) int {
+	p, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if p < 1 {
+		return 1
+	}
+	if p > 100000 {
+		p = 100000
+	}
+	return p
+}
+
+func pageResult(w http.ResponseWriter, page, total int, items any) {
+	respond(w, 200, map[string]any{"items": items, "page": page, "pageSize": adminPageSize, "total": total})
+}
+
 func (a *App) adminUsers(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	if len(q) > 254 {
 		fail(w, 400, "搜索条件过长")
 		return
 	}
-	rows, err := a.db.Query("SELECT id,COALESCE(email,''),gift+paid,disabled FROM users WHERE id LIKE ? OR email LIKE ? ORDER BY created DESC LIMIT 100", "%"+q+"%", "%"+q+"%")
+	page := pageParam(r)
+	where := "id LIKE ? OR name LIKE ? OR email LIKE ?"
+	like := "%" + q + "%"
+	var total int
+	if err := a.db.QueryRow("SELECT COUNT(*) FROM users WHERE "+where, like, like, like).Scan(&total); err != nil {
+		fail(w, 500, "读取失败")
+		return
+	}
+	rows, err := a.db.Query("SELECT id,COALESCE(name,''),COALESCE(email,''),gift+paid,disabled FROM users WHERE "+where+" ORDER BY created DESC LIMIT ? OFFSET ?", like, like, like, adminPageSize, (page-1)*adminPageSize)
 	if err != nil {
 		fail(w, 500, "读取失败")
 		return
@@ -116,11 +143,11 @@ func (a *App) adminUsers(w http.ResponseWriter, r *http.Request) {
 	out := []User{}
 	for rows.Next() {
 		var u User
-		if rows.Scan(&u.ID, &u.Email, &u.Credits, &u.Disabled) == nil {
+		if rows.Scan(&u.ID, &u.Name, &u.Email, &u.Credits, &u.Disabled) == nil {
 			out = append(out, u)
 		}
 	}
-	respond(w, 200, out)
+	pageResult(w, page, total, out)
 }
 func (a *App) adminUserUpdate(w http.ResponseWriter, r *http.Request) {
 	var in struct {
@@ -184,7 +211,13 @@ func (a *App) adminCodesCreate(w http.ResponseWriter, r *http.Request) {
 	respond(w, 200, map[string]any{"codes": codes, "items": items})
 }
 func (a *App) adminCodes(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.db.Query("SELECT hash,label,credits,COALESCE(used_by,''),COALESCE(used_at,0),created,marked,encrypted_code<>'' FROM codes ORDER BY created DESC,rowid DESC LIMIT 200")
+	page := pageParam(r)
+	var total int
+	if err := a.db.QueryRow("SELECT COUNT(*) FROM codes").Scan(&total); err != nil {
+		fail(w, 500, "读取失败")
+		return
+	}
+	rows, err := a.db.Query("SELECT hash,label,credits,COALESCE(used_by,''),COALESCE(used_at,0),created,marked,encrypted_code<>'' FROM codes ORDER BY created DESC,rowid DESC LIMIT ? OFFSET ?", adminPageSize, (page-1)*adminPageSize)
 	if err != nil {
 		fail(w, 500, "读取失败")
 		return
@@ -207,7 +240,7 @@ func (a *App) adminCodes(w http.ResponseWriter, r *http.Request) {
 			out = append(out, map[string]any{"id": id, "label": label, "credits": credits, "usedBy": used, "usedAt": usedAt, "created": created, "status": status, "copyAvailable": copyAvailable})
 		}
 	}
-	respond(w, 200, out)
+	pageResult(w, page, total, out)
 }
 
 func (a *App) adminCodeMark(w http.ResponseWriter, r *http.Request) {
@@ -238,7 +271,13 @@ func (a *App) adminCodeMark(w http.ResponseWriter, r *http.Request) {
 	respond(w, 200, map[string]string{"status": status})
 }
 func (a *App) adminAudit(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.db.Query("SELECT actor,event,target,created FROM audit ORDER BY id DESC LIMIT 100")
+	page := pageParam(r)
+	var total int
+	if err := a.db.QueryRow("SELECT COUNT(*) FROM audit").Scan(&total); err != nil {
+		fail(w, 500, "读取失败")
+		return
+	}
+	rows, err := a.db.Query("SELECT actor,event,target,created FROM audit ORDER BY id DESC LIMIT ? OFFSET ?", adminPageSize, (page-1)*adminPageSize)
 	if err != nil {
 		fail(w, 500, "读取失败")
 		return
@@ -252,12 +291,18 @@ func (a *App) adminAudit(w http.ResponseWriter, r *http.Request) {
 			out = append(out, map[string]any{"actor": actor, "event": event, "target": target, "created": created})
 		}
 	}
-	respond(w, 200, out)
+	pageResult(w, page, total, out)
 }
 
 // adminJobs 返回排队与进行中的任务列表；已完成任务不在此展示。
 func (a *App) adminJobs(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.db.Query("SELECT id,user_id,kind,action,status,created,started FROM jobs WHERE status IN ('queued','running') ORDER BY created,rowid LIMIT 200")
+	page := pageParam(r)
+	var total int
+	if err := a.db.QueryRow("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')").Scan(&total); err != nil {
+		fail(w, 500, "读取失败")
+		return
+	}
+	rows, err := a.db.Query("SELECT id,user_id,kind,action,status,created,started FROM jobs WHERE status IN ('queued','running') ORDER BY created,rowid LIMIT ? OFFSET ?", adminPageSize, (page-1)*adminPageSize)
 	if err != nil {
 		fail(w, 500, "读取失败")
 		return
@@ -291,5 +336,5 @@ func (a *App) adminJobs(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, item)
 	}
-	respond(w, 200, out)
+	pageResult(w, page, total, out)
 }
