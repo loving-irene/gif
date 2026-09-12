@@ -46,6 +46,7 @@ type Job struct {
 	User           string       `json:"-"`
 	Status         string       `json:"status"`
 	Image          string       `json:"image,omitempty"`
+	Gif            string       `json:"gif,omitempty"`
 	Receipt        string       `json:"receipt,omitempty"`
 	Error          string       `json:"error,omitempty"`
 	Charged        bool         `json:"charged"`
@@ -222,13 +223,26 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 		fail(w, 429, "生成请求过于频繁，请稍后再试")
 		return
 	}
+	// 尝试直接占用生成槽位；占不到时任务进入服务器队列，由调度器稍后启动，
+	// 用户关闭页面不影响任务执行。
+	haveSlot := false
 	select {
 	case a.slots <- struct{}{}:
+		haveSlot = true
 	default:
-		fail(w, 429, "工作台繁忙，请稍后再试；本次未扣次")
-		return
 	}
-	release := true
+	input := &jobInput{Prompt: prompt, Images: images, Selection: in.Selection, PhotoHash: photoHash}
+	id := token(16)
+	created := time.Now().Unix()
+	if !haveSlot {
+		// 排队任务的输入先落盘再提交事务，保证调度器可见时输入一定存在。
+		if b, err := json.Marshal(input); err != nil || a.saveFile(id, "input.json", b) != nil {
+			fail(w, 500, "创建失败，请稍后重试；本次未扣次")
+			return
+		}
+	}
+	// 占到槽位时，若后续启动失败需要由本函数释放；成功启动后交给 runJob 释放。
+	release := haveSlot
 	defer func() {
 		if release {
 			<-a.slots
@@ -255,8 +269,11 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 	} else {
 		paidCost = 1
 	}
-	id := token(16)
-	if _, err = tx.Exec("INSERT INTO jobs(id,user_id,request_id,digest,kind,status,gift_cost,paid_cost,refund_failure,created) VALUES(?,?,?,?,?,'running',?,?,?,?)", id, uid, in.RequestID, digest, in.Kind, giftCost, paidCost, !cfg.ChargeOnFailure, time.Now().Unix()); err != nil {
+	status, started := "queued", int64(0)
+	if haveSlot {
+		status, started = "running", created
+	}
+	if _, err = tx.Exec("INSERT INTO jobs(id,user_id,request_id,digest,kind,status,gift_cost,paid_cost,refund_failure,created,started,action,receipt) VALUES(?,?,?,?,?,?,?,?,?,?,?,?, '')", id, uid, in.RequestID, digest, in.Kind, status, giftCost, paidCost, !cfg.ChargeOnFailure, created, started, in.Action); err != nil {
 		fail(w, 409, "当前账号已有任务，或请求已提交；请等待任务完成")
 		return
 	}
@@ -269,98 +286,29 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	estimate := a.estimate(in.Kind, cfg)
-	startedAt := time.Now().UnixMilli()
 	a.jobsMu.Lock()
-	a.jobs[id] = &Job{ID: id, User: uid, Status: "running", Charged: true, StartedAt: startedAt, Estimate: estimate}
+	// 调度器可能在响应返回前就完成极短任务，避免用旧的排队状态覆盖结果。
+	if a.jobs[id] == nil {
+		a.jobs[id] = &Job{ID: id, User: uid, Status: status, Charged: true, StartedAt: created * 1000, Estimate: estimate}
+	}
 	a.jobsMu.Unlock()
-	release = false
 	traceCtx := context.WithValue(a.ctx, debugTraceKey{}, id)
-	traceCtx = context.WithValue(traceCtx, debugSensitiveKey{}, []string{a.secret("api_key"), prompt, a.env.Secret})
-	a.debug(traceCtx, "job_queued", map[string]any{"request_id": in.RequestID, "kind": in.Kind, "action": in.Action, "model": cfg.Model, "charge_on_failure": cfg.ChargeOnFailure})
-	rec = Receipt{User: uid, Selfie: photoHash, Selection: in.Selection, Expires: time.Now().Add(30 * 24 * time.Hour).Unix()}
-	a.wg.Add(1)
-	go func() {
-		defer a.wg.Done()
-		defer func() { <-a.slots }()
-		started := time.Now()
-		ctx, cancel := context.WithTimeout(traceCtx, generationTimeout)
-		defer cancel()
-		output, e := a.provider(ctx, cfg, prompt, images)
-		callDuration := time.Since(started)
-		state := "succeeded"
-		receipt := ""
-		message := ""
-		charged := true
-		if e == nil {
-			var b []byte
-			b, e = imageData(output, 20*1024*1024)
-			if e == nil && in.Kind == "draft" {
-				if len(b) > 5*1024*1024 {
-					e = errors.New("定稿图片超过5MB，请降低后台生成质量后重试")
-				} else {
-					rec.Draft = hash(string(b))
-					receipt = a.signReceipt(rec)
-				}
-			}
-		}
-		if e != nil {
-			a.debug(ctx, "job_error", map[string]any{"error": e.Error(), "elapsed_ms": time.Since(started).Milliseconds()})
-			state = "failed"
-			message = networkErrorMessage
-			output = ""
-			if !cfg.ChargeOnFailure {
-				refund, er := a.db.Begin()
-				if er == nil {
-					_, er = refund.Exec("UPDATE users SET gift=gift+?,paid=paid+? WHERE id=?", giftCost, paidCost, uid)
-					if er == nil {
-						_, er = refund.Exec("UPDATE jobs SET gift_cost=0,paid_cost=0 WHERE id=?", id)
-					}
-					if er == nil {
-						er = refund.Commit()
-					} else {
-						refund.Rollback()
-					}
-					if er == nil {
-						charged = false
-					}
-				}
-			}
-		}
-		_, statusErr := a.db.Exec("UPDATE jobs SET status=? WHERE id=?", state, id)
-		timingErr := a.recordTiming(id, in.Kind, cfg, callDuration, state)
-		nextEstimate := a.estimate(in.Kind, cfg)
-		a.debug(ctx, "timing_recorded", map[string]any{"duration_ms": callDuration.Milliseconds(), "status": state, "estimate_seconds": nextEstimate.Seconds, "samples": nextEstimate.Samples, "error": errorText(timingErr)})
-		a.debug(ctx, "job_finished", map[string]any{"status": state, "charged": charged, "elapsed_ms": time.Since(started).Milliseconds(), "result_chars": len(output), "status_write_error": errorText(statusErr)})
-		a.jobsMu.Lock()
-		// Keep temporary results bounded even when many users generate at once.
-		var cached int
-		for _, job := range a.jobs {
-			cached += len(job.Image)
-		}
-		for cached+len(output) > 64*1024*1024 {
-			oldestID := ""
-			var oldest int64
-			for key, job := range a.jobs {
-				if job.Status != "running" && (oldestID == "" || job.Expires < oldest) {
-					oldestID, oldest = key, job.Expires
-				}
-			}
-			if oldestID == "" {
-				break
-			}
-			cached -= len(a.jobs[oldestID].Image)
-			delete(a.jobs, oldestID)
-		}
-		a.jobs[id] = &Job{ID: id, User: uid, Status: state, Image: output, Receipt: receipt, Error: message, Charged: charged, Expires: time.Now().Add(10 * time.Minute).Unix(), StartedAt: startedAt, ElapsedSeconds: int(callDuration.Seconds()), Estimate: nextEstimate}
-		a.jobsMu.Unlock()
-	}()
+	a.debug(traceCtx, "job_queued", map[string]any{"request_id": in.RequestID, "kind": in.Kind, "action": in.Action, "model": cfg.Model, "charge_on_failure": cfg.ChargeOnFailure, "queued": !haveSlot})
+	if haveSlot {
+		release = false
+		a.debug(context.WithValue(traceCtx, debugSensitiveKey{}, []string{a.secret("api_key"), prompt, a.env.Secret}), "job_start", nil)
+		go a.runJob(id, uid, in.Kind, input)
+	} else {
+		a.signalDispatch()
+	}
 	respond(w, 202, map[string]any{"id": id, "estimate": estimate, "elapsedSeconds": 0})
 }
 func (a *App) getJob(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	uid := current(r).User.ID
-	var owner, status string
-	if a.db.QueryRow("SELECT user_id,status FROM jobs WHERE id=?", id).Scan(&owner, &status) != nil || owner != uid {
+	var owner, status, kind, receipt string
+	var created int64
+	if a.db.QueryRow("SELECT user_id,status,kind,created,COALESCE(receipt,'') FROM jobs WHERE id=?", id).Scan(&owner, &status, &kind, &created, &receipt) != nil || owner != uid {
 		fail(w, 404, "任务不存在")
 		return
 	}
@@ -369,12 +317,42 @@ func (a *App) getJob(w http.ResponseWriter, r *http.Request) {
 	if j != nil {
 		copy := *j
 		a.jobsMu.Unlock()
-		if copy.Status == "running" {
+		if copy.Status == "running" || copy.Status == "queued" {
 			copy.ElapsedSeconds = int((time.Now().UnixMilli() - copy.StartedAt) / 1000)
 		}
 		respond(w, 200, copy)
 		return
 	}
 	a.jobsMu.Unlock()
-	respond(w, 200, map[string]any{"id": id, "status": "expired", "error": networkErrorMessage, "previousStatus": status})
+	switch status {
+	case "failed":
+		respond(w, 200, Job{ID: id, Status: "failed", Error: networkErrorMessage, Charged: true, StartedAt: created * 1000})
+	case "succeeded":
+		// 内存缓存失效（如服务器重启或缓存淘汰）后，从服务器文件恢复3天内的结果。
+		if time.Now().Unix()-created < int64(resultRetention.Seconds()) {
+			if stored, err := a.loadStoredJob(id, kind, created, receipt); err == nil {
+				respond(w, 200, stored)
+				return
+			}
+		}
+		respond(w, 200, map[string]any{"id": id, "status": "expired", "error": networkErrorMessage, "previousStatus": status})
+	default:
+		respond(w, 200, map[string]any{"id": id, "status": "expired", "error": networkErrorMessage, "previousStatus": status})
+	}
+}
+func (a *App) loadStoredJob(id, kind string, created int64, receipt string) (Job, error) {
+	b, err := a.readFile(id, "image")
+	if err != nil {
+		return Job{}, err
+	}
+	j := Job{ID: id, Status: "succeeded", Image: dataURL(http.DetectContentType(b), b), Receipt: receipt, Charged: true, StartedAt: created * 1000}
+	if kind == "motion" {
+		if g, err := a.readFile(id, "gif"); err == nil {
+			j.Gif = dataURL("image/gif", g)
+		}
+	}
+	return j, nil
+}
+func dataURL(mime string, b []byte) string {
+	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(b)
 }

@@ -254,3 +254,42 @@ func (a *App) adminAudit(w http.ResponseWriter, r *http.Request) {
 	}
 	respond(w, 200, out)
 }
+
+// adminJobs 返回排队与进行中的任务列表；已完成任务不在此展示。
+func (a *App) adminJobs(w http.ResponseWriter, r *http.Request) {
+	rows, err := a.db.Query("SELECT id,user_id,kind,action,status,created,started FROM jobs WHERE status IN ('queued','running') ORDER BY created,rowid LIMIT 200")
+	if err != nil {
+		fail(w, 500, "读取失败")
+		return
+	}
+	defer rows.Close()
+	now := time.Now().UnixMilli()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id, user, kind, action, status string
+		var created, started int64
+		if rows.Scan(&id, &user, &kind, &action, &status, &created, &started) != nil {
+			continue
+		}
+		item := map[string]any{"id": id, "user": user, "kind": kind, "action": action, "status": status, "created": created, "started": started}
+		a.jobsMu.Lock()
+		if j := a.jobs[id]; j != nil {
+			if j.StartedAt > 0 {
+				item["elapsedSeconds"] = max(0, (now-j.StartedAt)/1000)
+			}
+			if j.Estimate.Seconds > 0 {
+				item["estimate"] = j.Estimate
+			}
+		}
+		a.jobsMu.Unlock()
+		if item["elapsedSeconds"] == nil {
+			base := created
+			if started > 0 {
+				base = started
+			}
+			item["elapsedSeconds"] = max(0, time.Now().Unix()-base)
+		}
+		out = append(out, item)
+	}
+	respond(w, 200, out)
+}

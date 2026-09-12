@@ -7,7 +7,7 @@
     <title>管理工作台 · 拾光 GIF</title>
     <link rel="stylesheet" href="/assets/style.v4.css" />
     <link rel="icon" href="/assets/icon.v1.svg" />
-    <script type="module" src="/assets/admin.v7.js"></script>
+    <script type="module" src="/assets/admin.v8.js"></script>
   </head>
   <body>
     <header class="header wrap admin-wrap">
@@ -39,11 +39,41 @@
       </section>
       <div id="adminContent" hidden>
         <nav class="admin-tabs">
-          <a href="#configSection">基础与接口</a
+          <a href="#jobSection">任务列表</a
+          ><a href="#configSection">基础与接口</a
           ><a href="#promptSection">角色与提示词</a
           ><a href="#codeSection">兑换码</a><a href="#userSection">账号管理</a
           ><a href="#auditSection">操作记录</a>
         </nav>
+        <section id="jobSection" class="admin-section">
+          <h2>任务列表</h2>
+          <p class="hint">
+            展示排队等待和正在生成的任务，每 8 秒自动刷新。任务完成后不再显示；定稿与
+            GIF 会在服务器保留最多 3 天。
+          </p>
+          <button id="refreshJobs" class="text-button" type="button">
+            ↻ 立即刷新
+          </button>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>状态</th>
+                  <th>类型</th>
+                  <th>动作</th>
+                  <th>账号</th>
+                  <th>创建时间</th>
+                  <th>已等待</th>
+                  <th>预计耗时</th>
+                </tr>
+              </thead>
+              <tbody id="jobsRows"></tbody>
+            </table>
+          </div>
+          <p id="jobsEmpty" class="hint" hidden>
+            当前没有排队或进行中的任务。
+          </p>
+        </section>
         <form id="settingsForm">
           <section id="configSection" class="admin-section">
             <h2>基础设置与图像接口</h2>

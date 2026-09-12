@@ -104,7 +104,7 @@ func waitJob(t *testing.T, a *App, s *testSession, id string) Job {
 		w := request(t, a, s, "GET", "/api/jobs/"+id, nil)
 		var j Job
 		json.Unmarshal(w.Body.Bytes(), &j)
-		if j.Status != "running" {
+		if j.Status != "running" && j.Status != "queued" {
 			return j
 		}
 		time.Sleep(5 * time.Millisecond)
@@ -352,7 +352,7 @@ func TestEmailSendAndVerifyWithoutExternalDelivery(t *testing.T) {
 func TestSecurityAndValidation(t *testing.T) {
 	a := testApp(t)
 	s := loginDevice(t, a, "one")
-	for _, path := range []string{"/api/admin/settings", "/api/admin/users", "/api/admin/codes"} {
+	for _, path := range []string{"/api/admin/settings", "/api/admin/users", "/api/admin/codes", "/api/admin/jobs"} {
 		if w := request(t, a, s, "GET", path, nil); w.Code != 403 {
 			t.Fatal("admin permission bypass", path)
 		}

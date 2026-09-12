@@ -12,6 +12,8 @@ import (
 	_ "modernc.org/sqlite"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -29,10 +31,12 @@ const networkErrorMessage = "网络异常，请稍后重试~"
 type App struct {
 	db             *sql.DB
 	env            Env
+	files          string
 	jobsMu         sync.Mutex
 	jobs           map[string]*Job
 	slots          chan struct{}
 	uploads        chan struct{}
+	dispatch       chan struct{}
 	ctx            context.Context
 	cancel         context.CancelFunc
 	wg             sync.WaitGroup
@@ -59,8 +63,13 @@ func New(e Env) (*App, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
+	files := filepath.Join(filepath.Dir(e.Database), "files")
+	if err = os.MkdirAll(files, 0700); err != nil {
+		db.Close()
+		return nil, err
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-	a := &App{db: db, env: e, jobs: map[string]*Job{}, slots: make(chan struct{}, 2), uploads: make(chan struct{}, 2), ctx: ctx, cancel: cancel}
+	a := &App{db: db, env: e, files: files, jobs: map[string]*Job{}, slots: make(chan struct{}, 2), uploads: make(chan struct{}, 2), dispatch: make(chan struct{}, 1), ctx: ctx, cancel: cancel}
 	if _, err = db.Exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
  CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,email TEXT UNIQUE,gift INTEGER NOT NULL CHECK(gift>=0),paid INTEGER NOT NULL DEFAULT 0 CHECK(paid>=0),disabled INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL);
@@ -70,16 +79,20 @@ func New(e Env) (*App, error) {
  CREATE TABLE IF NOT EXISTS rate_limits(bucket TEXT PRIMARY KEY,count INTEGER NOT NULL,expires INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS email_codes(user_id TEXT NOT NULL,email TEXT NOT NULL,code TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,expires INTEGER NOT NULL,PRIMARY KEY(user_id,email));
  CREATE TABLE IF NOT EXISTS codes(hash TEXT PRIMARY KEY,label TEXT NOT NULL,credits INTEGER NOT NULL CHECK(credits>0),used_by TEXT REFERENCES users(id),used_at INTEGER,created INTEGER NOT NULL);
- CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),request_id TEXT NOT NULL,digest TEXT NOT NULL,kind TEXT NOT NULL,status TEXT NOT NULL,gift_cost INTEGER NOT NULL,paid_cost INTEGER NOT NULL,refund_failure INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL,UNIQUE(user_id,request_id));
- CREATE UNIQUE INDEX IF NOT EXISTS one_active_job ON jobs(user_id) WHERE status='running';
+ CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),request_id TEXT NOT NULL,digest TEXT NOT NULL,kind TEXT NOT NULL,status TEXT NOT NULL,gift_cost INTEGER NOT NULL,paid_cost INTEGER NOT NULL,refund_failure INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL,started INTEGER NOT NULL DEFAULT 0,action TEXT NOT NULL DEFAULT '',receipt TEXT NOT NULL DEFAULT '',UNIQUE(user_id,request_id));
+ CREATE UNIQUE INDEX IF NOT EXISTS one_active_job ON jobs(user_id) WHERE status IN ('queued','running');
  CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT,actor TEXT NOT NULL,event TEXT NOT NULL,target TEXT NOT NULL,created INTEGER NOT NULL);
  BEGIN;
- UPDATE users SET gift=gift+COALESCE((SELECT SUM(gift_cost) FROM jobs WHERE jobs.user_id=users.id AND status='running' AND refund_failure=1),0),paid=paid+COALESCE((SELECT SUM(paid_cost) FROM jobs WHERE jobs.user_id=users.id AND status='running' AND refund_failure=1),0);
- UPDATE jobs SET gift_cost=0,paid_cost=0 WHERE status='running' AND refund_failure=1;
- UPDATE jobs SET status='interrupted' WHERE status='running';
+ UPDATE users SET gift=gift+COALESCE((SELECT SUM(gift_cost) FROM jobs WHERE jobs.user_id=users.id AND status IN ('queued','running') AND refund_failure=1),0),paid=paid+COALESCE((SELECT SUM(paid_cost) FROM jobs WHERE jobs.user_id=users.id AND status IN ('queued','running') AND refund_failure=1),0);
+ UPDATE jobs SET gift_cost=0,paid_cost=0 WHERE status IN ('queued','running') AND refund_failure=1;
+ UPDATE jobs SET status='interrupted' WHERE status IN ('queued','running');
  COMMIT;`); err != nil {
 		db.Close()
 		cancel()
+		return nil, err
+	}
+	if err = a.migrateJobs(); err != nil {
+		a.Close()
 		return nil, err
 	}
 	if err = a.migrateCodeMarks(); err != nil {
@@ -107,6 +120,8 @@ func New(e Env) (*App, error) {
 	a.provider = a.callProvider
 	a.providerClient = safeClient
 	a.wg.Add(1)
+	go a.dispatcher()
+	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
 		ticker := time.NewTicker(time.Minute)
@@ -122,16 +137,56 @@ func New(e Env) (*App, error) {
 	}()
 	return a, nil
 }
+
+// migrateJobs 为旧数据库补齐任务表的新列，并把“仅running唯一”索引升级为“排队+进行中唯一”。
+func (a *App) migrateJobs() error {
+	rows, err := a.db.Query("PRAGMA table_info(jobs)")
+	if err != nil {
+		return err
+	}
+	cols := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull int
+		var dflt sql.NullString
+		var pk int
+		if rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk) == nil {
+			cols[name] = true
+		}
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	for _, column := range []struct{ name, ddl string }{
+		{"started", "ALTER TABLE jobs ADD COLUMN started INTEGER NOT NULL DEFAULT 0"},
+		{"action", "ALTER TABLE jobs ADD COLUMN action TEXT NOT NULL DEFAULT ''"},
+		{"receipt", "ALTER TABLE jobs ADD COLUMN receipt TEXT NOT NULL DEFAULT ''"},
+	} {
+		if !cols[column.name] {
+			if _, err = a.db.Exec(column.ddl); err != nil {
+				return err
+			}
+		}
+	}
+	if _, err = a.db.Exec("DROP INDEX IF EXISTS one_active_job"); err != nil {
+		return err
+	}
+	_, err = a.db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS one_active_job ON jobs(user_id) WHERE status IN ('queued','running')")
+	return err
+}
 func (a *App) Close() { a.cancel(); a.wg.Wait(); a.db.Close() }
 func (a *App) cleanup() {
 	now := time.Now().Unix()
 	a.db.Exec("DELETE FROM sessions WHERE expires<?", now)
 	a.db.Exec("DELETE FROM email_codes WHERE expires<?", now)
 	a.db.Exec("DELETE FROM rate_limits WHERE expires<?", now)
+	a.cleanupFiles()
 	a.jobsMu.Lock()
 	defer a.jobsMu.Unlock()
 	for id, j := range a.jobs {
-		if j.Status != "running" && j.Expires < now {
+		if j.Status != "running" && j.Status != "queued" && j.Expires < now {
 			delete(a.jobs, id)
 		}
 	}
@@ -163,6 +218,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("POST /api/admin/codes/copy", a.auth(a.adminCodeCopy, true))
 	mux.HandleFunc("POST /api/admin/codes/restore", a.auth(a.adminCodeRestore, true))
 	mux.HandleFunc("GET /api/admin/audit", a.auth(a.adminAudit, true))
+	mux.HandleFunc("GET /api/admin/jobs", a.auth(a.adminJobs, true))
 	mux.HandleFunc("GET /robots.txt", a.robots)
 	mux.HandleFunc("GET /sitemap.xml", a.sitemap)
 	mux.HandleFunc("GET /llms.txt", a.llms)
