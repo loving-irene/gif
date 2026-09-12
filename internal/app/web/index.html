@@ -21,8 +21,8 @@
       {{.StructuredData}}
     </script>
     <link rel="icon" href="/assets/icon.v1.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/assets/style.v13.css" />
-    <script src="/assets/app.v13.js" type="module"></script>
+    <link rel="stylesheet" href="/assets/style.v14.css" />
+    <script src="/assets/app.v14.js" type="module"></script>
     <script src="/assets/share.v3.js" type="module"></script>
     <script src="/assets/contact.v1.js" type="module"></script>
   </head>
@@ -103,6 +103,23 @@
           <li id="step2"><button type="button"><b>2</b> 确认专属角色</button></li>
           <li id="step3"><button type="button"><b>3</b> 让角色动起来</button></li>
         </ol>
+        <section
+          id="draftStrip"
+          class="draft-strip"
+          aria-labelledby="draftStripTitle"
+          hidden
+        >
+          <div class="draft-strip-head">
+            <b id="draftStripTitle">我的定稿</b>
+            <span id="draftStripCount" class="hint"></span>
+          </div>
+          <div
+            id="draftCandidates"
+            class="draft-candidates"
+            role="group"
+            aria-label="已生成的角色定稿"
+          ></div>
+        </section>
         <div id="setup" class="setup-grid">
           <div>
             <label class="field-title" for="photo"
@@ -223,7 +240,6 @@
               download="我的角色定稿.png"
               >↓ 保存定稿</a
             >
-            <div class="draft-candidates" id="draftCandidates" hidden></div>
           </div>
         </section>
         <section id="motionSection" hidden>
