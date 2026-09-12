@@ -50,7 +50,10 @@ type App struct {
 	mailNotify     func(Settings, string, string, string) error
 	// waitBudget 是任务从创建起可用来完成生成的总时长（提交等待 + 上游结果认领），
 	// 由 New 按 generationTimeout 与 upstreamRetention 设定；测试可缩短它来跳过等待。
-	waitBudget       time.Duration
+	waitBudget time.Duration
+	// pollInterval 是轮询上游结果的间隔，由 New 设为 providerPollInterval；
+	// 测试可缩短它，让“多次轮询后拿到结果”在秒级内确定地发生。
+	pollInterval time.Duration
 	// providerCall 提交一次新的生成请求；providerContinue 只按已记录的上游任务号继续认领结果。
 	// 超时续查走后者，不会产生第二次上游请求。
 	providerCall     func(context.Context, Settings, string, []string, func(string)) (string, error)
@@ -138,6 +141,7 @@ func New(e Env) (*App, error) {
 	a.mailSend = a.sendMail
 	a.mailNotify = a.sendMailMessage
 	a.waitBudget = generationTimeout + upstreamRetention
+	a.pollInterval = providerPollInterval
 	a.providerCall = a.callProvider
 	a.providerContinue = a.continueProvider
 	a.providerClient = safeClient

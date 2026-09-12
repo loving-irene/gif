@@ -233,6 +233,18 @@ func (a *App) callProvider(ctx context.Context, cfg Settings, prompt string, ima
 	return a.pollProvider(ctx, cfg, client, p, onTaskID)
 }
 
+// providerPollInterval 是轮询上游结果的默认间隔；测试通过 App.pollInterval 缩短它，
+// 让“提交后多次轮询才拿到结果”的路径在秒级内确定地走完。
+const providerPollInterval = 3 * time.Second
+
+// pollWait 返回本轮轮询的间隔；未配置时（如测试直接构造 App）退回默认值。
+func (a *App) pollWait() time.Duration {
+	if a.pollInterval > 0 {
+		return a.pollInterval
+	}
+	return providerPollInterval
+}
+
 // pollProvider 轮询上游任务直到拿到图片：提交响应与续查调用共用这段逻辑。
 // 拿到上游任务号后除写入上下文外，还通过 onTaskID 通知调用方落盘，超时后仍能继续认领。
 func (a *App) pollProvider(ctx context.Context, cfg Settings, client *http.Client, p providerResponse, onTaskID func(string)) (string, error) {
@@ -251,7 +263,7 @@ func (a *App) pollProvider(ctx context.Context, cfg Settings, client *http.Clien
 		select {
 		case <-ctx.Done():
 			return "", providerWaitError(ctx)
-		case <-time.After(3 * time.Second):
+		case <-time.After(a.pollWait()):
 		}
 		task := p.TaskID
 		req, err := http.NewRequestWithContext(ctx, "GET", cfg.APIBase+"/images/"+url.PathEscape(task), nil)

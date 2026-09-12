@@ -262,13 +262,16 @@ func countJobs(t *testing.T, a *App, uid string, statuses ...string) int {
 // 记下上游任务号转为等待上游结果，稍后按同一个任务号继续认领，拿到图片后照常合成 GIF 并计次。
 func TestUpstreamResultClaimedAfterTimeout(t *testing.T) {
 	a := testApp(t)
-	// 总认领时长从任务创建时刻起算，先给足够时间完成“提交并拿到上游任务号”，
-	// 之后再缩短它，让“等上游超时”这一步在测试里快速发生。
+	// 轮询间隔缩短，让“提交后多次轮询才拿到结果”在秒级内确定地走完；
+	// 首轮只留 2 秒认领窗口，使“等上游超时”快速发生。
+	a.pollInterval = 20 * time.Millisecond
 	a.waitBudget = 2 * time.Second
 
 	s := loginDevice(t, a, "upstream-wait")
 	a.db.Exec("UPDATE users SET gift=3 WHERE id=?", s.User.ID)
 	var submits, polls atomic.Int32
+	// release 控制上游何时产出图片：超时阶段一直返回“仍在生成”，续查阶段才返回图片。
+	var release atomic.Bool
 	a.providerClient = func() *http.Client {
 		return &http.Client{Transport: testTransport(func(r *http.Request) (*http.Response, error) {
 			body := `{"task_id":"upstream-task-1","task_status":"running"}`
@@ -276,8 +279,7 @@ func TestUpstreamResultClaimedAfterTimeout(t *testing.T) {
 				submits.Add(1)
 			} else {
 				polls.Add(1)
-				// 前两次轮询返回“仍在生成”，之后返回图片，模拟上游慢但最终成功。
-				if polls.Load() > 2 {
+				if release.Load() {
 					b, _ := json.Marshal(map[string]any{"task_status": "succeed", "task_id": "upstream-task-1", "data": []map[string]string{{"b64_json": strings.SplitN(sampleImage(false), ",", 2)[1]}}})
 					body = string(b)
 				}
@@ -286,20 +288,33 @@ func TestUpstreamResultClaimedAfterTimeout(t *testing.T) {
 		})}
 	}
 	id := jobID(t, request(t, a, s, "POST", "/api/generate", draftInput()))
-	// 第一次等待耗尽后进入“等待上游结果”：不算失败、不掉次数。
-	pending := waitForStatus(t, a, s, id, statusPendingUpstream)
-	if !pending.Upstream {
-		t.Fatalf("waiting job should be flagged as upstream: %+v", pending)
+	// 等首轮真正发出提交（此时 2 秒的等待上下文已经建好）再放宽总认领窗口：
+	// 续查轮次才有足够时间轮询到结果，而不是在窗口刚耗尽时立刻按失败收口。
+	for i := 0; submits.Load() == 0 && i < 200; i++ {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if submits.Load() == 0 {
+		t.Fatal("first round never submitted the generation request")
+	}
+	a.waitBudget = time.Minute
+	// 第一次等待耗尽后任务转为“等待上游结果”：不判失败、不掉次数。
+	// 该状态会被下一轮续查立刻改回 running，因此用累计等待时长确认它确实出现过。
+	for i := 0; i < 2000 && upstreamWaitMS(t, a, id) == 0; i++ {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if upstreamWaitMS(t, a, id) == 0 {
+		t.Fatal("job never waited for the upstream result")
+	}
+	if polls.Load() == 0 {
+		t.Fatal("timed out before polling the upstream task")
 	}
 	if u, _ := a.readUser(s.User.ID); u.Credits != 2 {
 		t.Fatalf("waiting job must stay charged: %d", u.Credits)
 	}
-	// 缩短剩余认领时长并重置创建时间，让续查快速完成。
-	a.waitBudget = 400 * time.Millisecond
-	a.db.Exec("UPDATE jobs SET created=? WHERE id=?", time.Now().Unix(), id)
-	// 调度器按同一个上游任务号继续认领，最终拿到图片并签发定稿凭证。
-	done := waitJob(t, a, s, id)
-	if done.Status != "succeeded" || done.Receipt == "" {
+	// 上游产出图片后，调度器按同一个上游任务号继续认领并签发定稿凭证。
+	release.Store(true)
+	done := waitForStatus(t, a, s, id, "succeeded")
+	if done.Receipt == "" {
 		t.Fatalf("resumed job should deliver the draft: %+v", done)
 	}
 	if submits.Load() != 1 {
@@ -314,6 +329,8 @@ func TestUpstreamResultClaimedAfterTimeout(t *testing.T) {
 func TestUpstreamWaitWindowCollapsesToFailure(t *testing.T) {
 	a := testApp(t)
 	setChargeOnFailure(t, a, false)
+	// 轮询间隔与首轮窗口都缩短，让任务在秒级内确定地进入“等待上游结果”。
+	a.pollInterval = 20 * time.Millisecond
 	a.waitBudget = 2 * time.Second
 
 	s := loginDevice(t, a, "upstream-expire")
@@ -324,19 +341,28 @@ func TestUpstreamWaitWindowCollapsesToFailure(t *testing.T) {
 		})}
 	}
 	id := jobID(t, request(t, a, s, "POST", "/api/generate", draftInput()))
-	waitForStatus(t, a, s, id, statusPendingUpstream)
-	// 把创建时间前移，模拟已经超过总认领时长：续查应立即按失败收口。
-	a.db.Exec("UPDATE jobs SET created=? WHERE id=?", time.Now().Add(-2*time.Hour).Unix(), id)
-	if j := waitJob(t, a, s, id); j.Status != "failed" || j.Error != networkErrorMessage {
-		t.Fatalf("stale waiting job should fail: %+v", j)
+	// 上游一直不产出：任务先进入“等待上游结果”，总认领窗口耗尽后按失败收口。
+	if j := waitForStatus(t, a, s, id, "failed"); j.Error != networkErrorMessage {
+		t.Fatalf("stale waiting job should fail with the network message: %+v", j)
+	}
+	if upstreamWaitMS(t, a, id) == 0 {
+		t.Fatal("job failed without ever waiting for the upstream result")
 	}
 	if u, _ := a.readUser(s.User.ID); u.Credits != 3 {
 		t.Fatalf("failed waiting job was not refunded: %d", u.Credits)
 	}
+	// 内存缓存失效（服务重启）后，查询接口按数据库状态继续汇报等待，并带上 upstream 标记。
+	a.db.Exec("UPDATE jobs SET status=? WHERE id=?", statusPendingUpstream, id)
+	a.jobsMu.Lock()
+	a.jobs = map[string]*Job{}
+	a.jobsMu.Unlock()
+	if j := fetchJSONJob(t, a, s, id); j.Status != statusPendingUpstream || !j.Upstream {
+		t.Fatalf("waiting job should be reported as upstream: %+v", j)
+	}
 }
 
-// waitForStatus 直查数据库直到任务进入指定状态（用于等待“上游结果认领”这类中间状态）；
-// 不走 HTTP 查询，避免长时间等待时撞上接口限流。
+// waitForStatus 直查数据库直到任务进入指定状态；不走 HTTP 查询，避免长时间等待时撞上接口限流。
+// 只用于等待 succeeded / failed 这类终态：中间的 pending_upstream 会被下一轮续查立刻改写。
 func waitForStatus(t *testing.T, a *App, s *testSession, id, want string) Job {
 	t.Helper()
 	for i := 0; i < 2000; i++ {
@@ -354,6 +380,17 @@ func waitForStatus(t *testing.T, a *App, s *testSession, id, want string) Job {
 	}
 	t.Fatalf("job never reached %s", want)
 	return Job{}
+}
+
+// upstreamWaitMS 读取任务累计等待上游结果的时长：pending_upstream 只是瞬时状态
+// （调度器会立刻用同一个上游任务号续查并改回 running），累计时长才是持久证据。
+func upstreamWaitMS(t *testing.T, a *App, id string) int64 {
+	t.Helper()
+	var ms int64
+	if a.db.QueryRow("SELECT upstream_wait_ms FROM jobs WHERE id=?", id).Scan(&ms) != nil {
+		t.Fatal("job row missing")
+	}
+	return ms
 }
 
 func TestJobResultsSurviveMemoryCacheLoss(t *testing.T) {
