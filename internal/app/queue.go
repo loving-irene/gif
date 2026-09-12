@@ -15,6 +15,46 @@ type jobInput struct {
 	PhotoHash string    `json:"photoHash"`
 }
 
+// backfillDuplicateDigests 为升级前的排队任务补写 dup_digest（配置摘要）。
+// 生成中的任务输入只在内存里，无法补写；jobs.dup_digest 为空时由 digest 兜底比对，
+// 不会因此漏掉重复提醒，只是提交新任务时才写入精确的配置摘要。
+func (a *App) backfillDuplicateDigests() error {
+	rows, err := a.db.Query("SELECT id,kind FROM jobs WHERE status IN ('queued','running') AND dup_digest=''")
+	if err != nil {
+		return err
+	}
+	items := [][2]string{}
+	for rows.Next() {
+		var id, kind string
+		if rows.Scan(&id, &kind) == nil {
+			items = append(items, [2]string{id, kind})
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, item := range items {
+		b, err := a.readFile(item[0], "input.json")
+		if err != nil {
+			continue
+		}
+		var input jobInput
+		if json.Unmarshal(b, &input) != nil || len(input.Images) == 0 {
+			continue
+		}
+		// 动作任务的输入是“自拍 + 定稿”两张图；定稿任务只有自拍。
+		in := GenerateInput{Kind: item[1], Selection: input.Selection, Selfie: input.Images[0]}
+		if len(input.Images) > 1 {
+			in.Draft = input.Images[1]
+		}
+		if _, err := a.db.Exec("UPDATE jobs SET dup_digest=? WHERE id=?", duplicateInputDigest(in), item[0]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // signalDispatch 非阻塞通知调度器尝试启动排队任务。
 func (a *App) signalDispatch() {
 	select {

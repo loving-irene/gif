@@ -372,6 +372,10 @@ func TestLegacyJobsSchemaDropsActiveIndex(t *testing.T) {
 	if _, err = a.db.Exec("INSERT INTO jobs(id,user_id,request_id,digest,kind,status,gift_cost,paid_cost,created,started,action,receipt) VALUES('q2','legacy-user','r2','d','draft','queued',0,0,0,0,'','')"); err != nil {
 		t.Fatal("multiple active jobs should be allowed after migration:", err)
 	}
+	// 重复提交检测需要新增的配置摘要列。
+	if _, err = a.db.Exec("UPDATE jobs SET dup_digest='x' WHERE id='q1'"); err != nil {
+		t.Fatal("dup_digest column missing after migration:", err)
+	}
 }
 
 func TestUserConcurrencyConfigAndLimit(t *testing.T) {
@@ -387,9 +391,11 @@ func TestUserConcurrencyConfigAndLimit(t *testing.T) {
 	}
 	a.db.Exec("UPDATE users SET gift=20 WHERE id=?", s.User.ID)
 	release := blockingProvider(a)
-	ids := make([]string, 5)
-	for i := range ids {
-		ids[i] = jobID(t, request(t, a, s, "POST", "/api/generate", draftInput()))
+	// 每次提交都换一个配置：这里验证的是单账号并发上限，不是同款配置的重复提醒。
+	dress := [][2]string{{"古代札甲", "玄黑与暗金"}, {"古代鳞甲", "银灰与藏蓝"}, {"轻甲与短披风", "深红与铁灰"}, {"古代札甲", "银灰与藏蓝"}, {"古代鳞甲", "深红与铁灰"}}
+	ids := make([]string, len(dress))
+	for i, c := range dress {
+		ids[i] = jobID(t, request(t, a, s, "POST", "/api/generate", draftInputWith(c[0], c[1], "")))
 	}
 	// 默认并发5：第6个任务被拒绝且不扣次。
 	if w := request(t, a, s, "POST", "/api/generate", draftInput()); w.Code != 409 {
@@ -420,9 +426,9 @@ func TestUserConcurrencyConfigAndLimit(t *testing.T) {
 	}
 	release2 := blockingProvider(a)
 	for i := 0; i < 2; i++ {
-		jobID(t, request(t, a, s, "POST", "/api/generate", draftInput()))
+		jobID(t, request(t, a, s, "POST", "/api/generate", draftInputWith("古代札甲", "玄黑与暗金", []string{"", "chibi"}[i])))
 	}
-	if w := request(t, a, s, "POST", "/api/generate", draftInput()); w.Code != 409 {
+	if w := request(t, a, s, "POST", "/api/generate", draftInputWith("古代鳞甲", "玄黑与暗金", "ink")); w.Code != 409 {
 		t.Fatal("configured limit not enforced:", w.Code, w.Body.String())
 	}
 	close(release2)

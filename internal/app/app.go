@@ -202,12 +202,18 @@ func (a *App) migrateJobs() error {
 		{"started", "ALTER TABLE jobs ADD COLUMN started INTEGER NOT NULL DEFAULT 0"},
 		{"action", "ALTER TABLE jobs ADD COLUMN action TEXT NOT NULL DEFAULT ''"},
 		{"receipt", "ALTER TABLE jobs ADD COLUMN receipt TEXT NOT NULL DEFAULT ''"},
+		{"dup_digest", "ALTER TABLE jobs ADD COLUMN dup_digest TEXT NOT NULL DEFAULT ''"},
 	} {
 		if !cols[column.name] {
 			if _, err = a.db.Exec(column.ddl); err != nil {
 				return err
 			}
 		}
+	}
+	// 为迁移前就存在的排队/进行中任务补写配置摘要，使重复提交检测覆盖进行中的旧任务。
+	// 排队的输入存在 input.json（生成中任务的输入只在内存里，无法补写，保持空值兜底）。
+	if err = a.backfillDuplicateDigests(); err != nil {
+		return err
 	}
 	// 单用户并发任务数改为后台可配置（settings.userConcurrency，默认5），
 	// 由创建任务时按数量校验，不再使用唯一索引限制单任务。

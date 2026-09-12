@@ -1,4 +1,4 @@
-import { $, NETWORK_ERROR_MESSAGE } from "./common.v2.js";
+import { $, NETWORK_ERROR_MESSAGE } from "./common.v3.js";
 
 const dialog = $("contactDialog");
 const image = $("contactQR");

@@ -98,6 +98,16 @@ func sampleImage(sheet bool) string {
 func draftInput() GenerateInput {
 	return GenerateInput{RequestID: token(16), Kind: "draft", Selection: Selection{Category: "male", Clothes: "古代札甲", Color: "玄黑与暗金", Weapon: "长剑"}, Selfie: sampleImage(false)}
 }
+
+// draftInputWith 返回指定服装/配色/画风的定稿请求，用于在并发等测试中构造不同配置，
+// 避免命中“同款配置重复提交”的二次确认（该行为由 TestDuplicateSelection* 覆盖）。
+func draftInputWith(clothes, color, style string) GenerateInput {
+	in := draftInput()
+	in.Selection.Clothes = clothes
+	in.Selection.Color = color
+	in.Selection.Style = style
+	return in
+}
 func waitJob(t *testing.T, a *App, s *testSession, id string) Job {
 	t.Helper()
 	for i := 0; i < 300; i++ {

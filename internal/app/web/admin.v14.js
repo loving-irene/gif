@@ -10,7 +10,7 @@ import {
   download,
   errorMessage,
   userNotice,
-} from "./common.v2.js";
+} from "./common.v3.js";
 let settings,
   editors = [],
   styleEditors = [],

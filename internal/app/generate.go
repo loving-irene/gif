@@ -40,6 +40,9 @@ type GenerateInput struct {
 	Selfie    string    `json:"selfie"`
 	Draft     string    `json:"draft"`
 	Receipt   string    `json:"receipt"`
+	// AllowDuplicate 只在用户看到重复提示并确认后由页面带上，跳过重复检测。
+	// 服务端仍会校验并发上限与剩余次数，重复创建同样计次。
+	AllowDuplicate bool `json:"allowDuplicate,omitempty"`
 }
 type Job struct {
 	StartedAt      int64        `json:"startedAt"`
@@ -79,6 +82,47 @@ func (a *App) readReceipt(raw, uid string) (Receipt, error) {
 	}
 	return v, nil
 }
+
+// duplicateInputDigest 计算“同一份配置”的摘要，用于重复任务检测。
+// 与幂等用的 digest 不同：这里刻意排除 requestId、allowDuplicate 等服务端或每次提交
+// 都会变化的字段，只保留决定生成结果的输入（任务类型、自拍、定稿、凭证、画风、造型与动作），
+// 因此同一份配置换个请求编号再次提交仍会命中同一条记录。
+func duplicateInputDigest(in GenerateInput) string {
+	raw, _ := json.Marshal(duplicateCanonical{
+		Kind:      in.Kind,
+		Selection: in.Selection,
+		Action:    in.Action,
+		Selfie:    in.Selfie,
+		Draft:     in.Draft,
+		Receipt:   in.Receipt,
+	})
+	return hash(string(raw))
+}
+
+// duplicateCanonical 是配置摘要的固定字段顺序，写入 jobs.dup_digest 后供重复检测比对。
+type duplicateCanonical struct {
+	Kind      string    `json:"kind"`
+	Selection Selection `json:"selection"`
+	Action    string    `json:"action"`
+	Selfie    string    `json:"selfie"`
+	Draft     string    `json:"draft"`
+	Receipt   string    `json:"receipt"`
+}
+
+// duplicateActiveJob 查询同账号下是否已有配置完全相同的排队/进行中任务。
+// 连点两次会生成两个请求编号，因此这里不做“创建时间多久算新任务”的宽限：
+// 只要还有同款任务在排队或执行就返回提醒，避免重复提交直接多建一个任务并多扣一次。
+// 迁移补写前的旧任务 dup_digest 为空，用当时的 digest 兜底，避免提醒漏掉。
+func (a *App) duplicateActiveJob(uid, kind, digest, requestID string) (string, int64, bool) {
+	var id string
+	var created int64
+	err := a.db.QueryRow("SELECT id,created FROM jobs WHERE user_id=? AND kind=? AND status IN ('queued','running') AND request_id<>? AND (dup_digest=? OR (dup_digest='' AND digest=?)) ORDER BY created,rowid LIMIT 1", uid, kind, requestID, digest, digest).Scan(&id, &created)
+	if err != nil {
+		return "", 0, false
+	}
+	return id, created, true
+}
+
 func (a *App) accept(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Receipt string `json:"receipt"`
@@ -233,6 +277,8 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 	}
 	raw, _ := json.Marshal(in)
 	digest := hash(string(raw))
+	// 配置摘要（不含请求编号）随任务一起保存，供下一次提交判断“同款配置”是否已在制作。
+	dupDigest := duplicateInputDigest(in)
 	var existing, oldDigest string
 	err = a.db.QueryRow("SELECT id,digest FROM jobs WHERE user_id=? AND request_id=?", uid, in.RequestID).Scan(&existing, &oldDigest)
 	if err == nil {
@@ -243,6 +289,29 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 		a.debug(context.WithValue(r.Context(), debugTraceKey{}, existing), "job_reused", map[string]any{"request_id": in.RequestID, "charged_again": false})
 		respond(w, 202, map[string]string{"id": existing})
 		return
+	}
+	// 同账号已有完全相同的任务在排队或执行时先提醒用户，确认后再创建：
+	// 避免重复点击、改完又改回原样或换页面重复提交造成同款任务和次数浪费。
+	// 置于限流之前，被拦下的重复请求不计入每小时的生成次数。
+	// 已经确认过（in.AllowDuplicate）时不再拦截，由下方的并发与次数校验兜底。
+	if !in.AllowDuplicate {
+		// 用排除请求编号的配置摘要判断“另一条相同配置的提交”。
+		dupID, dupCreated, found := a.duplicateActiveJob(uid, in.Kind, dupDigest, in.RequestID)
+		if found {
+			a.debug(context.WithValue(r.Context(), debugTraceKey{}, dupID), "job_duplicate_blocked", map[string]any{"request_id": in.RequestID, "kind": in.Kind, "action": in.Action})
+			tip := "已经有一个配置相同的任务在制作中"
+			if in.Kind == "motion" {
+				tip = "这个动作的相同任务已经在制作中"
+			}
+			respond(w, 409, map[string]any{
+				"error":          tip + "，确认要再创建一个吗？重复创建会再消耗 1 次创作次数。",
+				"duplicate":      true,
+				"existingKind":   in.Kind,
+				"existingAction": in.Action,
+				"existingAt":     dupCreated,
+			})
+			return
+		}
 	}
 	if !a.limit("generate:"+uid, 12, time.Hour) {
 		fail(w, 429, "生成请求过于频繁，请稍后再试")
@@ -308,7 +377,7 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 	if haveSlot {
 		status, started = "running", created
 	}
-	if _, err = tx.Exec("INSERT INTO jobs(id,user_id,request_id,digest,kind,status,gift_cost,paid_cost,refund_failure,created,started,action,receipt) VALUES(?,?,?,?,?,?,?,?,?,?,?,?, '')", id, uid, in.RequestID, digest, in.Kind, status, giftCost, paidCost, !cfg.ChargeOnFailure, created, started, in.Action); err != nil {
+	if _, err = tx.Exec("INSERT INTO jobs(id,user_id,request_id,digest,dup_digest,kind,status,gift_cost,paid_cost,refund_failure,created,started,action,receipt) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'')", id, uid, in.RequestID, digest, dupDigest, in.Kind, status, giftCost, paidCost, !cfg.ChargeOnFailure, created, started, in.Action); err != nil {
 		fail(w, 409, "创建失败，请稍后重试")
 		return
 	}
@@ -377,6 +446,7 @@ func (a *App) getJob(w http.ResponseWriter, r *http.Request) {
 		respond(w, 200, map[string]any{"id": id, "status": "expired", "error": networkErrorMessage, "previousStatus": status})
 	}
 }
+
 // pruneCalls 只保留当前账号最近 100 条创作调用记录（jobs 表即调用日志）。
 func (a *App) pruneCalls(uid string) {
 	a.db.Exec("DELETE FROM jobs WHERE user_id=? AND rowid NOT IN (SELECT rowid FROM jobs WHERE user_id=? ORDER BY created DESC, rowid DESC LIMIT 100)", uid, uid)

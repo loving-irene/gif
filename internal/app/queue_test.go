@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"image/gif"
+	"strings"
 	"testing"
 )
 
@@ -122,11 +123,12 @@ func TestParallelJobsUpToUserConcurrency(t *testing.T) {
 		return sampleImage(false), nil
 	}
 	first := jobID(t, request(t, a, s, "POST", "/api/generate", draftInput()))
-	second := jobID(t, request(t, a, s, "POST", "/api/generate", draftInput()))
+	// 第二个任务换一套配置：这里验证并发上限，同款配置的提醒由 TestDuplicateSelection* 覆盖。
+	second := jobID(t, request(t, a, s, "POST", "/api/generate", draftInputWith("古代鳞甲", "银灰与藏蓝", "")))
 	if first == second {
 		t.Fatal("parallel submissions reused one job")
 	}
-	if w := request(t, a, s, "POST", "/api/generate", draftInput()); w.Code != 409 {
+	if w := request(t, a, s, "POST", "/api/generate", draftInputWith("轻甲与短披风", "深红与铁灰", "")); w.Code != 409 {
 		t.Fatal("concurrency limit not enforced", w.Code, w.Body.String())
 	}
 	close(release)
@@ -138,6 +140,106 @@ func TestParallelJobsUpToUserConcurrency(t *testing.T) {
 	if u, _ := a.readUser(s.User.ID); u.Credits != 8 {
 		t.Fatal("unexpected credits", u.Credits)
 	}
+}
+
+// 同账号已有配置完全相同的任务在排队或执行时，服务端先返回 409 让页面二次确认；
+// 用户确认后（allowDuplicate）才创建第二个任务，并照常计次。
+// 同一请求编号重传仍走幂等分支，不会误报重复。
+func TestDuplicateSelectionRequiresConfirmation(t *testing.T) {
+	a := testApp(t)
+	s := loginDevice(t, a, "duplicate")
+	a.db.Exec("UPDATE users SET gift=10 WHERE id=?", s.User.ID)
+	release := blockingProvider(a)
+	first := draftInput()
+	firstID := jobID(t, request(t, a, s, "POST", "/api/generate", first))
+	if u, _ := a.readUser(s.User.ID); u.Credits != 9 {
+		t.Fatalf("first submission should charge once: %d", u.Credits)
+	}
+	// 同一请求编号重传：沿用原任务，不算重复、不重复扣次。
+	again := request(t, a, s, "POST", "/api/generate", first)
+	if again.Code != 202 || jobID(t, again) != firstID {
+		t.Fatalf("same request id should reuse the job: %d %s", again.Code, again.Body.String())
+	}
+	// 同款配置换新请求编号：先提醒，未确认前不能创建。
+	same := draftInput()
+	w := request(t, a, s, "POST", "/api/generate", same)
+	var body map[string]any
+	if json.Unmarshal(w.Body.Bytes(), &body) != nil || w.Code != 409 || body["duplicate"] != true {
+		t.Fatalf("duplicate selection not blocked: %d %s", w.Code, w.Body.String())
+	}
+	if body["existingKind"] != "draft" || body["existingAt"] == nil {
+		t.Fatalf("duplicate details missing: %s", w.Body.String())
+	}
+	if u, _ := a.readUser(s.User.ID); u.Credits != 9 {
+		t.Fatalf("blocked duplicate must not charge: %d", u.Credits)
+	}
+	if n := countJobs(t, a, s.User.ID, "queued", "running"); n != 1 {
+		t.Fatalf("blocked duplicate created a job: %d", n)
+	}
+	// 用户确认后允许创建：新任务照常扣次，两个任务各自完成。
+	forced := draftInput()
+	forced.AllowDuplicate = true
+	forcedID := jobID(t, request(t, a, s, "POST", "/api/generate", forced))
+	if forcedID == firstID {
+		t.Fatal("confirmed duplicate reused the same job")
+	}
+	// 确认后的第二个任务同样会被并发上限与次数校验约束，先放开阻塞让两个任务结束。
+	close(release)
+	for _, id := range []string{firstID, forcedID} {
+		if j := waitJob(t, a, s, id); j.Status != "succeeded" {
+			t.Fatalf("job %s did not finish: %s", id, j.Status)
+		}
+	}
+	if u, _ := a.readUser(s.User.ID); u.Credits != 8 {
+		t.Fatalf("confirmed duplicate should charge once: %d", u.Credits)
+	}
+	// 两个任务都结束后，同款配置不再命中重复提醒，可以直接提交。
+	free := draftInput()
+	if w := request(t, a, s, "POST", "/api/generate", free); w.Code != 202 {
+		t.Fatalf("finished jobs should not block new submissions: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// 不同账号、不同画风或不同动作都不算重复：只有同账号同款配置才会提醒。
+func TestDuplicateSelectionScopedByAccountAndSelection(t *testing.T) {
+	a := testApp(t)
+	one := loginDevice(t, a, "dup-one")
+	two := loginDevice(t, a, "dup-two")
+	release := blockingProvider(a)
+	defer close(release)
+	base := draftInput()
+	jobID(t, request(t, a, one, "POST", "/api/generate", base))
+	// 另一账号提交同款配置不受影响。
+	if w := request(t, a, two, "POST", "/api/generate", base); w.Code != 202 {
+		t.Fatalf("other account should not be blocked: %d %s", w.Code, w.Body.String())
+	}
+	// 同账号换画风属于不同配置，不提醒。
+	other := draftInput()
+	other.Selection.Style = "ink"
+	if w := request(t, a, one, "POST", "/api/generate", other); w.Code != 202 {
+		t.Fatalf("different style should not be blocked: %d %s", w.Code, w.Body.String())
+	}
+	// 同账号同画风再次提交才提醒。
+	repeat := base
+	repeat.RequestID = token(16)
+	if w := request(t, a, one, "POST", "/api/generate", repeat); w.Code != 409 {
+		t.Fatalf("same account and selection should be blocked: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func countJobs(t *testing.T, a *App, uid string, statuses ...string) int {
+	t.Helper()
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(statuses)), ",")
+	args := make([]any, 0, len(statuses)+1)
+	args = append(args, uid)
+	for _, s := range statuses {
+		args = append(args, s)
+	}
+	var n int
+	if err := a.db.QueryRow("SELECT COUNT(*) FROM jobs WHERE user_id=? AND status IN ("+placeholders+")", args...).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
 }
 
 func TestJobResultsSurviveMemoryCacheLoss(t *testing.T) {
