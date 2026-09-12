@@ -195,10 +195,10 @@ func TestQuotaIdempotencyAndReceipt(t *testing.T) {
 	a := testApp(t)
 	s := loginDevice(t, a, "one")
 	var calls int32
-	a.provider = func(context.Context, Settings, string, []string) (string, error) {
+	a.providerCall = asProviderCall(func(context.Context, Settings, string, []string) (string, error) {
 		atomic.AddInt32(&calls, 1)
 		return sampleImage(false), nil
-	}
+	})
 	input := draftInput()
 	id := jobID(t, request(t, a, s, "POST", "/api/generate", input))
 	j := waitJob(t, a, s, id)
@@ -254,11 +254,11 @@ func TestConcurrentQuotaAndFailureRefund(t *testing.T) {
 			a.db.Exec("UPDATE users SET gift=1 WHERE id=?", s.User.ID)
 			started := make(chan struct{})
 			finish := make(chan struct{})
-			a.provider = func(context.Context, Settings, string, []string) (string, error) {
+			a.providerCall = asProviderCall(func(context.Context, Settings, string, []string) (string, error) {
 				close(started)
 				<-finish
 				return "", errors.New("simulated failure")
-			}
+			})
 			id := jobID(t, request(t, a, s, "POST", "/api/generate", draftInput()))
 			<-started
 			w := request(t, a, s, "POST", "/api/generate", draftInput())
@@ -410,14 +410,14 @@ func TestBrowserHarness(t *testing.T) {
 	cfg.DefaultCredits = 30
 	raw, _ := json.Marshal(cfg)
 	a.db.Exec("UPDATE settings SET value=? WHERE key='config'", string(raw))
-	a.provider = func(ctx context.Context, c Settings, prompt string, images []string) (string, error) {
+	a.providerCall = asProviderCall(func(ctx context.Context, c Settings, prompt string, images []string) (string, error) {
 		select {
 		case <-ctx.Done():
 			return "", ctx.Err()
 		case <-time.After(time.Second):
 		}
 		return sampleImage(len(images) == 2), nil
-	}
+	})
 	if dir := os.Getenv("GIF_TEST_OUTPUT"); dir != "" {
 		os.MkdirAll(dir, 0755)
 		b, _ := imageData(sampleImage(false), 5*1024*1024)

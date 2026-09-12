@@ -11,9 +11,9 @@ import (
 func TestFailureMessageIsUnifiedAndQuotaContractPreserved(t *testing.T) {
 	a := testApp(t)
 	s := loginDevice(t, a, "message-test")
-	a.provider = func(context.Context, Settings, string, []string) (string, error) {
+	a.providerCall = asProviderCall(func(context.Context, Settings, string, []string) (string, error) {
 		return "", errors.New("private upstream diagnostic")
-	}
+	})
 	id := jobID(t, request(t, a, s, "POST", "/api/generate", draftInput()))
 	j := waitJob(t, a, s, id)
 	if j.Status != "failed" || j.Error != "网络异常，请稍后重试~" || !j.Charged {

@@ -153,7 +153,39 @@ func (a *App) providerHTTP(ctx context.Context, client *http.Client, req *http.R
 	return res, nil
 }
 
-func (a *App) callProvider(ctx context.Context, cfg Settings, prompt string, images []string) (string, error) {
+// upstreamTaskKey 用于在调试与续查之间传递上游任务号：提交成功后就写入上下文，
+// 同一上下文继续运行时跳过“提交”阶段，直接按该任务号轮询结果。
+type upstreamTaskKey struct{}
+
+// providerWaitError 区分“等待超时”和“服务停止/请求作废”：只有前者值得留到下一轮继续认领上游结果。
+func providerWaitError(ctx context.Context) error {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return context.DeadlineExceeded
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return errors.New("provider request aborted")
+}
+
+// continueProvider 只轮询已经提交过的上游任务号，不再提交新的生成请求：
+// 用于任务超时后继续认领原上游任务的结果，不会产生第二次计费。
+func (a *App) continueProvider(ctx context.Context, cfg Settings, taskID string) (string, error) {
+	if !idPattern.MatchString(taskID) {
+		return "", errors.New("invalid provider task ID")
+	}
+	ctx = context.WithValue(ctx, debugTraceKey{}, taskID)
+	ctx = context.WithValue(ctx, upstreamTaskKey{}, taskID)
+	key := a.secret("api_key")
+	ctx = context.WithValue(ctx, debugSensitiveKey{}, []string{key, a.env.Secret})
+	client := a.providerClient()
+	defer client.CloseIdleConnections()
+	a.debug(ctx, "provider_resume", map[string]any{"provider_task_id": taskID, "endpoint": "/api/v1/images/{task_id}"})
+	p := providerResponse{TaskID: taskID, Status: "running"}
+	return a.pollProvider(ctx, cfg, client, p, nil)
+}
+
+func (a *App) callProvider(ctx context.Context, cfg Settings, prompt string, images []string, onTaskID func(string)) (string, error) {
 	if ctx.Value(debugTraceKey{}) == nil {
 		ctx = context.WithValue(ctx, debugTraceKey{}, token(8))
 	}
@@ -168,6 +200,10 @@ func (a *App) callProvider(ctx context.Context, cfg Settings, prompt string, ima
 	ctx = context.WithValue(ctx, debugSensitiveKey{}, sensitive)
 	client := a.providerClient()
 	defer client.CloseIdleConnections()
+	// 已经提交过的任务（超时后续查）直接沿用原上游任务号，不再提交新请求。
+	if taskID, _ := ctx.Value(upstreamTaskKey{}).(string); taskID != "" {
+		return a.pollProvider(ctx, cfg, client, providerResponse{TaskID: taskID, Status: "running"}, onTaskID)
+	}
 	payload := map[string]any{"model": cfg.Model, "prompt": prompt, "size": "1024x1024", "quality": cfg.Quality, "n": 1, "output_format": "png", "response_format": "b64_json", "background": "transparent", "async": true, "retries": 0}
 	if len(images) == 1 {
 		payload["image"] = images[0]
@@ -194,6 +230,13 @@ func (a *App) callProvider(ctx context.Context, cfg Settings, prompt string, ima
 	if err != nil {
 		return "", err
 	}
+	return a.pollProvider(ctx, cfg, client, p, onTaskID)
+}
+
+// pollProvider 轮询上游任务直到拿到图片：提交响应与续查调用共用这段逻辑。
+// 拿到上游任务号后除写入上下文外，还通过 onTaskID 通知调用方落盘，超时后仍能继续认领。
+func (a *App) pollProvider(ctx context.Context, cfg Settings, client *http.Client, p providerResponse, onTaskID func(string)) (string, error) {
+	key := a.secret("api_key")
 	for len(p.Data) == 0 && p.TaskID != "" && p.Status != "failed" && p.Status != "canceled" {
 		if p.Status == "succeed" {
 			return "", errors.New("poll: task succeeded without an image")
@@ -201,18 +244,22 @@ func (a *App) callProvider(ctx context.Context, cfg Settings, prompt string, ima
 		if !idPattern.MatchString(p.TaskID) {
 			return "", errors.New("invalid provider task ID")
 		}
+		ctx = context.WithValue(ctx, upstreamTaskKey{}, p.TaskID)
+		if onTaskID != nil {
+			onTaskID(p.TaskID)
+		}
 		select {
 		case <-ctx.Done():
-			return "", ctx.Err()
+			return "", providerWaitError(ctx)
 		case <-time.After(3 * time.Second):
 		}
 		task := p.TaskID
-		req, err = http.NewRequestWithContext(ctx, "GET", cfg.APIBase+"/images/"+url.PathEscape(task), nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", cfg.APIBase+"/images/"+url.PathEscape(task), nil)
 		if err != nil {
-			return "", err
+			return "", providerWaitError(ctx)
 		}
 		req.Header.Set("Authorization", "Bearer "+key)
-		res, err = a.providerHTTP(ctx, client, req, "poll")
+		res, err := a.providerHTTP(ctx, client, req, "poll")
 		if err != nil {
 			return "", err
 		}
@@ -226,7 +273,8 @@ func (a *App) callProvider(ctx context.Context, cfg Settings, prompt string, ima
 	}
 	if p.Status == "failed" || p.Status == "canceled" || len(p.Data) != 1 {
 		code, message := providerErrorInfo(p)
-		return "", &providerFailure{Phase: "result", Status: res.StatusCode, Code: safeDebugText(code, sensitive), Message: safeDebugText("expected exactly one image; "+message, sensitive)}
+		sensitive, _ := ctx.Value(debugSensitiveKey{}).([]string)
+		return "", &providerFailure{Phase: "result", Code: safeDebugText(code, sensitive), Message: safeDebugText("expected exactly one image; "+message, sensitive)}
 	}
 	item := p.Data[0]
 	if item.Base64 != "" {
@@ -242,11 +290,11 @@ func (a *App) callProvider(ctx context.Context, cfg Settings, prompt string, ima
 		a.debug(ctx, "download_rejected", map[string]any{"host": assetHost, "reason": "HTTPS host not in configured allowlist or invalid URL"})
 		return "", errors.New("image download host not allowed")
 	}
-	req, err = http.NewRequestWithContext(ctx, "GET", u.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
 	if err != nil {
 		return "", err
 	}
-	res, err = a.providerHTTP(ctx, client, req, "download")
+	res, err := a.providerHTTP(ctx, client, req, "download")
 	if err != nil {
 		return "", err
 	}
@@ -254,7 +302,7 @@ func (a *App) callProvider(ctx context.Context, cfg Settings, prompt string, ima
 	if res.StatusCode != 200 {
 		return "", fmt.Errorf("download: unexpected HTTP %d", res.StatusCode)
 	}
-	b, err = io.ReadAll(io.LimitReader(res.Body, 20*1024*1024+1))
+	b, err := io.ReadAll(io.LimitReader(res.Body, 20*1024*1024+1))
 	if err != nil || len(b) > 20*1024*1024 {
 		return "", errors.New("image response too large")
 	}

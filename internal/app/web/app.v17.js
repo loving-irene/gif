@@ -17,7 +17,7 @@ import {
   errorMessage,
   userNotice,
   NETWORK_ERROR_MESSAGE,
-} from "./common.v3.js";
+} from "./common.v4.js";
 // 包装剩余次数刷新：同步更新“让我的角色动起来”处的“剩余 X 次”展示。
 async function refreshAccount() {
   await commonRefreshAccount();
@@ -698,6 +698,19 @@ async function poll(task) {
         task,
         null,
         "生成通道忙碌，任务正在服务器排队等待，开始后会自动继续。现在也可以关闭页面，稍后回来查看。",
+      );
+    }
+    // pending_upstream：图片服务已接单、仍在生成，服务器会继续认领同一个任务。
+    if (result.status === "pending_upstream") {
+      setTaskEstimate(
+        task,
+        result.estimate || task.estimate,
+        result.elapsedSeconds || 0,
+      );
+      setTaskText(
+        task,
+        null,
+        "图片服务已接单，这一张生成得比较久，服务器会继续认领同一个任务，不需要重新提交，也不会重复扣次。可以关闭页面稍后回来查看。",
       );
     }
     if (result.status === "running") {

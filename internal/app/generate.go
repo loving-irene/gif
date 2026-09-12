@@ -51,12 +51,14 @@ type Job struct {
 	ID             string       `json:"id"`
 	User           string       `json:"-"`
 	Status         string       `json:"status"`
-	Image          string       `json:"image,omitempty"`
-	Gif            string       `json:"gif,omitempty"`
-	Receipt        string       `json:"receipt,omitempty"`
-	Error          string       `json:"error,omitempty"`
-	Charged        bool         `json:"charged"`
-	Expires        int64        `json:"-"`
+	// Upstream 表示任务已提交给图像服务、正在等上游产出结果（客户端据此调整提示文案）。
+	Upstream bool   `json:"upstream,omitempty"`
+	Image    string `json:"image,omitempty"`
+	Gif      string `json:"gif,omitempty"`
+	Receipt  string `json:"receipt,omitempty"`
+	Error    string `json:"error,omitempty"`
+	Charged  bool   `json:"charged"`
+	Expires  int64  `json:"-"`
 }
 
 func (a *App) signReceipt(v Receipt) string {
@@ -116,7 +118,7 @@ type duplicateCanonical struct {
 func (a *App) duplicateActiveJob(uid, kind, digest, requestID string) (string, int64, bool) {
 	var id string
 	var created int64
-	err := a.db.QueryRow("SELECT id,created FROM jobs WHERE user_id=? AND kind=? AND status IN ('queued','running') AND request_id<>? AND (dup_digest=? OR (dup_digest='' AND digest=?)) ORDER BY created,rowid LIMIT 1", uid, kind, requestID, digest, digest).Scan(&id, &created)
+	err := a.db.QueryRow("SELECT id,created FROM jobs WHERE user_id=? AND kind=? AND status IN ('queued','running','pending_upstream') AND request_id<>? AND (dup_digest=? OR (dup_digest='' AND digest=?)) ORDER BY created,rowid LIMIT 1", uid, kind, requestID, digest, digest).Scan(&id, &created)
 	if err != nil {
 		return "", 0, false
 	}
@@ -359,7 +361,7 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 	}
 	// 单用户并发任务数由后台配置（默认5）：达到上限时拒绝新任务。
 	var active int
-	if tx.QueryRow("SELECT COUNT(*) FROM jobs WHERE user_id=? AND status IN ('queued','running')", uid).Scan(&active) != nil {
+	if tx.QueryRow("SELECT COUNT(*) FROM jobs WHERE user_id=? AND status IN ('queued','running','pending_upstream')", uid).Scan(&active) != nil {
 		fail(w, 500, "创建失败")
 		return
 	}
@@ -403,7 +405,7 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 	if haveSlot {
 		release = false
 		a.debug(context.WithValue(traceCtx, debugSensitiveKey{}, []string{a.secret("api_key"), prompt, a.env.Secret}), "job_start", nil)
-		go a.runJob(id, uid, in.Kind, input)
+		go a.runJob(id, input)
 	} else {
 		a.signalDispatch()
 	}
@@ -423,13 +425,18 @@ func (a *App) getJob(w http.ResponseWriter, r *http.Request) {
 	if j != nil {
 		copy := *j
 		a.jobsMu.Unlock()
-		if copy.Status == "running" || copy.Status == "queued" {
+		if jobIsActive(copy.Status) {
 			copy.ElapsedSeconds = int((time.Now().UnixMilli() - copy.StartedAt) / 1000)
 		}
 		respond(w, 200, copy)
 		return
 	}
 	a.jobsMu.Unlock()
+	// 内存缓存失效（如服务器重启后仍在等待上游结果）时，按数据库状态继续汇报等待。
+	if jobIsActive(status) {
+		respond(w, 200, Job{ID: id, Status: status, Upstream: status == statusPendingUpstream, Charged: true, StartedAt: created * 1000, ElapsedSeconds: int(time.Now().Unix() - created)})
+		return
+	}
 	switch status {
 	case "failed":
 		respond(w, 200, Job{ID: id, Status: "failed", Error: networkErrorMessage, Charged: true, StartedAt: created * 1000})

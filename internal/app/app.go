@@ -44,8 +44,14 @@ type App struct {
 	wg             sync.WaitGroup
 	mailSend       func(Settings, string, string) error
 	mailNotify     func(Settings, string, string, string) error
-	provider       func(context.Context, Settings, string, []string) (string, error)
-	providerClient func() *http.Client
+	// waitBudget 是任务从创建起可用来完成生成的总时长（提交等待 + 上游结果认领），
+	// 由 New 按 generationTimeout 与 upstreamRetention 设定；测试可缩短它来跳过等待。
+	waitBudget       time.Duration
+	// providerCall 提交一次新的生成请求；providerContinue 只按已记录的上游任务号继续认领结果。
+	// 超时续查走后者，不会产生第二次上游请求。
+	providerCall     func(context.Context, Settings, string, []string, func(string)) (string, error)
+	providerContinue func(context.Context, Settings, string) (string, error)
+	providerClient   func() *http.Client
 }
 type User struct {
 	ID       string `json:"id"`
@@ -85,12 +91,12 @@ func New(e Env) (*App, error) {
  CREATE TABLE IF NOT EXISTS rate_limits(bucket TEXT PRIMARY KEY,count INTEGER NOT NULL,expires INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS email_codes(user_id TEXT NOT NULL,email TEXT NOT NULL,code TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,expires INTEGER NOT NULL,PRIMARY KEY(user_id,email));
  CREATE TABLE IF NOT EXISTS codes(hash TEXT PRIMARY KEY,label TEXT NOT NULL,credits INTEGER NOT NULL CHECK(credits>0),used_by TEXT REFERENCES users(id),used_at INTEGER,created INTEGER NOT NULL);
- CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),request_id TEXT NOT NULL,digest TEXT NOT NULL,kind TEXT NOT NULL,status TEXT NOT NULL,gift_cost INTEGER NOT NULL,paid_cost INTEGER NOT NULL,refund_failure INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL,started INTEGER NOT NULL DEFAULT 0,action TEXT NOT NULL DEFAULT '',receipt TEXT NOT NULL DEFAULT '',UNIQUE(user_id,request_id));
+ CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),request_id TEXT NOT NULL,digest TEXT NOT NULL,kind TEXT NOT NULL,status TEXT NOT NULL,gift_cost INTEGER NOT NULL,paid_cost INTEGER NOT NULL,refund_failure INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL,started INTEGER NOT NULL DEFAULT 0,action TEXT NOT NULL DEFAULT '',receipt TEXT NOT NULL DEFAULT '',dup_digest TEXT NOT NULL DEFAULT '',upstream_task_id TEXT NOT NULL DEFAULT '',upstream_wait_ms INTEGER NOT NULL DEFAULT 0,UNIQUE(user_id,request_id));
  CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT,actor TEXT NOT NULL,event TEXT NOT NULL,target TEXT NOT NULL,created INTEGER NOT NULL);
  BEGIN;
- UPDATE users SET gift=gift+COALESCE((SELECT SUM(gift_cost) FROM jobs WHERE jobs.user_id=users.id AND status IN ('queued','running') AND refund_failure=1),0),paid=paid+COALESCE((SELECT SUM(paid_cost) FROM jobs WHERE jobs.user_id=users.id AND status IN ('queued','running') AND refund_failure=1),0);
- UPDATE jobs SET gift_cost=0,paid_cost=0 WHERE status IN ('queued','running') AND refund_failure=1;
- UPDATE jobs SET status='interrupted' WHERE status IN ('queued','running');
+ UPDATE users SET gift=gift+COALESCE((SELECT SUM(gift_cost) FROM jobs WHERE jobs.user_id=users.id AND status IN ('queued','running','pending_upstream') AND refund_failure=1),0),paid=paid+COALESCE((SELECT SUM(paid_cost) FROM jobs WHERE jobs.user_id=users.id AND status IN ('queued','running','pending_upstream') AND refund_failure=1),0);
+ UPDATE jobs SET gift_cost=0,paid_cost=0 WHERE status IN ('queued','running','pending_upstream') AND refund_failure=1;
+ UPDATE jobs SET status='interrupted' WHERE status IN ('queued','running','pending_upstream');
  COMMIT;`); err != nil {
 		db.Close()
 		cancel()
@@ -127,7 +133,9 @@ func New(e Env) (*App, error) {
 	}
 	a.mailSend = a.sendMail
 	a.mailNotify = a.sendMailMessage
-	a.provider = a.callProvider
+	a.waitBudget = generationTimeout + upstreamRetention
+	a.providerCall = a.callProvider
+	a.providerContinue = a.continueProvider
 	a.providerClient = safeClient
 	a.wg.Add(1)
 	go a.dispatcher()
@@ -142,6 +150,21 @@ func New(e Env) (*App, error) {
 				return
 			case <-ticker.C:
 				a.cleanup()
+			}
+		}
+	}()
+	// 等待上游结果的任务由调度器持续认领；这里按周期兜底触发，避免漏掉通知。
+	a.wg.Add(1)
+	go func() {
+		defer a.wg.Done()
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				a.signalDispatch()
 			}
 		}
 	}()
@@ -203,6 +226,8 @@ func (a *App) migrateJobs() error {
 		{"action", "ALTER TABLE jobs ADD COLUMN action TEXT NOT NULL DEFAULT ''"},
 		{"receipt", "ALTER TABLE jobs ADD COLUMN receipt TEXT NOT NULL DEFAULT ''"},
 		{"dup_digest", "ALTER TABLE jobs ADD COLUMN dup_digest TEXT NOT NULL DEFAULT ''"},
+		{"upstream_task_id", "ALTER TABLE jobs ADD COLUMN upstream_task_id TEXT NOT NULL DEFAULT ''"},
+		{"upstream_wait_ms", "ALTER TABLE jobs ADD COLUMN upstream_wait_ms INTEGER NOT NULL DEFAULT 0"},
 	} {
 		if !cols[column.name] {
 			if _, err = a.db.Exec(column.ddl); err != nil {
@@ -228,11 +253,13 @@ func (a *App) cleanup() {
 	a.db.Exec("DELETE FROM sessions WHERE expires<?", now)
 	a.db.Exec("DELETE FROM email_codes WHERE expires<?", now)
 	a.db.Exec("DELETE FROM rate_limits WHERE expires<?", now)
+	// 上游一直没有结果的等待任务超过认领时效后收口为失败，不再占用并发额度与槽位。
+	a.db.Exec("UPDATE jobs SET status='failed' WHERE status=? AND created<?", statusPendingUpstream, now-int64(a.waitBudget.Seconds()))
 	a.cleanupFiles()
 	a.jobsMu.Lock()
 	defer a.jobsMu.Unlock()
 	for id, j := range a.jobs {
-		if j.Status != "running" && j.Status != "queued" && j.Expires < now {
+		if !jobIsActive(j.Status) && j.Expires < now {
 			delete(a.jobs, id)
 		}
 	}

@@ -1,4 +1,4 @@
-import { $, errorMessage, NETWORK_ERROR_MESSAGE } from "./common.v3.js";
+import { $, errorMessage, NETWORK_ERROR_MESSAGE } from "./common.v4.js";
 
 // 分享独立于账号初始化，即使用户尚未登录也可查看和保存推广物料。
 let config;

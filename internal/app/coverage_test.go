@@ -18,16 +18,16 @@ import (
 )
 
 func instantProvider(a *App) {
-	a.provider = func(context.Context, Settings, string, []string) (string, error) {
+	a.providerCall = asProviderCall(func(context.Context, Settings, string, []string) (string, error) {
 		return sampleImage(false), nil
-	}
+	})
 }
 func blockingProvider(a *App) chan struct{} {
 	release := make(chan struct{})
-	a.provider = func(context.Context, Settings, string, []string) (string, error) {
+	a.providerCall = asProviderCall(func(context.Context, Settings, string, []string) (string, error) {
 		<-release
 		return sampleImage(false), nil
-	}
+	})
 	return release
 }
 func setChargeOnFailure(t *testing.T, a *App, value bool) {

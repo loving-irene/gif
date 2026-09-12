@@ -59,10 +59,10 @@ func TestGenerateAppliesSelectedStyle(t *testing.T) {
 	s := loginDevice(t, a, "style-generate")
 	cfg, _ := a.settings()
 	var prompts []string
-	a.provider = func(_ context.Context, _ Settings, prompt string, _ []string) (string, error) {
+	a.providerCall = asProviderCall(func(_ context.Context, _ Settings, prompt string, _ []string) (string, error) {
 		prompts = append(prompts, prompt)
 		return sampleImage(false), nil
-	}
+	})
 
 	ink := draftInput()
 	ink.Selection.Style = "ink"
@@ -97,10 +97,10 @@ func TestStyleIsBoundToDraftReceipt(t *testing.T) {
 	a := testApp(t)
 	s := loginDevice(t, a, "style-receipt")
 	var prompts []string
-	a.provider = func(_ context.Context, _ Settings, prompt string, _ []string) (string, error) {
+	a.providerCall = asProviderCall(func(_ context.Context, _ Settings, prompt string, _ []string) (string, error) {
 		prompts = append(prompts, prompt)
 		return sampleImage(false), nil
-	}
+	})
 	input := draftInput() // 不带画风：服务端按默认画风归一化
 	id := jobID(t, request(t, a, s, "POST", "/api/generate", input))
 	j := waitJob(t, a, s, id)

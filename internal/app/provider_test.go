@@ -50,7 +50,7 @@ func TestGeekAIAdapterPayloadAndAsyncPolling(t *testing.T) {
 		})}
 	}
 	cfg, _ := a.settings()
-	result, err := a.callProvider(context.Background(), cfg, "保留本人特征", []string{fixture, fixture})
+	result, err := a.callProvider(context.Background(), cfg, "保留本人特征", []string{fixture, fixture}, nil)
 	if err != nil || result != fixture || calls != 2 {
 		t.Fatalf("adapter failed: calls=%d err=%v", calls, err)
 	}

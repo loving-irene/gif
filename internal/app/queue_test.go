@@ -6,9 +6,21 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"image/gif"
+	"io"
+	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
+
+// asProviderCall 把只关心“提示词 + 参考图”的测试桩适配为带上游任务号回调的接口；
+// 需要验证超时续查的测试直接设置 a.providerCall / a.providerContinue。
+func asProviderCall(fn func(context.Context, Settings, string, []string) (string, error)) func(context.Context, Settings, string, []string, func(string)) (string, error) {
+	return func(ctx context.Context, cfg Settings, prompt string, images []string, _ func(string)) (string, error) {
+		return fn(ctx, cfg, prompt, images)
+	}
+}
 
 func TestServerGIFSynthesisMatchesBrowserEncoder(t *testing.T) {
 	sheet, err := imageData(sampleImage(true), 20*1024*1024)
@@ -54,10 +66,10 @@ func TestJobsQueueWhenSlotsFullAndAdminListsActive(t *testing.T) {
 	two := loginDevice(t, a, "queue-two")
 	three := loginDevice(t, a, "queue-three")
 	release := make(chan struct{})
-	a.provider = func(context.Context, Settings, string, []string) (string, error) {
+	a.providerCall = asProviderCall(func(context.Context, Settings, string, []string) (string, error) {
 		<-release
 		return sampleImage(false), nil
-	}
+	})
 	first := jobID(t, request(t, a, one, "POST", "/api/generate", draftInput()))
 	second := jobID(t, request(t, a, two, "POST", "/api/generate", draftInput()))
 	third := jobID(t, request(t, a, three, "POST", "/api/generate", draftInput()))
@@ -118,10 +130,10 @@ func TestParallelJobsUpToUserConcurrency(t *testing.T) {
 	a.db.Exec("UPDATE settings SET value=? WHERE key='config'", string(raw))
 	a.db.Exec("UPDATE users SET gift=10 WHERE id=?", s.User.ID)
 	release := make(chan struct{})
-	a.provider = func(context.Context, Settings, string, []string) (string, error) {
+	a.providerCall = asProviderCall(func(context.Context, Settings, string, []string) (string, error) {
 		<-release
 		return sampleImage(false), nil
-	}
+	})
 	first := jobID(t, request(t, a, s, "POST", "/api/generate", draftInput()))
 	// 第二个任务换一套配置：这里验证并发上限，同款配置的提醒由 TestDuplicateSelection* 覆盖。
 	second := jobID(t, request(t, a, s, "POST", "/api/generate", draftInputWith("古代鳞甲", "银灰与藏蓝", "")))
@@ -242,12 +254,110 @@ func countJobs(t *testing.T, a *App, uid string, statuses ...string) int {
 	return n
 }
 
+// 上游生成时间超过单次等待时间（generationTimeout）时，任务不再直接失败：
+// 记下上游任务号转为等待上游结果，稍后按同一个任务号继续认领，拿到图片后照常合成 GIF 并计次。
+func TestUpstreamResultClaimedAfterTimeout(t *testing.T) {
+	a := testApp(t)
+	// 总认领时长从任务创建时刻起算，先给足够时间完成“提交并拿到上游任务号”，
+	// 之后再缩短它，让“等上游超时”这一步在测试里快速发生。
+	a.waitBudget = 2 * time.Second
+
+	s := loginDevice(t, a, "upstream-wait")
+	a.db.Exec("UPDATE users SET gift=3 WHERE id=?", s.User.ID)
+	var submits, polls atomic.Int32
+	a.providerClient = func() *http.Client {
+		return &http.Client{Transport: testTransport(func(r *http.Request) (*http.Response, error) {
+			body := `{"task_id":"upstream-task-1","task_status":"running"}`
+			if r.Method == "POST" {
+				submits.Add(1)
+			} else {
+				polls.Add(1)
+				// 前两次轮询返回“仍在生成”，之后返回图片，模拟上游慢但最终成功。
+				if polls.Load() > 2 {
+					b, _ := json.Marshal(map[string]any{"task_status": "succeed", "task_id": "upstream-task-1", "data": []map[string]string{{"b64_json": strings.SplitN(sampleImage(false), ",", 2)[1]}}})
+					body = string(b)
+				}
+			}
+			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+		})}
+	}
+	id := jobID(t, request(t, a, s, "POST", "/api/generate", draftInput()))
+	// 第一次等待耗尽后进入“等待上游结果”：不算失败、不掉次数。
+	pending := waitForStatus(t, a, s, id, statusPendingUpstream)
+	if !pending.Upstream {
+		t.Fatalf("waiting job should be flagged as upstream: %+v", pending)
+	}
+	if u, _ := a.readUser(s.User.ID); u.Credits != 2 {
+		t.Fatalf("waiting job must stay charged: %d", u.Credits)
+	}
+	// 缩短剩余认领时长并重置创建时间，让续查快速完成。
+	a.waitBudget = 400 * time.Millisecond
+	a.db.Exec("UPDATE jobs SET created=? WHERE id=?", time.Now().Unix(), id)
+	// 调度器按同一个上游任务号继续认领，最终拿到图片并签发定稿凭证。
+	done := waitJob(t, a, s, id)
+	if done.Status != "succeeded" || done.Receipt == "" {
+		t.Fatalf("resumed job should deliver the draft: %+v", done)
+	}
+	if submits.Load() != 1 {
+		t.Fatalf("resume must not submit a new generation request: %d", submits.Load())
+	}
+	if u, _ := a.readUser(s.User.ID); u.Credits != 2 {
+		t.Fatalf("resumed job charged twice: %d", u.Credits)
+	}
+}
+
+// 等待上游结果的任务超过总认领时效后按失败收口，避免一直占着并发额度与生成槽位。
+func TestUpstreamWaitWindowCollapsesToFailure(t *testing.T) {
+	a := testApp(t)
+	setChargeOnFailure(t, a, false)
+	a.waitBudget = 2 * time.Second
+
+	s := loginDevice(t, a, "upstream-expire")
+	a.db.Exec("UPDATE users SET gift=3 WHERE id=?", s.User.ID)
+	a.providerClient = func() *http.Client {
+		return &http.Client{Transport: testTransport(func(r *http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"task_id":"stuck-task","task_status":"running"}`))}, nil
+		})}
+	}
+	id := jobID(t, request(t, a, s, "POST", "/api/generate", draftInput()))
+	waitForStatus(t, a, s, id, statusPendingUpstream)
+	// 把创建时间前移，模拟已经超过总认领时长：续查应立即按失败收口。
+	a.db.Exec("UPDATE jobs SET created=? WHERE id=?", time.Now().Add(-2*time.Hour).Unix(), id)
+	if j := waitJob(t, a, s, id); j.Status != "failed" || j.Error != networkErrorMessage {
+		t.Fatalf("stale waiting job should fail: %+v", j)
+	}
+	if u, _ := a.readUser(s.User.ID); u.Credits != 3 {
+		t.Fatalf("failed waiting job was not refunded: %d", u.Credits)
+	}
+}
+
+// waitForStatus 直查数据库直到任务进入指定状态（用于等待“上游结果认领”这类中间状态）；
+// 不走 HTTP 查询，避免长时间等待时撞上接口限流。
+func waitForStatus(t *testing.T, a *App, s *testSession, id, want string) Job {
+	t.Helper()
+	for i := 0; i < 2000; i++ {
+		var status string
+		if a.db.QueryRow("SELECT status FROM jobs WHERE id=?", id).Scan(&status) != nil {
+			t.Fatal("job row missing")
+		}
+		if status == want {
+			return fetchJSONJob(t, a, s, id)
+		}
+		if status == "failed" || status == "succeeded" {
+			t.Fatalf("job reached %s while waiting for %s", status, want)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("job never reached %s", want)
+	return Job{}
+}
+
 func TestJobResultsSurviveMemoryCacheLoss(t *testing.T) {
 	a := testApp(t)
 	s := loginDevice(t, a, "keep")
-	a.provider = func(context.Context, Settings, string, []string) (string, error) {
+	a.providerCall = asProviderCall(func(context.Context, Settings, string, []string) (string, error) {
 		return sampleImage(false), nil
-	}
+	})
 	id := jobID(t, request(t, a, s, "POST", "/api/generate", draftInput()))
 	j := waitJob(t, a, s, id)
 	if j.Status != "succeeded" || j.Receipt == "" {
@@ -271,9 +381,9 @@ func TestJobResultsSurviveMemoryCacheLoss(t *testing.T) {
 func TestMotionJobDeliversServerGIF(t *testing.T) {
 	a := testApp(t)
 	s := loginDevice(t, a, "motion")
-	a.provider = func(ctx context.Context, cfg Settings, prompt string, images []string) (string, error) {
+	a.providerCall = asProviderCall(func(ctx context.Context, cfg Settings, prompt string, images []string) (string, error) {
 		return sampleImage(len(images) == 2), nil
-	}
+	})
 	input := draftInput()
 	id := jobID(t, request(t, a, s, "POST", "/api/generate", input))
 	j := waitJob(t, a, s, id)
