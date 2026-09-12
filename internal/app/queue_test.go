@@ -106,6 +106,40 @@ func TestJobsQueueWhenSlotsFullAndAdminListsActive(t *testing.T) {
 	}
 }
 
+// 同账号可并行提交任务：只有达到后台配置的单账号并发上限后才拒绝新任务。
+// 前端据此在等待期间保持生成按钮可用，允许边等待边改造型再提交一个定稿。
+func TestParallelJobsUpToUserConcurrency(t *testing.T) {
+	a := testApp(t)
+	s := loginDevice(t, a, "parallel")
+	cfg, _ := a.settings()
+	cfg.UserConcurrency = 2
+	raw, _ := json.Marshal(cfg)
+	a.db.Exec("UPDATE settings SET value=? WHERE key='config'", string(raw))
+	a.db.Exec("UPDATE users SET gift=10 WHERE id=?", s.User.ID)
+	release := make(chan struct{})
+	a.provider = func(context.Context, Settings, string, []string) (string, error) {
+		<-release
+		return sampleImage(false), nil
+	}
+	first := jobID(t, request(t, a, s, "POST", "/api/generate", draftInput()))
+	second := jobID(t, request(t, a, s, "POST", "/api/generate", draftInput()))
+	if first == second {
+		t.Fatal("parallel submissions reused one job")
+	}
+	if w := request(t, a, s, "POST", "/api/generate", draftInput()); w.Code != 409 {
+		t.Fatal("concurrency limit not enforced", w.Code, w.Body.String())
+	}
+	close(release)
+	for _, id := range []string{first, second} {
+		if j := waitJob(t, a, s, id); j.Status != "succeeded" {
+			t.Fatal("parallel job did not finish", id, j.Status)
+		}
+	}
+	if u, _ := a.readUser(s.User.ID); u.Credits != 8 {
+		t.Fatal("unexpected credits", u.Credits)
+	}
+}
+
 func TestJobResultsSurviveMemoryCacheLoss(t *testing.T) {
 	a := testApp(t)
 	s := loginDevice(t, a, "keep")
