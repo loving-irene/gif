@@ -112,6 +112,8 @@ func (a *App) communityList(w http.ResponseWriter, r *http.Request) {
 // communityShare 把作品分享到社区池。同一账号同一张作品重复分享只刷新已有条目。
 // GIF 本体优先取服务端作品副本（省一次上传）；本机独有的作品由页面把 blob 传上来——
 // 作品集是 3 天保留的，本机作品没有被保存过时服务端没有副本，所以必须支持上传。
+// 页面总是把本机 GIF 一并传上来：服务端副本只保留 3 天，过期后客户端无从判断
+// 「服务端还有没有这张图」，只靠作品副本判断会让老作品必然分享失败。
 func (a *App) communityShare(w http.ResponseWriter, r *http.Request) {
 	s := current(r)
 	var in struct {
@@ -119,8 +121,9 @@ func (a *App) communityShare(w http.ResponseWriter, r *http.Request) {
 		Action string `json:"action"`
 		Image  string `json:"image"`
 	}
+	// 上限按「4MB 图片 base64 后约 5.3MB」留余量；超限时 decode 会失败，因此下面单独提示。
 	if decode(w, r, &in, shareImageLimit*2) != nil {
-		fail(w, 400, "分享内容无效")
+		fail(w, 413, "这张作品太大，暂时无法分享，请换一张")
 		return
 	}
 	if in.ID == "" && in.Image == "" {
@@ -150,7 +153,7 @@ func (a *App) communityShare(w http.ResponseWriter, r *http.Request) {
 	if len(blob) == 0 {
 		raw, err := base64.StdEncoding.DecodeString(in.Image)
 		if err != nil || len(raw) == 0 {
-			fail(w, 400, "分享内容无效")
+			fail(w, 400, "这张作品在本机还没合成为动图，请先点「重新合成 · 免费」再分享")
 			return
 		}
 		blob = raw

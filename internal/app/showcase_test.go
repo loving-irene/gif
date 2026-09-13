@@ -6,6 +6,79 @@ import (
 	"testing"
 )
 
+// 宽屏下示例卡片必须与同栏的标题正文左对齐：被居中时卡片会比左侧文字右移约 222px，
+// 看起来像是浮在页面中间（曾经的 justify-content: center 就是这么写错的）。
+func TestHomepageShowcaseLeftAligned(t *testing.T) {
+	raw, err := web.ReadFile("web/style.v25.css")
+	if err != nil {
+		t.Fatal("homepage stylesheet not embedded", err)
+	}
+	css := string(raw)
+	at := strings.Index(css, "@media (min-width: 801px)")
+	if at < 0 {
+		t.Fatal("宽屏断点缺失")
+	}
+	block := css[at:]
+	if end := strings.Index(block, "\n}"); end >= 0 {
+		block = block[:end]
+	}
+	card := strings.Index(block, ".showcase-list")
+	if card < 0 {
+		t.Fatal("宽屏断点里缺少 .showcase-list 规则")
+	}
+	rule := block[card:]
+	if end := strings.Index(rule, "}"); end >= 0 {
+		rule = rule[:end]
+	}
+	if !strings.Contains(rule, "repeat(2, minmax(0, 348px))") {
+		t.Fatal("示例卡片应锁 256×256 画幅并排两列", rule)
+	}
+	if strings.Contains(rule, "justify-content") || strings.Contains(rule, "margin: auto") {
+		t.Fatal("示例卡片被居中，与左侧标题正文不对齐", rule)
+	}
+}
+
+// 示例动图是 position:absolute + inset:0，必须挂在卡片里唯一定位的 .showcase-media 上：
+// 挂到未定位的 .showcase-card 上时，inset 会相对初始包含块解析，动画会被画到页面左上角
+// （盖在页头与 hero 上），而不是盖在静态首帧上。
+func TestHomepageShowcaseOverlayAnchored(t *testing.T) {
+	loader, err := web.ReadFile("web/showcase.v2.js")
+	if err != nil {
+		t.Fatal("showcase loader not embedded", err)
+	}
+	js := string(loader)
+	if !strings.Contains(js, "media.append(image)") {
+		t.Fatal("动画层必须挂在 .showcase-media 上", js)
+	}
+	if strings.Contains(js, "card.append(image)") {
+		t.Fatal("动画层挂在未定位的卡片上，会画到页面左上角")
+	}
+	if !strings.Contains(js, `card.querySelector(".showcase-media")`) {
+		t.Fatal("加载器没有取 .showcase-media")
+	}
+
+	// 这个挂载点成立的前提：.showcase-media 自身是定位元素（inset:0 的包含块），
+	// 且它锁了 1:1，所以动画尺寸与首帧完全重合。
+	raw, err := web.ReadFile("web/style.v25.css")
+	if err != nil {
+		t.Fatal("homepage stylesheet not embedded", err)
+	}
+	css := string(raw)
+	at := strings.Index(css, ".showcase-media {")
+	if at < 0 {
+		t.Fatal("缺少 .showcase-media 规则")
+	}
+	rule := css[at:]
+	if end := strings.Index(rule, "}"); end >= 0 {
+		rule = rule[:end]
+	}
+	for _, want := range []string{"position: relative", "aspect-ratio: 1"} {
+		if !strings.Contains(rule, want) {
+			t.Fatal("动画层的挂载点不再满足定位与画幅前提", want, rule)
+		}
+	}
+}
+
 // 首页示例作品直接用内嵌 web 资源；文件名写错或资源丢失时页面只会表现为空白，
 // 所以这里把服务端能验证的部分全部钉住：资源真实存在、确实是 16 帧动画 WebP、
 // 页面确实引用了它们，且首帧海报必须先于动画出现。
@@ -17,7 +90,7 @@ func TestHomepageShowcaseExamples(t *testing.T) {
 	}
 	body := w.Body.String()
 	// 页面引用的是当前版本的样式表与加载器；升版本号时必须同步改页面引用。
-	for _, asset := range []string{"/assets/style.v23.css", "/assets/showcase.v1.js"} {
+	for _, asset := range []string{"/assets/style.v25.css", "/assets/showcase.v2.js"} {
 		if !strings.Contains(body, asset) {
 			t.Fatal("homepage missing asset reference", asset)
 		}
@@ -33,7 +106,7 @@ func TestHomepageShowcaseExamples(t *testing.T) {
 		if !strings.Contains(body, `src="/assets/`+name+`-poster.webp"`) {
 			t.Fatal("poster not rendered into homepage", name)
 		}
-		// 动画地址挂在 data 属性上，由 showcase.v1.js 在进入视口后挂载。
+		// 动画地址挂在 data 属性上，由 showcase.v2.js 在进入视口后挂载。
 		if !strings.Contains(body, `data-anim-src="/assets/`+name+`.webp"`) {
 			t.Fatal("animation source not referenced in homepage", name)
 		}

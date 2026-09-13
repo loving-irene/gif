@@ -181,6 +181,37 @@ func TestCommunityShareUploadsOwnGifOnly(t *testing.T) {
 	}
 }
 
+// 服务端没有作品副本时（作品是 3 天前生成的，云端副本早已到期清理），页面必须能只靠
+// 本机 GIF 完成分享：这正是「点击分享 → 分享内容无效」的原因——客户端以为服务端有副本、
+// 没带图上来，服务端只能回错。这里钉住「带 id 又带 image」这条路必须成功。
+func TestCommunityShareWithoutServerWorkCopy(t *testing.T) {
+	a := testApp(t)
+	s := loginDevice(t, a, "share-nocopy")
+	gif := gifFixture(t)
+	// works 表里没有这条编号：模拟过了 3 天保留期、云端副本已被清理的老作品。
+	w := request(t, a, s, "POST", "/api/community/share", map[string]any{
+		"id": "expired0001", "action": "可爱点头", "image": base64.StdEncoding.EncodeToString(gif),
+	})
+	if w.Code != 200 {
+		t.Fatal("老作品应能靠本机 GIF 分享成功", w.Code, w.Body.String())
+	}
+	page := readCommunity(t, a, s, "")
+	if len(page.Items) != 1 || page.Items[0].Action != "可爱点头" {
+		t.Fatal("分享未进入社区池", page.Items)
+	}
+	image := request(t, a, s, "GET", "/api/community/"+page.Items[0].ID+"/gif", nil)
+	if image.Code != 200 || image.Body.Len() != len(gif) {
+		t.Fatal("社区里的动图与服务端副本不一致", image.Code, image.Body.Len(), len(gif))
+	}
+	// 请求体超限要明确说「太大」，不能落回笼统的「分享内容无效」。
+	oversize := request(t, a, s, "POST", "/api/community/share", map[string]any{
+		"id": "expired0002", "image": strings.Repeat("A", shareImageLimit*2+1024),
+	})
+	if oversize.Code != 413 {
+		t.Fatal("超限请求应提示体积过大", oversize.Code, oversize.Body.String())
+	}
+}
+
 // 社区列表按分享时间倒序键集分页，最后一页没有游标；非法游标被拒。
 func TestCommunityListPagination(t *testing.T) {
 	a := testApp(t)
@@ -363,7 +394,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 	if !strings.Contains(body, `href="/community"`) || !strings.Contains(body, `class="community-link"`) {
 		t.Fatal("homepage missing community entry")
 	}
-	for _, asset := range []string{"/assets/app.v28.js", "/assets/style.v23.css"} {
+	for _, asset := range []string{"/assets/app.v29.js", "/assets/style.v25.css"} {
 		if !strings.Contains(body, asset) {
 			t.Fatal("homepage missing updated asset", asset)
 		}
