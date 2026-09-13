@@ -9,7 +9,7 @@ import (
 // 宽屏下示例卡片必须与同栏的标题正文左对齐：被居中时卡片会比左侧文字右移约 222px，
 // 看起来像是浮在页面中间（曾经的 justify-content: center 就是这么写错的）。
 func TestHomepageShowcaseLeftAligned(t *testing.T) {
-	raw, err := web.ReadFile("web/style.v25.css")
+	raw, err := web.ReadFile("web/style.v27.css")
 	if err != nil {
 		t.Fatal("homepage stylesheet not embedded", err)
 	}
@@ -59,7 +59,7 @@ func TestHomepageShowcaseOverlayAnchored(t *testing.T) {
 
 	// 这个挂载点成立的前提：.showcase-media 自身是定位元素（inset:0 的包含块），
 	// 且它锁了 1:1，所以动画尺寸与首帧完全重合。
-	raw, err := web.ReadFile("web/style.v25.css")
+	raw, err := web.ReadFile("web/style.v27.css")
 	if err != nil {
 		t.Fatal("homepage stylesheet not embedded", err)
 	}
@@ -90,7 +90,7 @@ func TestHomepageShowcaseExamples(t *testing.T) {
 	}
 	body := w.Body.String()
 	// 页面引用的是当前版本的样式表与加载器；升版本号时必须同步改页面引用。
-	for _, asset := range []string{"/assets/style.v25.css", "/assets/showcase.v2.js"} {
+	for _, asset := range []string{"/assets/style.v27.css", "/assets/showcase.v2.js"} {
 		if !strings.Contains(body, asset) {
 			t.Fatal("homepage missing asset reference", asset)
 		}

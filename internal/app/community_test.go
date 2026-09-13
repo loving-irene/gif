@@ -394,7 +394,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 	if !strings.Contains(body, `href="/community"`) || !strings.Contains(body, `class="community-link"`) {
 		t.Fatal("homepage missing community entry")
 	}
-	for _, asset := range []string{"/assets/app.v29.js", "/assets/style.v25.css"} {
+	for _, asset := range []string{"/assets/app.v31.js", "/assets/style.v27.css"} {
 		if !strings.Contains(body, asset) {
 			t.Fatal("homepage missing updated asset", asset)
 		}
