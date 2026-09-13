@@ -107,10 +107,17 @@ func TestHomepageShowcaseExamples(t *testing.T) {
 			t.Fatal("poster not rendered into homepage", name)
 		}
 		// 动画地址挂在 data 属性上，由 showcase.v2.js 在进入视口后挂载。
-		if !strings.Contains(body, `data-anim-src="/assets/`+name+`.webp"`) {
+		// 动画必须用带版本号的独立文件名：它和任何其它资源共用 URL 时，浏览器会把
+		// 同一 URL 的多张图片当成同一份资源，首页示例会停在静态帧不动。
+		anim := "/assets/" + name + ".v2.webp"
+		if !strings.Contains(body, `data-anim-src="`+anim+`"`) {
 			t.Fatal("animation source not referenced in homepage", name)
 		}
-		for _, asset := range []string{name + "-poster.webp", name + ".webp"} {
+		// 动画 URL 在整页只能出现一次，否则又会退回共用的静态资源。
+		if n := strings.Count(body, anim); n != 1 {
+			t.Fatal("animation URL must be referenced exactly once on the homepage", name, n)
+		}
+		for _, asset := range []string{name + "-poster.webp", name + ".v2.webp"} {
 			raw, err := web.ReadFile("web/" + asset)
 			if err != nil {
 				t.Fatal("showcase asset not embedded", asset, err)
@@ -139,6 +146,14 @@ func TestHomepageShowcaseExamples(t *testing.T) {
 	if strings.Contains(body, "onload=") || strings.Contains(body, "<script>") {
 		t.Fatal("homepage must not rely on inline scripts")
 	}
+	// 动画层是运行时 append 进 .showcase-media 的。若挂载点是 <picture>，浏览器会把
+	// 运行时插入的这份动画图冻结在静态帧——示例永远不动。挂载点必须是普通容器。
+	if strings.Contains(body, "<picture") {
+		t.Fatal("示例挂载点不能用 <picture>：运行时插入其中的动画图不会播放")
+	}
+	if !strings.Contains(body, `<div class="showcase-media">`) {
+		t.Fatal("示例挂载点应为普通 div 容器", body)
+	}
 	// 动图不做 preload：手机上应在卡片进入视口时再下载。
 	if strings.Contains(body, `rel="preload"`) {
 		t.Fatal("homepage should not preload images")
@@ -149,8 +164,8 @@ func TestHomepageShowcaseExamples(t *testing.T) {
 func TestShowcaseAssetsServed(t *testing.T) {
 	a := testApp(t)
 	for _, name := range []string{
-		"example-heart.webp", "example-heart-poster.webp",
-		"example-success.webp", "example-success-poster.webp",
+		"example-heart.v2.webp", "example-heart-poster.webp",
+		"example-success.v2.webp", "example-success-poster.webp",
 	} {
 		w := request(t, a, nil, "GET", "/assets/"+name, nil)
 		if w.Code != 200 || !strings.HasPrefix(w.Body.String(), "RIFF") {
