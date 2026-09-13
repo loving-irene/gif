@@ -258,6 +258,7 @@ func TestValidateSettingsRejectsBadConfigs(t *testing.T) {
 		{"画风编号非法", func(s *Settings) { s.Styles[1].ID = "other" }},
 		{"画风名称为空", func(s *Settings) { s.Styles[0].Name = " " }},
 		{"画风提示词过短", func(s *Settings) { s.Styles[2].Prompt = "太短" }},
+		{"动作序列图规格非法", func(s *Settings) { s.MotionGrid = "6x6" }},
 	}
 	for _, tc := range cases {
 		s := base

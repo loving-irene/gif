@@ -5,7 +5,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"image"
+	"image/color"
+	"image/draw"
 	"image/gif"
+	"image/png"
 	"io"
 	"net/http"
 	"strings"
@@ -22,12 +26,30 @@ func asProviderCall(fn func(context.Context, Settings, string, []string) (string
 	}
 }
 
+// sampleSheetGrid 生成 cols×cols 网格的 1024×1024 透明 PNG 序列图：
+// 每格中央画一个带偏移的不透明色块，其余保持透明，用于验证切格、缩放与透明处置。
+func sampleSheetGrid(cols int) string {
+	img := image.NewNRGBA(image.Rect(0, 0, 1024, 1024))
+	body := color.NRGBA{168, 186, 147, 255}
+	head := color.NRGBA{244, 199, 164, 255}
+	for n := 0; n < cols*cols; n++ {
+		x0, y0 := (n%cols)*1024/cols, (n/cols)*1024/cols
+		x1, y1 := ((n%cols)+1)*1024/cols, ((n/cols)+1)*1024/cols
+		offset := n % cols * 3
+		draw.Draw(img, image.Rect(x0+30+offset, y0+60, x1-30, y1-30), &image.Uniform{body}, image.Point{}, draw.Src)
+		draw.Draw(img, image.Rect(x0+30+offset, y0+20, x1-30+offset, y0+70), &image.Uniform{head}, image.Point{}, draw.Src)
+	}
+	var b bytes.Buffer
+	png.Encode(&b, img)
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(b.Bytes())
+}
+
 func TestServerGIFSynthesisMatchesBrowserEncoder(t *testing.T) {
 	sheet, err := imageData(sampleImage(true), 20*1024*1024)
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := synthesizeGIF(sheet)
+	data, err := synthesizeGIF(sheet, motionSpecOf("4x4"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,6 +72,44 @@ func TestServerGIFSynthesisMatchesBrowserEncoder(t *testing.T) {
 			t.Fatal("frame timing invalid")
 		}
 		if _, _, _, alpha := frame.At(128, 130).RGBA(); alpha == 0 {
+			t.Fatal("moving subject was lost")
+		}
+		if _, _, _, alpha := frame.At(0, 0).RGBA(); alpha != 0 {
+			t.Fatal("transparent background lost")
+		}
+	}
+}
+
+// 5×5 规格与上游约定仍产出 1024×1024 序列图：1024 不能被 5 整除，
+// 验证按比例取整切格后得到 25 帧、每帧 128×128，展开阶段（第 7—12 帧）稍快。
+func TestServerGIFSynthesis5x5Grid(t *testing.T) {
+	sheet, err := imageData(sampleSheetGrid(5), 20*1024*1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := synthesizeGIF(sheet, motionSpecOf("5x5"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := gif.DecodeAll(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(g.Image) != 25 || g.LoopCount != 0 || g.Config.Width != 128 || g.Config.Height != 128 {
+		t.Fatal("GIF animation metadata invalid", len(g.Image), g.Config.Width, g.Config.Height)
+	}
+	for i, frame := range g.Image {
+		if g.Disposal[i] != gif.DisposalBackground {
+			t.Fatal("transparent frame disposal invalid")
+		}
+		delay := 10
+		if i >= 6 && i <= 11 {
+			delay = 6
+		}
+		if g.Delay[i] != delay {
+			t.Fatal("frame timing invalid")
+		}
+		if _, _, _, alpha := frame.At(64, 90).RGBA(); alpha == 0 {
 			t.Fatal("moving subject was lost")
 		}
 		if _, _, _, alpha := frame.At(0, 0).RGBA(); alpha != 0 {
@@ -146,6 +206,8 @@ func TestParallelJobsUpToUserConcurrency(t *testing.T) {
 	}
 	if w := request(t, a, s, "POST", "/api/generate", draftInputWith("轻甲与短披风", "深红与铁灰", "")); w.Code != 409 {
 		t.Fatal("concurrency limit not enforced", w.Code, w.Body.String())
+	} else if !strings.Contains(w.Body.String(), "已达任务上限2") {
+		t.Fatal("concurrency limit message should state the limit", w.Body.String())
 	}
 	close(release)
 	for _, id := range []string{first, second} {
@@ -453,6 +515,48 @@ func TestMotionJobDeliversServerGIF(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &restored)
 	if restored.Status != "succeeded" || len(restored.Gif) == 0 || len(restored.Image) == 0 {
 		t.Fatal("stored motion result not restored")
+	}
+}
+
+// 后台切换动作序列图规格为 5×5 后：动作提示词末尾附加规格说明（以此为准），
+// 服务器按 5×5 切格合成 25 帧、每帧 128×128 的 GIF。
+func TestMotionJobDeliversServerGIF5x5(t *testing.T) {
+	a := testApp(t)
+	s := loginDevice(t, a, "motion-5x5")
+	cfg, _ := a.settings()
+	cfg.MotionGrid = "5x5"
+	raw, _ := json.Marshal(cfg)
+	a.db.Exec("UPDATE settings SET value=? WHERE key='config'", string(raw))
+	var prompts []string
+	a.providerCall = asProviderCall(func(ctx context.Context, cfg Settings, prompt string, images []string) (string, error) {
+		prompts = append(prompts, prompt)
+		if len(images) == 2 {
+			return sampleSheetGrid(5), nil
+		}
+		return sampleImage(false), nil
+	})
+	input := draftInput()
+	id := jobID(t, request(t, a, s, "POST", "/api/generate", input))
+	j := waitJob(t, a, s, id)
+	w := request(t, a, s, "POST", "/api/accept", map[string]string{"receipt": j.Receipt})
+	var accepted map[string]string
+	json.Unmarshal(w.Body.Bytes(), &accepted)
+	motion := GenerateInput{RequestID: token(16), Kind: "motion", Selection: input.Selection, Action: "attack", Selfie: input.Selfie, Draft: j.Image, Receipt: accepted["receipt"]}
+	id = jobID(t, request(t, a, s, "POST", "/api/generate", motion))
+	j = waitJob(t, a, s, id)
+	if j.Status != "succeeded" || len(j.Gif) == 0 {
+		t.Fatal("motion job missing server GIF", j.Status)
+	}
+	if len(prompts) != 2 || !strings.Contains(prompts[1], "严格5列×5行共25格") || !strings.Contains(prompts[1], "以此为准") {
+		t.Fatal("motion prompt missing 5x5 grid spec override")
+	}
+	gifBytes, err := base64.StdEncoding.DecodeString(j.Gif[len("data:image/gif;base64,"):])
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := gif.DecodeAll(bytes.NewReader(gifBytes))
+	if err != nil || len(g.Image) != 25 || g.Config.Width != 128 || g.Config.Height != 128 {
+		t.Fatal("server GIF not 5x5 spec", err, len(g.Image), g.Config.Width)
 	}
 }
 

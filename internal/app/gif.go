@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -13,25 +14,81 @@ import (
 	xdraw "golang.org/x/image/draw"
 )
 
-// synthesizeGIF 在服务器端把 4×4 动作序列图合成为 256×256 的 16 帧循环 GIF。
-// 算法与浏览器端 gif-worker.v1.js 保持一致：15-bit 颜色直方图 + 中位切分共享调色板，
-// 0 号索引透明，第 5—8 帧（展开阶段）稍快，逐帧恢复背景以正确呈现透明。
-func synthesizeGIF(sheet []byte) ([]byte, error) {
+// motionSpec 是动作序列图的网格规格，由后台配置选择：
+// 4x4 共16格、每帧输出256×256；5x5 共25格、每帧输出128×128。
+// 上游始终产出 1024×1024 的方形序列图，切格按比例取整划分边界，
+// 因此两种规格都兼容可整除与不可整除（如 5×5 对 1024）的图宽。
+type motionSpec struct {
+	id     string // 配置编号（4x4 / 5x5），用于提示词与日志
+	cols   int    // 每边格数
+	frames int    // cols×cols 总帧数
+	size   int    // 输出 GIF 每帧边长
+	fast   [2]int // 展开阶段（稍快）帧区间，0 起
+}
+
+// motionSpecs 固定可选规格：4×4（1—4准备、5—8展开、9—12重点、13—16收势）
+// 与 5×5（1—6准备、7—12展开、13—18重点、19—25收势），快帧区间与各阶段划分对应。
+var motionSpecs = map[string]motionSpec{
+	"4x4": {id: "4x4", cols: 4, frames: 16, size: 256, fast: [2]int{4, 7}},
+	"5x5": {id: "5x5", cols: 5, frames: 25, size: 128, fast: [2]int{6, 11}},
+}
+
+// motionGridIDs 返回后台可选的动作序列图规格编号。
+func motionGridIDs() []string { return []string{"4x4", "5x5"} }
+
+// motionSpecOf 解析规格编号，空值或未知编号回落到默认 4×4。
+func motionSpecOf(id string) motionSpec {
+	if s, ok := motionSpecs[id]; ok {
+		return s
+	}
+	return motionSpecs["4x4"]
+}
+
+// motionSpecPrompt 是追加在动作提示词末尾的规格说明：后台切换网格规格后，
+// 以本段覆盖提示词模板里写死的格数与阶段划分，保证生成与合成两侧始终一致。
+func motionSpecPrompt(id string) string {
+	s := motionSpecOf(id)
+	cell := ""
+	if s.cols == 4 {
+		cell = "，每格256×256"
+	}
+	return fmt.Sprintf("动作序列图规格（以此为准，前文若出现其他格数、每格尺寸或阶段划分描述，以本段为准）：一张1024×1024透明PNG，严格%d列×%d行共%d格%s。从左到右、从上到下排列同一次完整动作：%s。每格无边框无间隙无编号无文字，角色武器特效不跨格、不裁切。",
+		s.cols, s.cols, s.frames, cell, s.phases())
+}
+
+// phases 返回 1 起的阶段划分文案，与 fast 区间保持对应。
+func (s motionSpec) phases() string {
+	switch s.frames {
+	case 25:
+		return "1—6准备，7—12展开，13—18动作重点，19—25收势回位"
+	default:
+		return "1—4准备，5—8展开，9—12动作重点，13—16收势回位"
+	}
+}
+
+// synthesizeGIF 在服务器端把动作序列图按规格切格并合成为循环 GIF。
+// 算法与浏览器端 gif-worker 保持一致：15-bit 颜色直方图 + 中位切分共享调色板，
+// 0 号索引透明，展开阶段（fast 区间）的帧稍快，逐帧恢复背景以正确呈现透明。
+func synthesizeGIF(sheet []byte, spec motionSpec) ([]byte, error) {
 	img, _, err := image.Decode(bytes.NewReader(sheet))
 	if err != nil {
 		return nil, err
 	}
 	bounds := img.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
-	if width != height || width%4 != 0 || width < 4 {
+	if width != height || width < spec.cols || height < spec.cols {
 		return nil, errors.New("motion sheet is not a divisible square grid")
 	}
-	tile := width / 4
-	frames := make([]*image.NRGBA, 16)
-	for n := 0; n < 16; n++ {
-		frame := image.NewNRGBA(image.Rect(0, 0, 256, 256))
-		cell := image.Rect((n%4)*tile, (n/4)*tile, (n%4)*tile+tile, (n/4)*tile+tile)
-		if tile == 256 {
+	size := spec.size
+	frames := make([]*image.NRGBA, spec.frames)
+	for n := 0; n < spec.frames; n++ {
+		frame := image.NewNRGBA(image.Rect(0, 0, size, size))
+		// 按比例取整划分格边界：可整除时与原逐格切分完全一致，
+		// 不可整除时（5×5 对 1024）每格相差不超过 1 像素，缩放到输出尺寸后无差别。
+		x0, y0 := (n%spec.cols)*width/spec.cols, (n/spec.cols)*height/spec.cols
+		x1, y1 := ((n%spec.cols)+1)*width/spec.cols, ((n/spec.cols)+1)*height/spec.cols
+		cell := image.Rect(x0, y0, x1, y1)
+		if cell.Dx() == size && cell.Dy() == size {
 			draw.Draw(frame, frame.Rect, img, cell.Min, draw.Src)
 		} else {
 			xdraw.CatmullRom.Scale(frame, frame.Rect, img, cell, xdraw.Src, nil)
@@ -47,11 +104,11 @@ func synthesizeGIF(sheet []byte) ([]byte, error) {
 		}
 	}
 	palette, mapping := adaptivePalette(histogram)
-	out := &gif.GIF{LoopCount: 0, Config: image.Config{ColorModel: palette, Width: 256, Height: 256}}
+	out := &gif.GIF{LoopCount: 0, Config: image.Config{ColorModel: palette, Width: size, Height: size}}
 	for n, frame := range frames {
-		p := image.NewPaletted(image.Rect(0, 0, 256, 256), palette)
-		for y := 0; y < 256; y++ {
-			for x := 0; x < 256; x++ {
+		p := image.NewPaletted(image.Rect(0, 0, size, size), palette)
+		for y := 0; y < size; y++ {
+			for x := 0; x < size; x++ {
 				i := frame.PixOffset(x, y)
 				if frame.Pix[i+3] < 128 {
 					p.SetColorIndex(x, y, 0)
@@ -61,7 +118,7 @@ func synthesizeGIF(sheet []byte) ([]byte, error) {
 			}
 		}
 		delay := 10
-		if n >= 4 && n <= 7 {
+		if n >= spec.fast[0] && n <= spec.fast[1] {
 			delay = 6
 		}
 		out.Image = append(out.Image, p)

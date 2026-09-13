@@ -25,6 +25,7 @@ var web embed.FS
 var idPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
 var hexPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 var hostPattern = regexp.MustCompile(`^[a-zA-Z0-9.-]+$`)
+
 // 严格邮箱格式：本地部分不含首尾点与连续点，域名必须带点且顶级域为字母，拒绝引号、IP、无点域名等不真实地址。
 var emailPattern = regexp.MustCompile(`^[a-z0-9_%+-]+(?:\.[a-z0-9_%+-]+)*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$`)
 
@@ -35,19 +36,19 @@ const networkErrorMessage = "网络异常，请稍后重试~"
 const generationSlots = 2
 
 type App struct {
-	db             *sql.DB
-	env            Env
-	files          string
-	jobsMu         sync.Mutex
-	jobs           map[string]*Job
-	slots          chan struct{}
-	uploads        chan struct{}
-	dispatch       chan struct{}
-	ctx            context.Context
-	cancel         context.CancelFunc
-	wg             sync.WaitGroup
-	mailSend       func(Settings, string, string) error
-	mailNotify     func(Settings, string, string, string) error
+	db         *sql.DB
+	env        Env
+	files      string
+	jobsMu     sync.Mutex
+	jobs       map[string]*Job
+	slots      chan struct{}
+	uploads    chan struct{}
+	dispatch   chan struct{}
+	ctx        context.Context
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup
+	mailSend   func(Settings, string, string) error
+	mailNotify func(Settings, string, string, string) error
 	// waitBudget 是任务从创建起可用来完成生成的总时长（提交等待 + 上游结果认领），
 	// 由 New 按 generationTimeout 与 upstreamRetention 设定；测试可缩短它来跳过等待。
 	waitBudget time.Duration
@@ -497,7 +498,7 @@ func (a *App) catalog(w http.ResponseWriter, r *http.Request) {
 	for i := range s.Styles {
 		s.Styles[i].Prompt = ""
 	}
-	respond(w, 200, map[string]any{"categories": s.Categories, "styles": s.Styles, "chargeOnFailure": s.ChargeOnFailure, "configured": a.secret("api_key") != "", "emailConfigured": s.MailHost != "" && s.MailFrom != "" && a.secret("mail_password") != "", "feedbackConfigured": a.feedbackConfigured(s), "estimates": a.estimates(s), "redeemHelp": s.RedeemHelp, "userConcurrency": s.UserConcurrency, "generationSlots": cap(a.slots)})
+	respond(w, 200, map[string]any{"categories": s.Categories, "styles": s.Styles, "chargeOnFailure": s.ChargeOnFailure, "configured": a.secret("api_key") != "", "emailConfigured": s.MailHost != "" && s.MailFrom != "" && a.secret("mail_password") != "", "feedbackConfigured": a.feedbackConfigured(s), "estimates": a.estimates(s), "redeemHelp": s.RedeemHelp, "userConcurrency": s.UserConcurrency, "generationSlots": cap(a.slots), "motionGrid": s.MotionGrid})
 }
 func (a *App) logout(w http.ResponseWriter, r *http.Request) {
 	s := current(r)

@@ -7,7 +7,7 @@
     <title>管理工作台 · 拾光 GIF</title>
     <link rel="stylesheet" href="/assets/style.v10.css" />
     <link rel="icon" href="/assets/icon.v1.svg" />
-    <script type="module" src="/assets/admin.v16.js"></script>
+    <script type="module" src="/assets/admin.v17.js"></script>
   </head>
   <body>
     <header class="header wrap admin-wrap">
@@ -260,9 +260,14 @@
           >
             <h2>角色模板与各步骤提示词</h2>
             <p class="hint">
-              可用变量：{{category}}、{{clothes}}、{{color}}、{{weapon}}、{{action}}。动作图必须保留
-              4×4 共16格，否则浏览器无法按预期合成。修改仅作用于之后的请求。
+              可用变量：{{category}}、{{clothes}}、{{color}}、{{weapon}}、{{action}}。动作序列图会按下方所选规格生成并合成；系统会在动作提示词末尾附加以所选规格为准的说明，模板里写死的格数描述可保留不改。修改仅作用于之后的请求。
             </p>
+            <label
+              >动作序列图规格<select id="motionGrid">
+                <option value="4x4">4×4 · 16格 · 每帧256×256（默认）</option>
+                <option value="5x5">5×5 · 25格 · 每帧128×128</option>
+              </select></label
+            >
             <label
               >照片处理 / 人物特征保留<textarea
                 id="identityPrompt"

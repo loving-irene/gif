@@ -272,9 +272,11 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, "请选择有效动作")
 			return
 		}
-		// 动作阶段只包含造型参数，避免将静态定稿的双视图要求带入16帧图；画风在两个阶段保持一致。
+		// 动作阶段只包含造型参数，避免将静态定稿的双视图要求带入帧图；画风在两个阶段保持一致。
 		appearance := "分类：{{category}}。服装：{{clothes}}。配色：{{color}}。武器：{{weapon}}。"
-		prompt = cfg.IdentityPrompt + "\n" + style.Prompt + "\n" + cat.Prompt + "\n" + renderPrompt(appearance, in.Selection, cat, "") + "\n" + renderPrompt(cfg.MotionPrompt, in.Selection, cat, action)
+		// 末尾附加以后台配置为准的网格规格说明：模板里写死的格数与所选规格不一致时以此覆盖，
+		// 生成侧（格数）与合成侧（切格方式）始终使用同一配置。
+		prompt = cfg.IdentityPrompt + "\n" + style.Prompt + "\n" + cat.Prompt + "\n" + renderPrompt(appearance, in.Selection, cat, "") + "\n" + renderPrompt(cfg.MotionPrompt, in.Selection, cat, action) + "\n" + motionSpecPrompt(cfg.MotionGrid)
 		images = append(images, in.Draft)
 	}
 	raw, _ := json.Marshal(in)
@@ -360,13 +362,14 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 单用户并发任务数由后台配置（默认5）：达到上限时拒绝新任务。
+	// 文案与前台预检一致（已达任务上限X），走 409 user-facing 提示，不落入通用网络错误文案。
 	var active int
 	if tx.QueryRow("SELECT COUNT(*) FROM jobs WHERE user_id=? AND status IN ('queued','running','pending_upstream')", uid).Scan(&active) != nil {
 		fail(w, 500, "创建失败")
 		return
 	}
 	if active >= cfg.UserConcurrency {
-		fail(w, 409, fmt.Sprintf("当前账号已有 %d 个任务在执行，请等待部分任务完成后再提交", cfg.UserConcurrency))
+		fail(w, 409, fmt.Sprintf("已达任务上限%d，请等待部分任务完成后再提交", cfg.UserConcurrency))
 		return
 	}
 	giftCost, paidCost := 0, 0

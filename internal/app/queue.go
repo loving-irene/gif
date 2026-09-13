@@ -198,8 +198,8 @@ func (a *App) markRunning(id string) bool {
 	return true
 }
 
-// applyResult 把上游返回的图片落盘、合成 GIF、签发定稿凭证。
-func (a *App) applyResult(ctx context.Context, id, uid, kind, photoHash string, selection Selection, output string) (receipt, gifImage string, err error) {
+// applyResult 把上游返回的图片落盘、按配置规格合成 GIF、签发定稿凭证。
+func (a *App) applyResult(ctx context.Context, id, uid, kind, photoHash string, selection Selection, output string, spec motionSpec) (receipt, gifImage string, err error) {
 	b, err := imageData(output, 20*1024*1024)
 	if err != nil {
 		return "", "", err
@@ -212,7 +212,7 @@ func (a *App) applyResult(ctx context.Context, id, uid, kind, photoHash string, 
 		a.debug(ctx, "result_save_error", map[string]any{"error": errorText(err)})
 	}
 	if kind == "motion" {
-		if g, err := synthesizeGIF(b); err != nil {
+		if g, err := synthesizeGIF(b, spec); err != nil {
 			a.debug(ctx, "gif_synth_error", map[string]any{"error": errorText(err)})
 		} else if err := a.saveFile(id, "gif", g); err != nil {
 			a.debug(ctx, "gif_save_error", map[string]any{"error": errorText(err)})
@@ -351,7 +351,7 @@ func (a *App) runJob(id string, inline *jobInput) {
 		}
 	}
 	if jobErr == nil {
-		receipt, gifImage, jobErr = a.applyResult(traceCtx, id, uid, kind, photoHash, selection, output)
+		receipt, gifImage, jobErr = a.applyResult(traceCtx, id, uid, kind, photoHash, selection, output, motionSpecOf(cfg.MotionGrid))
 	}
 	if jobErr != nil && upstreamTimedOut(jobErr) && upstream != "" {
 		// 上游仍在生成：保留任务与已扣次数，稍后继续认领同一个上游任务。

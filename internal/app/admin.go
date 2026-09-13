@@ -61,6 +61,10 @@ func (a *App) adminSettingsSave(w http.ResponseWriter, r *http.Request) {
 	}
 	// 兼容不带画风配置的旧后台页面：保存前补入默认的默认、Q版与水墨风格。
 	in.Settings.Styles = normalizeStyles(in.Settings.Styles)
+	// 兼容不带动作序列图规格的旧后台页面：保存前补入默认 4×4。
+	if in.Settings.MotionGrid == "" {
+		in.Settings.MotionGrid = "4x4"
+	}
 	if len(in.APIKey) > 1024 || len(in.MailPassword) > 1024 || strings.ContainsAny(in.APIKey, "\r\n") {
 		fail(w, 400, "密钥格式无效")
 		return
@@ -103,6 +107,7 @@ func (a *App) adminSettingsSave(w http.ResponseWriter, r *http.Request) {
 	a.audit(current(r).User.ID, "settings_updated", "")
 	respond(w, 200, map[string]bool{"ok": true})
 }
+
 // adminPageSize 是管理后台所有列表的统一分页大小。
 const adminPageSize = 100
 

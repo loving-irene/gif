@@ -94,24 +94,27 @@ type Style struct {
 	Prompt   string `json:"prompt"`
 }
 type Settings struct {
-	DefaultCredits         int        `json:"defaultCredits"`
-	RegistrationDailyLimit int        `json:"registrationDailyLimit"`
-	UserConcurrency        int        `json:"userConcurrency"`
-	ChargeOnFailure        bool       `json:"chargeOnFailure"`
-	RedeemHelp             string     `json:"redeemHelp"`
-	APIBase                string     `json:"apiBase"`
-	Model                  string     `json:"model"`
-	Quality                string     `json:"quality"`
-	AssetHosts             []string   `json:"assetHosts"`
-	IdentityPrompt         string     `json:"identityPrompt"`
-	DraftPrompt            string     `json:"draftPrompt"`
-	MotionPrompt           string     `json:"motionPrompt"`
-	Styles                 []Style    `json:"styles"`
-	Categories             []Category `json:"categories"`
-	MailHost               string     `json:"mailHost"`
-	MailPort               string     `json:"mailPort"`
-	MailUser               string     `json:"mailUser"`
-	MailFrom               string     `json:"mailFrom"`
+	DefaultCredits         int      `json:"defaultCredits"`
+	RegistrationDailyLimit int      `json:"registrationDailyLimit"`
+	UserConcurrency        int      `json:"userConcurrency"`
+	ChargeOnFailure        bool     `json:"chargeOnFailure"`
+	RedeemHelp             string   `json:"redeemHelp"`
+	APIBase                string   `json:"apiBase"`
+	Model                  string   `json:"model"`
+	Quality                string   `json:"quality"`
+	AssetHosts             []string `json:"assetHosts"`
+	IdentityPrompt         string   `json:"identityPrompt"`
+	DraftPrompt            string   `json:"draftPrompt"`
+	MotionPrompt           string   `json:"motionPrompt"`
+	// MotionGrid 控制动作序列图的网格规格：4x4 为 4×4 共16格（每帧256×256），
+	// 5x5 为 5×5 共25格（每帧128×128）。生成提示词与 GIF 合成共用该规格。
+	MotionGrid string     `json:"motionGrid"`
+	Styles     []Style    `json:"styles"`
+	Categories []Category `json:"categories"`
+	MailHost   string     `json:"mailHost"`
+	MailPort   string     `json:"mailPort"`
+	MailUser   string     `json:"mailUser"`
+	MailFrom   string     `json:"mailFrom"`
 	// FeedbackEmail 是用户反馈的接收邮箱，留空时发送到 MailFrom。
 	FeedbackEmail string `json:"feedbackEmail"`
 }
@@ -189,6 +192,7 @@ func defaults(e Env) Settings {
 		IdentityPrompt: "以自拍中的本人为身份参考，人物辨识度最高优先。保留脸型宽长比例、下颌轮廓、眉形、眼型、眼距、鼻形、嘴形、五官相对位置、发际线、发型、发色、肤色，以及清晰可见的眼镜、痣、雀斑。只做必要的裁切、曝光和白平衡调整，不瘦脸、不尖下巴、不放大眼睛、不美白、不改变年龄。不要变成通用动漫脸，不添加原图没有的身份特征。采用精致二维插画、清晰轮廓、简洁阴影、轻度Q版身体比例，面部明显对应本人。无法判断的衣服和身体依据下方设定设计。",
 		DraftPrompt:    "本轮只输出一张静态角色定稿图，同一张图内包含正面脸部近景和完整全身造型，供本人核对。纯净浅色背景，面部无遮挡，完整发型、手脚和装备入镜。无文字、无水印、无动作序列。分类：{{category}}。服装：{{clothes}}。配色：{{color}}。武器：{{weapon}}。",
 		MotionPrompt:   "图1是本人自拍，图2是已确认角色定稿。图1核对身份，图2固定画风、服装、比例、装备及配色，只改变动作表情。动作：{{action}}。输出一张1024×1024透明PNG，严格4列×4行共16格，每格256×256。仅全身角色连续动作，不包含定稿图的脸部近景。从左到右、从上到下排列同一次完整动作：1—4准备，5—8展开，9—12动作重点，13—16收势回位。镜头固定，大小稳定，地面基准线一致。允许合理位移，跳跃允许离地，结尾回起始位置，自然衔接第一帧。每格无边框无间隙无编号无文字，留安全边距，角色武器特效不跨格、不裁切。真实透明背景，不画棋盘格。脸部可见，避免转背、过度模糊、遮脸、五官变形、肢体错误和重复静止帧。",
+		MotionGrid:     "4x4",
 		Styles:         defaultStyles(),
 		Categories: []Category{
 			{ID: "male", Name: "男生", Subtitle: "披上铠甲，做自己的英雄", Icon: "⚔", Clothes: []string{"古代札甲", "古代鳞甲", "轻甲与短披风"}, Colors: []string{"玄黑与暗金", "银灰与藏蓝", "深红与铁灰"}, Weapons: []string{"长剑", "长枪", "关刀", "战斧"}, Prompt: "中国古代武将，英气精神有亲和力，保留年龄感，不添加胡须或夸张肌肉。护肩护腕腰带战裙战靴结构明确，细节简化。露出完整面部与发型，不用遮面头盔，短披风不挡动作。武器造型长度配色惯用手始终一致。", Actions: []Action{{"idle", "护卫待机", "🛡", "轻微呼吸，握持武器，短披风小幅摆动。"}, {"greet", "武者致意", "👋", "持械点头致意，武器远离脸部，再恢复原姿势。"}, {"attack", "蓄力攻击", "⚔", "压低重心、向前小幅踏步出招、收势回起点。长剑挥斩，长枪直刺，关刀横扫，战斧下劈；根据所选武器只做对应动作。"}, {"guard", "格挡防御", "🛡", "举起武器格挡，短促火花，恢复站姿。"}, {"win", "得胜庆祝", "✨", "将武器安全地举向侧上方，露出自信笑容，再回位。"}, {"rest", "收兵休息", "☕", "放松肩膀轻轻呼气，再恢复精神。"}}},
@@ -243,6 +247,10 @@ func (a *App) settings() (Settings, error) {
 	if s.UserConcurrency < 1 {
 		s.UserConcurrency = 5
 	}
+	// 兼容较早的配置：未设置动作序列图规格时使用默认 4×4（共16格、每帧256×256）。
+	if s.MotionGrid == "" {
+		s.MotionGrid = "4x4"
+	}
 	// 兼容较早的配置：缺少画风定义时补入默认的默认、Q版与水墨风格。
 	s.Styles = normalizeStyles(s.Styles)
 	return s, err
@@ -277,6 +285,10 @@ func validateSettings(s Settings) error {
 	}
 	if !contains([]string{"low", "medium", "high", "xhigh", "max"}, s.Quality) {
 		return errors.New("图片质量无效")
+	}
+	// 旧后台页面不带动作序列图规格（空串），保存前会补默认值，这里允许留空。
+	if s.MotionGrid != "" && !contains(motionGridIDs(), s.MotionGrid) {
+		return errors.New("动作序列图规格仅支持 4×4 或 5×5")
 	}
 	if len(s.IdentityPrompt) < 20 || len(s.DraftPrompt) < 20 || len(s.MotionPrompt) < 20 {
 		return errors.New("各步骤提示词不可为空")
