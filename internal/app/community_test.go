@@ -394,12 +394,41 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 	if !strings.Contains(body, `href="/community"`) || !strings.Contains(body, `class="community-link"`) {
 		t.Fatal("homepage missing community entry")
 	}
-	for _, asset := range []string{"/assets/app.v31.js", "/assets/style.v27.css"} {
+	for _, asset := range []string{"/assets/app.v32.js", "/assets/style.v27.css"} {
 		if !strings.Contains(body, asset) {
 			t.Fatal("homepage missing updated asset", asset)
 		}
 		if _, err := web.ReadFile("web/" + strings.TrimPrefix(asset, "/assets/")); err != nil {
 			t.Fatal("updated asset not embedded", asset, err)
 		}
+	}
+}
+
+// 首页页头的「个人账户」入口必须始终可点：任务在服务器后台异步执行，任何任务在跑都不该把
+// 整个账号入口禁用（曾经用 `$("accountBtn").disabled = tasks.size > 0` 锁成灰按钮，用户在
+// 等待生成时点不开账号弹窗，既看不到剩余次数也无法关联邮箱）。真正会丢任务的是「退出登录」，
+// 它只在弹窗内单独禁用，并在弹窗里说明原因。
+func TestHomepageAccountEntryStaysClickable(t *testing.T) {
+	a := testApp(t)
+	body := request(t, a, nil, "GET", "/", nil).Body.String()
+	if !strings.Contains(body, `<button id="accountBtn"`) {
+		t.Fatal("homepage missing account entry")
+	}
+	if !strings.Contains(body, `id="accountLockedHint"`) {
+		t.Fatal("account dialog missing locked hint")
+	}
+	raw, err := web.ReadFile("web/app.v32.js")
+	if err != nil {
+		t.Fatal("homepage script not embedded", err)
+	}
+	source := string(raw)
+	if strings.Contains(source, `$("accountBtn").disabled`) {
+		t.Fatal("account entry disabled again while tasks run")
+	}
+	if !strings.Contains(source, "function syncAccountActions()") || !strings.Contains(source, `$("logoutBtn").disabled = busy`) {
+		t.Fatal("account switching is no longer guarded inside the dialog")
+	}
+	if !strings.Contains(source, "syncAccountActions();") {
+		t.Fatal("account dialog does not refresh its action state")
 	}
 }

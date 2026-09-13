@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2026-09-14 · 0.1.46
+
+- 修复首页页头「个人账户」（☺ 头像按钮）在生成任务进行时点不开的问题：`updateControls()` 里一直有 `$("accountBtn").disabled = tasks.size > 0`，只要有定稿或动作在制作，整个账号入口就被禁用成灰按钮——任务可能跑好几分钟，刷新页面后恢复查询的任务最长还会持续 30 分钟，这段时间里用户点不开账号弹窗，看不到剩余次数、也做不了邮箱登录与兑换。现在账号入口不再禁用，任何任务在跑都能打开弹窗。
+- 「切换账号会丢任务」的保护挪到弹窗内部：只有真会丢任务的「退出当前账号」在任务进行时禁用（服务端仍会做完并保留 3 天，但换成新设备账号后再也找不回来），并在弹窗顶部用 `#accountLockedHint` 说明原因与任务数；保存账户名、查看剩余次数与调用记录、关联邮箱登录都不受影响（邮箱登录是账号合并，进行中的任务会跟着并入合并后的账号，不会失去归属）。每次打开弹窗都会按当时的任务状态刷新这行说明。
+- 首页脚本递增为 `app.v32.js`，`index.html` 与测试引用同步更新。新增 Go 测试 `TestHomepageAccountEntryStaysClickable`：首页脚本不得再出现 `$("accountBtn").disabled`，账号弹窗必须带 `#accountLockedHint`，且 `syncAccountActions()` 仍在弹窗内按 `tasks.size > 0` 禁用 `#logoutBtn`。
+
 ## 2026-09-13 · 0.1.45
 
 - 修复首页「示例作品」永远停在静态首帧、看起来不像动图的问题：挂载点是 `<picture class="showcase-media">`，而动画层是脚本运行时 `append` 进去的——浏览器不会播放运行时插入 `<picture>` 的图片，两份示例因此一直只有静态首帧（已用最小用例在 Chrome 里复现：同一张动画图放进 `div` 会动，放进 `picture` 一定不动）。现在把两处挂载点改成普通 `<div class="showcase-media">`，`.showcase-media` 自身的 `position: relative` / `aspect-ratio: 1` / `overflow: hidden` 与内层 `img` 规则都继续适用，动画层照旧绝对定位覆盖在首帧上。
