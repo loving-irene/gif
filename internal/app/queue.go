@@ -250,8 +250,13 @@ func upstreamTimedOut(err error) bool {
 	return errors.Is(err, context.DeadlineExceeded)
 }
 
-// upstreamRetention 是上游任务可继续认领的时长：超过后按失败收口，不再无限期占用生成槽位。
-const upstreamRetention = 30 * time.Minute
+// jobTimeLimit 是任务从创建起完成生成的总时长上限（20 分钟）：
+// 首轮提交等待 generationTimeout，剩余时间用于按上游任务号继续认领结果；
+// 超过上限的任务直接按失败收口，不再占用生成槽位。
+const jobTimeLimit = 20 * time.Minute
+
+// upstreamRetention 是首轮等待之外可继续认领上游结果的时长：jobTimeLimit 减去单次提交等待。
+const upstreamRetention = jobTimeLimit - generationTimeout
 
 // failReasonText 把任务失败原因整理成管理后台可安全展示的文本：
 // 已知内部错误给出中文说明，其余保留错误摘要并复用调试日志的脱敏规则（去密钥、URL 等）。
@@ -296,10 +301,6 @@ func (a *App) runJob(id string, inline *jobInput) {
 				input = &v
 			}
 		}
-	}
-	if !state.Resumed {
-		// 续查任务不再发出新的生成请求，因此保留 input.json 以便后续再次续查。
-		a.removeFile(id, "input.json")
 	}
 	cfg, cfgErr := a.settings()
 	traceCtx := context.WithValue(a.ctx, debugTraceKey{}, id)
@@ -418,4 +419,7 @@ func (a *App) runJob(id string, inline *jobInput) {
 	}
 	a.jobs[id] = &Job{ID: id, User: uid, Status: jobState, Image: output, Gif: gifImage, Receipt: receipt, Error: message, Charged: charged, Expires: time.Now().Add(10 * time.Minute).Unix(), StartedAt: started.UnixMilli(), ElapsedSeconds: int(callDuration.Seconds()), Estimate: nextEstimate}
 	a.jobsMu.Unlock()
+	// 任务已进入终态：输入不再需要（结果另有文件保留），删除输入文件；
+	// 未完结任务的输入保留在盘上，供服务重启后恢复执行或续查签发完整凭证。
+	a.removeFile(id, "input.json")
 }

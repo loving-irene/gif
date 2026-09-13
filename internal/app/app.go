@@ -50,7 +50,7 @@ type App struct {
 	mailSend   func(Settings, string, string) error
 	mailNotify func(Settings, string, string, string) error
 	// waitBudget 是任务从创建起可用来完成生成的总时长（提交等待 + 上游结果认领），
-	// 由 New 按 generationTimeout 与 upstreamRetention 设定；测试可缩短它来跳过等待。
+	// 即 jobTimeLimit（20 分钟），超过直接按失败收口；测试可缩短它来跳过等待。
 	waitBudget time.Duration
 	// pollInterval 是轮询上游结果的间隔，由 New 设为 providerPollInterval；
 	// 测试可缩短它，让“多次轮询后拿到结果”在秒级内确定地发生。
@@ -102,12 +102,7 @@ func New(e Env) (*App, error) {
  CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),request_id TEXT NOT NULL,digest TEXT NOT NULL,kind TEXT NOT NULL,status TEXT NOT NULL,gift_cost INTEGER NOT NULL,paid_cost INTEGER NOT NULL,refund_failure INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL,started INTEGER NOT NULL DEFAULT 0,action TEXT NOT NULL DEFAULT '',receipt TEXT NOT NULL DEFAULT '',dup_digest TEXT NOT NULL DEFAULT '',upstream_task_id TEXT NOT NULL DEFAULT '',upstream_wait_ms INTEGER NOT NULL DEFAULT 0,timing_recorded INTEGER NOT NULL DEFAULT 0,error_message TEXT NOT NULL DEFAULT '',UNIQUE(user_id,request_id));
  CREATE TABLE IF NOT EXISTS drafts(receipt TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),created INTEGER NOT NULL,selection TEXT NOT NULL DEFAULT '{}',image BLOB NOT NULL);
  CREATE INDEX IF NOT EXISTS drafts_user ON drafts(user_id,created DESC);
- CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT,actor TEXT NOT NULL,event TEXT NOT NULL,target TEXT NOT NULL,created INTEGER NOT NULL);
- BEGIN;
- UPDATE users SET gift=gift+COALESCE((SELECT SUM(gift_cost) FROM jobs WHERE jobs.user_id=users.id AND status IN ('queued','running','pending_upstream') AND refund_failure=1),0),paid=paid+COALESCE((SELECT SUM(paid_cost) FROM jobs WHERE jobs.user_id=users.id AND status IN ('queued','running','pending_upstream') AND refund_failure=1),0);
- UPDATE jobs SET gift_cost=0,paid_cost=0 WHERE status IN ('queued','running','pending_upstream') AND refund_failure=1;
- UPDATE jobs SET status='interrupted' WHERE status IN ('queued','running','pending_upstream');
- COMMIT;`); err != nil {
+ CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT,actor TEXT NOT NULL,event TEXT NOT NULL,target TEXT NOT NULL,created INTEGER NOT NULL);`); err != nil {
 		db.Close()
 		cancel()
 		return nil, err
@@ -128,6 +123,10 @@ func New(e Env) (*App, error) {
 		a.Close()
 		return nil, err
 	}
+	if err = a.recoverJobs(); err != nil {
+		a.Close()
+		return nil, err
+	}
 	raw, _ := json.Marshal(defaults(e))
 	if _, err = db.Exec("INSERT OR IGNORE INTO settings(key,value) VALUES('config',?)", string(raw)); err != nil {
 		a.Close()
@@ -143,7 +142,7 @@ func New(e Env) (*App, error) {
 	}
 	a.mailSend = a.sendMail
 	a.mailNotify = a.sendMailMessage
-	a.waitBudget = generationTimeout + upstreamRetention
+	a.waitBudget = jobTimeLimit
 	a.pollInterval = providerPollInterval
 	a.providerCall = a.callProvider
 	a.providerContinue = a.continueProvider
@@ -266,6 +265,52 @@ func (a *App) migrateJobs() error {
 		return err
 	}
 	return nil
+}
+
+// recoverJobs 恢复上次进程退出时遗留的活跃任务，替代原先“一律置为中断并退款”：
+//  1. 已记录上游任务号的（上游提交已成功）转回“等待上游结果”，调度器按原任务号继续认领，
+//     不重复提交、不产生第二次上游计费；
+//  2. 其余任务若输入文件（input.json）仍在，重新排队执行——仅出现在提交请求尚未被上游
+//     确认就中断的极小窗口，会重新提交一次上游请求，用户不会被扣第二次；
+//  3. 两者都不具备的（旧版本运行中任务的输入只在内存）按中断收口，并按退款配置退回次数。
+//
+// 恢复任务的执行由既有的 30 秒兜底通知触发，启动阶段不主动发起上游请求。
+func (a *App) recoverJobs() error {
+	if _, err := a.db.Exec("UPDATE jobs SET status=? WHERE status IN (?,?,?) AND upstream_task_id<>''", statusPendingUpstream, statusQueued, statusRunning, statusPendingUpstream); err != nil {
+		return err
+	}
+	rows, err := a.db.Query("SELECT id FROM jobs WHERE status IN (?,?)", statusQueued, statusRunning)
+	if err != nil {
+		return err
+	}
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil {
+			ids = append(ids, id)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if _, err := a.readFile(id, "input.json"); err != nil {
+			// 输入缺失（旧版本运行中任务的输入只在内存）：按中断收口，下面统一退款。
+			if _, err := a.db.Exec("UPDATE jobs SET status='interrupted',error_message='服务重启时任务被中断' WHERE id=? AND status IN (?,?)", id, statusQueued, statusRunning); err != nil {
+				return err
+			}
+			continue
+		}
+		if _, err := a.db.Exec("UPDATE jobs SET status=?,started=0 WHERE id=?", statusQueued, id); err != nil {
+			return err
+		}
+	}
+	if _, err := a.db.Exec(`UPDATE users SET gift=gift+COALESCE((SELECT SUM(gift_cost) FROM jobs WHERE jobs.user_id=users.id AND status='interrupted' AND refund_failure=1),0),paid=paid+COALESCE((SELECT SUM(paid_cost) FROM jobs WHERE jobs.user_id=users.id AND status='interrupted' AND refund_failure=1),0) WHERE id IN (SELECT user_id FROM jobs WHERE status='interrupted' AND refund_failure=1)`); err != nil {
+		return err
+	}
+	_, err = a.db.Exec("UPDATE jobs SET gift_cost=0,paid_cost=0 WHERE status='interrupted' AND refund_failure=1")
+	return err
 }
 func (a *App) Close() { a.cancel(); a.wg.Wait(); a.db.Close() }
 func (a *App) cleanup() {

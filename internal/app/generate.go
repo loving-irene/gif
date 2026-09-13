@@ -332,12 +332,11 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 	input := &jobInput{Prompt: prompt, Images: images, Selection: in.Selection, PhotoHash: photoHash}
 	id := token(16)
 	created := time.Now().Unix()
-	if !haveSlot {
-		// 排队任务的输入先落盘再提交事务，保证调度器可见时输入一定存在。
-		if b, err := json.Marshal(input); err != nil || a.saveFile(id, "input.json", b) != nil {
-			fail(w, 500, "创建失败，请稍后重试；本次未扣次")
-			return
-		}
+	// 任务输入统一先落盘再提交事务：排队任务由调度器读回；直接执行的任务在服务重启后
+	// 也能凭这份输入重新排队执行，而不是被中断退款。
+	if b, err := json.Marshal(input); err != nil || a.saveFile(id, "input.json", b) != nil {
+		fail(w, 500, "创建失败，请稍后重试；本次未扣次")
+		return
 	}
 	// 占到槽位时，若后续启动失败需要由本函数释放；成功启动后交给 runJob 释放。
 	release := haveSlot

@@ -12,6 +12,7 @@ import (
 	"image/png"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -387,6 +388,74 @@ func TestUpstreamResultClaimedAfterTimeout(t *testing.T) {
 	}
 }
 
+// 服务重启后，已记录上游任务号的在途任务转回“等待上游结果”，由调度器按原任务号续查：
+// 不再重复提交生成请求、不重复扣次，续查成功后凭落盘输入签发完整定稿凭证。
+func TestRestartResumesUpstreamClaim(t *testing.T) {
+	e := Env{Database: filepath.Join(t.TempDir(), "restart-upstream.db"), Secret: strings.Repeat("a", 64), AdminPassword: "test-admin-password-123", APIKey: "fake-only-test-key"}
+	a, err := New(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := loginDevice(t, a, "restart-upstream")
+	// 提交成功拿到上游任务号后阻塞等待：进程被杀时任务停留在 running、上游任务号已落盘。
+	release := make(chan struct{})
+	a.providerCall = func(ctx context.Context, cfg Settings, prompt string, images []string, onTaskID func(string)) (string, error) {
+		onTaskID("upstream-restart-1")
+		<-release
+		return sampleImage(false), nil
+	}
+	id := jobID(t, request(t, a, s, "POST", "/api/generate", draftInput()))
+	for i := 0; i < 200; i++ {
+		var up string
+		a.db.QueryRow("SELECT upstream_task_id FROM jobs WHERE id=?", id).Scan(&up)
+		if up != "" {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	a.Close()
+	a2, err := New(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a2.Close()
+	var status string
+	if a2.db.QueryRow("SELECT status FROM jobs WHERE id=?", id).Scan(&status); status != statusPendingUpstream {
+		t.Fatalf("job with upstream ID should resume waiting: %s", status)
+	}
+	if u, _ := a2.readUser(s.User.ID); u.Credits != 4 {
+		t.Fatalf("resumed job must stay charged: %d", u.Credits)
+	}
+	// 调度启动后按原任务号续查；期间不允许再提交新的生成请求。
+	var submits atomic.Int32
+	resumed := make(chan string, 4)
+	a2.providerCall = func(ctx context.Context, cfg Settings, prompt string, images []string, onTaskID func(string)) (string, error) {
+		submits.Add(1)
+		return "", context.DeadlineExceeded
+	}
+	a2.providerContinue = func(ctx context.Context, cfg Settings, taskID string) (string, error) {
+		select {
+		case resumed <- taskID:
+		default:
+		}
+		return sampleImage(false), nil
+	}
+	a2.signalDispatch()
+	if j := waitForStatus(t, a2, s, id, "succeeded"); j.Receipt == "" {
+		t.Fatalf("resumed job should deliver the draft: %+v", j)
+	}
+	if taskID := <-resumed; taskID != "upstream-restart-1" {
+		t.Fatalf("resume must claim the original upstream task: %s", taskID)
+	}
+	if submits.Load() != 0 {
+		t.Fatal("restart resume must not submit a new generation request")
+	}
+	if u, _ := a2.readUser(s.User.ID); u.Credits != 4 {
+		t.Fatalf("resumed job charged twice: %d", u.Credits)
+	}
+	close(release)
+}
+
 // 等待上游结果的任务超过总认领时效后按失败收口，避免一直占着并发额度与生成槽位。
 func TestUpstreamWaitWindowCollapsesToFailure(t *testing.T) {
 	a := testApp(t)
@@ -414,6 +483,8 @@ func TestUpstreamWaitWindowCollapsesToFailure(t *testing.T) {
 		t.Fatalf("failed waiting job was not refunded: %d", u.Credits)
 	}
 	// 内存缓存失效（服务重启）后，查询接口按数据库状态继续汇报等待，并带上 upstream 标记。
+	// 先停掉调度器：任务失败会触发一次兜底调度，避免它把手工置回的等待状态又改成 running。
+	a.cancel()
 	a.db.Exec("UPDATE jobs SET status=? WHERE id=?", statusPendingUpstream, id)
 	a.jobsMu.Lock()
 	a.jobs = map[string]*Job{}

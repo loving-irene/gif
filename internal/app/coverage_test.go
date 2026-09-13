@@ -113,14 +113,16 @@ func TestJobOwnershipAndInterruptedStatus(t *testing.T) {
 	}
 }
 
-func TestQueuedJobInterruptedOnRestartRefunds(t *testing.T) {
-	e := Env{Database: filepath.Join(t.TempDir(), "restart-queued.db"), Secret: strings.Repeat("a", 64), AdminPassword: "test-admin-password-123", APIKey: "fake-only-test-key"}
+// 服务重启不再一律中断退款：输入仍在服务器的任务重新排队并继续执行（不重复扣次）；
+// 输入缺失的任务（旧版本运行中任务的输入只在内存）才按中断收口并退款。
+func TestRestartRecoversJobsInsteadOfInterrupting(t *testing.T) {
+	e := Env{Database: filepath.Join(t.TempDir(), "restart-recover.db"), Secret: strings.Repeat("a", 64), AdminPassword: "test-admin-password-123", APIKey: "fake-only-test-key"}
 	a, err := New(e)
 	if err != nil {
 		t.Fatal(err)
 	}
 	setChargeOnFailure(t, a, false)
-	sessions := []*testSession{loginDevice(t, a, "restart-a"), loginDevice(t, a, "restart-b"), loginDevice(t, a, "restart-c")}
+	sessions := []*testSession{loginDevice(t, a, "recover-a"), loginDevice(t, a, "recover-b"), loginDevice(t, a, "recover-c")}
 	release := blockingProvider(a)
 	ids := make([]string, 3)
 	for i, s := range sessions {
@@ -132,25 +134,41 @@ func TestQueuedJobInterruptedOnRestartRefunds(t *testing.T) {
 			t.Fatalf("pre-restart credits %d", u.Credits)
 		}
 	}
-	dbPath := a.env.Database
+	// 第一个任务模拟旧版本行为：运行中任务的输入只在内存，重启后无从恢复。
+	a.removeFile(ids[0], "input.json")
 	a.Close()
 	a2, err := New(e)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer a2.Close()
-	for i, s := range sessions {
-		var status string
-		a2.db.QueryRow("SELECT status FROM jobs WHERE id=?", ids[i]).Scan(&status)
-		if status != "interrupted" {
-			t.Fatalf("job %d status %s", i, status)
-		}
-		u, _ := a2.readUser(s.User.ID)
-		if u.Credits != 5 {
-			t.Fatalf("user %d credits %d after restart", i, u.Credits)
+	// 输入缺失的任务被中断并退款。
+	var status string
+	if a2.db.QueryRow("SELECT status FROM jobs WHERE id=?", ids[0]).Scan(&status); status != "interrupted" {
+		t.Fatalf("job without input should be interrupted: %s", status)
+	}
+	if u, _ := a2.readUser(sessions[0].User.ID); u.Credits != 5 {
+		t.Fatalf("interrupted job not refunded: %d", u.Credits)
+	}
+	// 输入仍在的任务重新排队，保持已扣次，不退款。
+	for _, id := range ids[1:] {
+		if a2.db.QueryRow("SELECT status FROM jobs WHERE id=?", id).Scan(&status); status != "queued" {
+			t.Fatalf("recoverable job should be requeued: %s", status)
 		}
 	}
-	_ = dbPath
+	for _, s := range sessions[1:] {
+		if u, _ := a2.readUser(s.User.ID); u.Credits != 4 {
+			t.Fatalf("requeued job should stay charged: %d", u.Credits)
+		}
+	}
+	// 恢复排队的任务在调度启动后重新执行并成功。
+	instantProvider(a2)
+	a2.signalDispatch()
+	for i := 1; i < len(ids); i++ {
+		if j := waitJob(t, a2, sessions[i], ids[i]); j.Status != "succeeded" {
+			t.Fatalf("recovered job %s: %+v", ids[i], j)
+		}
+	}
 	close(release)
 }
 
