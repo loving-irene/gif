@@ -21,10 +21,11 @@
       {{.StructuredData}}
     </script>
     <link rel="icon" href="/assets/icon.v1.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/assets/style.v20.css" />
+    <link rel="stylesheet" href="/assets/style.v22.css" />
     <script src="/assets/app.v27.js" type="module"></script>
     <script src="/assets/share.v3.js" type="module"></script>
     <script src="/assets/contact.v1.js" type="module"></script>
+    <script src="/assets/showcase.v1.js" type="module"></script>
   </head>
   <body>
     <header class="header wrap">
@@ -88,6 +89,58 @@
         </div>
       </section>
       <div id="notice" class="notice" role="status" hidden></div>
+      <section class="showcase" aria-labelledby="showcaseTitle">
+        <div class="showcase-intro">
+          <span class="eyebrow">REAL LITTLE MOMENTS</span>
+          <h2 id="showcaseTitle">先看看，一张自拍能变成什么</h2>
+          <p>
+            两张动图都由一张自拍生成：先做出像你的专属角色，再让它动起来。约 1.4
+            秒的无限循环，微信、QQ 表情都能直接用。
+          </p>
+          <a class="text-button showcase-more" href="#studioTitle"
+            >我也要做一支 →</a
+          >
+        </div>
+        <ul class="showcase-list">
+          <li class="showcase-card">
+            <picture class="showcase-media">
+              <img
+                class="showcase-poster"
+                src="/assets/example-heart-poster.webp"
+                data-anim-src="/assets/example-heart.webp"
+                alt="示例作品：比心动作，角色双手在胸前比出爱心"
+                width="256"
+                height="256"
+                decoding="async"
+              />
+            </picture>
+            <div class="showcase-meta">
+              <b>给你比心</b>
+              <span>可爱日常 · 比心动作</span>
+            </div>
+          </li>
+          <li class="showcase-card">
+            <picture class="showcase-media">
+              <img
+                class="showcase-poster"
+                src="/assets/example-success-poster.webp"
+                data-anim-src="/assets/example-success.webp"
+                alt="示例作品：成功啦动作，角色抱着小熊开心庆祝"
+                width="256"
+                height="256"
+                decoding="async"
+              />
+            </picture>
+            <div class="showcase-meta">
+              <b>耶！成功啦</b>
+              <span>童趣庆祝 · 抱熊欢呼</span>
+            </div>
+          </li>
+        </ul>
+        <p class="showcase-note">
+          ✧ 示例为真实生成效果，人物形象来自用户上传的自拍。
+        </p>
+      </section>
       <section class="studio" aria-labelledby="studioTitle">
         <div class="studio-header">
           <div>
