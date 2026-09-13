@@ -104,7 +104,9 @@ func New(e Env) (*App, error) {
  CREATE INDEX IF NOT EXISTS drafts_user ON drafts(user_id,created DESC);
  CREATE TABLE IF NOT EXISTS works(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),created INTEGER NOT NULL,name TEXT NOT NULL DEFAULT '',category TEXT NOT NULL DEFAULT '',action TEXT NOT NULL DEFAULT '',gif BLOB,sheet BLOB);
  CREATE INDEX IF NOT EXISTS works_user ON works(user_id,created DESC);
- CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT,actor TEXT NOT NULL,event TEXT NOT NULL,target TEXT NOT NULL,created INTEGER NOT NULL);`); err != nil {
+ CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT,actor TEXT NOT NULL,event TEXT NOT NULL,target TEXT NOT NULL,created INTEGER NOT NULL);
+ CREATE TABLE IF NOT EXISTS credit_history(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id TEXT NOT NULL REFERENCES users(id),event TEXT NOT NULL CHECK(event IN ('register','redeem','admin')),credits INTEGER NOT NULL CHECK(credits>0),note TEXT NOT NULL DEFAULT '',created INTEGER NOT NULL);
+ CREATE INDEX IF NOT EXISTS credit_history_created ON credit_history(created,id);`); err != nil {
 		db.Close()
 		cancel()
 		return nil, err
@@ -118,6 +120,10 @@ func New(e Env) (*App, error) {
 		return nil, err
 	}
 	if err = a.migrateCodeMarks(); err != nil {
+		a.Close()
+		return nil, err
+	}
+	if err = a.migrateCreditHistory(); err != nil {
 		a.Close()
 		return nil, err
 	}
@@ -370,6 +376,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("POST /api/admin/codes/mark", a.auth(a.adminCodeMark, true))
 	mux.HandleFunc("POST /api/admin/codes/copy", a.auth(a.adminCodeCopy, true))
 	mux.HandleFunc("POST /api/admin/codes/restore", a.auth(a.adminCodeRestore, true))
+	mux.HandleFunc("GET /api/admin/credits", a.auth(a.adminCredits, true))
 	mux.HandleFunc("GET /api/admin/audit", a.auth(a.adminAudit, true))
 	mux.HandleFunc("GET /api/admin/jobs", a.auth(a.adminJobs, true))
 	mux.HandleFunc("GET /api/admin/jobs/history", a.auth(a.adminJobHistory, true))

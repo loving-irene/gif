@@ -304,6 +304,152 @@ func TestRedeemIsAtomicAndPermanent(t *testing.T) {
 		t.Fatalf("redemptions=%d credits=%d", success, u.Credits)
 	}
 }
+
+type creditHistoryItem struct {
+	User     string
+	UserName string `json:"userName"`
+	Event    string
+	Credits  int
+	Note     string
+	Created  int64
+}
+
+// loginAdmin 用管理密码把设备会话升级为管理会话。
+func loginAdmin(t *testing.T, a *App, s *testSession) {
+	t.Helper()
+	s.CSRF = a.mac("csrf:" + s.cookie.Value)
+	w := request(t, a, s, "POST", "/api/admin/login", map[string]string{"password": "test-admin-password-123"})
+	if w.Code != 200 {
+		t.Fatalf("admin login: %d %s", w.Code, w.Body.String())
+	}
+	s.cookie = w.Result().Cookies()[0]
+	var response map[string]string
+	json.Unmarshal(w.Body.Bytes(), &response)
+	s.CSRF = response["csrf"]
+}
+
+// TestCreditHistory 验证三类次数来源（注册赠送、兑换码、后台增加）实时写入历史，
+// 以及后台兑换记录列表与按账号搜索。
+func TestCreditHistory(t *testing.T) {
+	a := testApp(t)
+	s := loginDevice(t, a, "one")
+	code := strings.ToUpper(token(16))
+	codeHash := a.mac("code:" + code)
+	a.db.Exec("INSERT INTO codes(hash,label,credits,created) VALUES(?,'历史测试',7,0)", codeHash)
+	if w := request(t, a, s, "POST", "/api/redeem", map[string]string{"code": code}); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	loginAdmin(t, a, s)
+	if w := request(t, a, s, "POST", "/api/admin/users", map[string]any{"id": s.User.ID, "add": 3, "disabled": false}); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var page struct {
+		Items []creditHistoryItem `json:"items"`
+		Total int                 `json:"total"`
+	}
+	w := request(t, a, s, "GET", "/api/admin/credits?page=1", nil)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	json.Unmarshal(w.Body.Bytes(), &page)
+	if page.Total != 3 || len(page.Items) != 3 {
+		t.Fatalf("total=%d items=%d %s", page.Total, len(page.Items), w.Body.String())
+	}
+	byEvent := map[string]creditHistoryItem{}
+	for _, item := range page.Items {
+		byEvent[item.Event] = item
+	}
+	if byEvent["register"].Credits != 5 || byEvent["redeem"].Credits != 7 || byEvent["admin"].Credits != 3 {
+		t.Fatal("credit amounts mismatch", byEvent)
+	}
+	if got := byEvent["redeem"].Note; got != "兑换码 "+codeHash[:12] {
+		t.Fatal("redeem note mismatch:", got)
+	}
+	// 按账号编号搜索全部命中，不存在的关键词无结果。
+	json.Unmarshal(request(t, a, s, "GET", "/api/admin/credits?q="+s.User.ID, nil).Body.Bytes(), &page)
+	if page.Total != 3 {
+		t.Fatalf("search by id total=%d", page.Total)
+	}
+	json.Unmarshal(request(t, a, s, "GET", "/api/admin/credits?q=no-such-user", nil).Body.Bytes(), &page)
+	if page.Total != 0 || len(page.Items) != 0 {
+		t.Fatalf("unknown search total=%d", page.Total)
+	}
+	// 不增加次数、仅保存停用状态时不产生历史记录。
+	if w := request(t, a, s, "POST", "/api/admin/users", map[string]any{"id": s.User.ID, "add": 0, "disabled": false}); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	json.Unmarshal(request(t, a, s, "GET", "/api/admin/credits?page=1", nil).Body.Bytes(), &page)
+	if page.Total != 3 {
+		t.Fatalf("zero add should not record history, total=%d", page.Total)
+	}
+}
+
+// TestCreditHistoryBackfill 模拟旧库首次升级：兑换码兑换与后台增加从原表精确回溯，
+// 注册赠送按“剩余赠送+已消耗赠送”估算，无法解析或不存在的审计记录跳过；重复重启不重复回溯。
+func TestCreditHistoryBackfill(t *testing.T) {
+	e := Env{Database: filepath.Join(t.TempDir(), "backfill.db"), BaseURL: "http://127.0.0.1:8096", Secret: strings.Repeat("a", 64), AdminPassword: "test-admin-password-123"}
+	a, err := New(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 构造升级前的旧库数据：消耗过 1 次赠送、剩 2 次赠送的账号、已兑换的兑换码与审计记录。
+	a.db.Exec("INSERT INTO users(id,name,gift,paid,created) VALUES('u1','用户一',2,0,100)")
+	a.db.Exec("INSERT INTO jobs(id,user_id,request_id,digest,kind,status,gift_cost,paid_cost,created) VALUES('j1','u1','r1','d','draft','succeeded',1,0,50)")
+	a.db.Exec("INSERT INTO codes(hash,label,credits,used_by,used_at,created) VALUES(?,'旧批次',7,'u1',200,0)", strings.Repeat("b", 64))
+	a.db.Exec("INSERT INTO audit(actor,event,target,created) VALUES('admin','user_update','u1 add=3 disabled=false',300)")
+	a.db.Exec("INSERT INTO audit(actor,event,target,created) VALUES('admin','user_update','u1 add=0 disabled=true',301)")
+	a.db.Exec("INSERT INTO audit(actor,event,target,created) VALUES('admin','user_update','missing-user add=9 disabled=false',302)")
+	// 删除历史表与回溯标记，还原为“未升级”状态后重启触发回溯。
+	a.db.Exec("DROP TABLE credit_history")
+	a.db.Exec("DELETE FROM settings WHERE key='credit_history_backfill'")
+	a.Close()
+	a, err = New(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := a.db.Query("SELECT user_id,event,credits,note,created FROM credit_history ORDER BY created")
+	if err != nil {
+		a.Close()
+		t.Fatal(err)
+	}
+	got := []creditHistoryItem{}
+	for rows.Next() {
+		var item creditHistoryItem
+		if err := rows.Scan(&item.User, &item.Event, &item.Credits, &item.Note, &item.Created); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, item)
+	}
+	rows.Close()
+	want := []creditHistoryItem{
+		{User: "u1", Event: "register", Credits: 3, Note: "历史估算", Created: 100},
+		{User: "u1", Event: "redeem", Credits: 7, Note: "兑换码 " + strings.Repeat("b", 12), Created: 200},
+		{User: "u1", Event: "admin", Credits: 3, Created: 300},
+	}
+	if len(got) != len(want) {
+		a.Close()
+		t.Fatalf("backfill rows = %+v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			a.Close()
+			t.Fatalf("row %d = %+v want %+v", i, got[i], want[i])
+		}
+	}
+	a.Close()
+	// 再次重启不会重复回溯。
+	a, err = New(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	var count int
+	a.db.QueryRow("SELECT COUNT(*) FROM credit_history").Scan(&count)
+	if count != len(want) {
+		t.Fatalf("repeated backfill count=%d", count)
+	}
+}
+
 func TestEmailMergePreservesPaidNotGift(t *testing.T) {
 	a := testApp(t)
 	one := loginDevice(t, a, "one")

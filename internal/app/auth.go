@@ -63,6 +63,7 @@ func (a *App) bootstrap(w http.ResponseWriter, r *http.Request) {
 		}
 		// 默认用户名须在开启事务前生成：数据库仅单连接，事务内再查询会死锁。
 		name := a.defaultName()
+		created := time.Now().Unix()
 		tx, e := a.db.Begin()
 		if e != nil {
 			fail(w, 500, "账号创建失败")
@@ -70,8 +71,12 @@ func (a *App) bootstrap(w http.ResponseWriter, r *http.Request) {
 		}
 		defer tx.Rollback()
 		uid = token(16)
-		if _, e = tx.Exec("INSERT INTO users(id,name,gift,created) VALUES(?,?,?,?)", uid, name, gift, time.Now().Unix()); e == nil {
-			_, e = tx.Exec("INSERT INTO devices(credential,fingerprint,user_id,created) VALUES(?,?,?,?)", cred, a.mac("fp:"+in.Fingerprint), uid, time.Now().Unix())
+		if _, e = tx.Exec("INSERT INTO users(id,name,gift,created) VALUES(?,?,?,?)", uid, name, gift, created); e == nil {
+			_, e = tx.Exec("INSERT INTO devices(credential,fingerprint,user_id,created) VALUES(?,?,?,?)", cred, a.mac("fp:"+in.Fingerprint), uid, created)
+		}
+		// 注册赠送同步记入次数历史；限流后零额度赠送不产生记录。
+		if e == nil && gift > 0 {
+			e = addCredit(tx, uid, creditEventRegister, gift, "", created)
 		}
 		if e != nil || tx.Commit() != nil {
 			fail(w, 409, "设备正在连接，请重试")
@@ -430,12 +435,18 @@ func (a *App) redeem(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	var credits int
-	err = tx.QueryRow("UPDATE codes SET used_by=?,used_at=? WHERE hash=? AND used_by IS NULL RETURNING credits", s.User.ID, time.Now().Unix(), a.mac("code:"+code)).Scan(&credits)
+	codeHash := a.mac("code:" + code)
+	redeemedAt := time.Now().Unix()
+	err = tx.QueryRow("UPDATE codes SET used_by=?,used_at=? WHERE hash=? AND used_by IS NULL RETURNING credits", s.User.ID, redeemedAt, codeHash).Scan(&credits)
 	if err != nil {
 		fail(w, 400, "兑换码无效或已经使用")
 		return
 	}
 	_, err = tx.Exec("UPDATE users SET paid=paid+? WHERE id=?", credits, s.User.ID)
+	if err == nil {
+		// 兑换获得同步记入次数历史，备注携带兑换码编号便于与兑换码列表对照。
+		err = addCredit(tx, s.User.ID, creditEventRedeem, credits, "兑换码 "+codeHash[:12], redeemedAt)
+	}
 	if err != nil || tx.Commit() != nil {
 		fail(w, 500, "兑换失败")
 		return

@@ -176,6 +176,13 @@ func (a *App) adminUserUpdate(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "账号不存在")
 		return
 	}
+	// 手动增加的次数同步记入次数历史；仅勾选停用不产生记录。
+	if in.Add > 0 {
+		if err := addCredit(a.db, in.ID, creditEventAdmin, in.Add, "", time.Now().Unix()); err != nil {
+			fail(w, 500, "更新失败")
+			return
+		}
+	}
 	if in.Disabled {
 		a.db.Exec("DELETE FROM sessions WHERE user_id=?", in.ID)
 	}

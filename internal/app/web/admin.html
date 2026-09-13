@@ -7,7 +7,7 @@
     <title>管理工作台 · 拾光 GIF</title>
     <link rel="stylesheet" href="/assets/style.v21.css" />
     <link rel="icon" href="/assets/icon.v1.svg" />
-    <script type="module" src="/assets/admin.v21.js"></script>
+    <script type="module" src="/assets/admin.v22.js"></script>
   </head>
   <body>
     <header class="header wrap admin-wrap">
@@ -46,6 +46,7 @@
           <button type="button" data-tab="configSection">基础与接口</button>
           <button type="button" data-tab="promptSection">角色与提示词</button>
           <button type="button" data-tab="codeSection">兑换码</button>
+          <button type="button" data-tab="creditSection">兑换记录</button>
           <button type="button" data-tab="userSection">账号管理</button>
           <button type="button" data-tab="auditSection">操作记录</button>
         </nav>
@@ -357,6 +358,46 @@
             </button>
             <span id="codesPageInfo" class="hint">第 1 / 1 页 · 共 0 条</span>
             <button id="codesNext" class="secondary" type="button" disabled>
+              下一页
+            </button>
+          </div>
+        </section>
+        <section id="creditSection" class="admin-section admin-panel" hidden>
+          <h2>兑换记录</h2>
+          <form id="creditSearchForm" class="code-row">
+            <label
+              >按邮箱、账户名或账号搜索<input
+                id="creditSearch"
+                placeholder="账户名、邮箱或账号编号" /></label
+            ><button class="secondary">搜索</button>
+          </form>
+          <p class="hint">
+            记录账号获得次数的全部来源：注册赠送、兑换码兑换（备注列为兑换码编号，可与“兑换码”页签对照）、后台手动增加，按时间倒序。升级前创建的注册赠送按估算回溯，备注标注“历史估算”。
+          </p>
+          <button id="refreshCredits" class="text-button" type="button">
+            ↻ 立即刷新
+          </button>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>类型</th>
+                  <th>账号</th>
+                  <th>用户名</th>
+                  <th>次数</th>
+                  <th>备注</th>
+                </tr>
+              </thead>
+              <tbody id="creditsRows"></tbody>
+            </table>
+          </div>
+          <div class="pager">
+            <button id="creditsPrev" class="secondary" type="button" disabled>
+              上一页
+            </button>
+            <span id="creditsPageInfo" class="hint">第 1 / 1 页 · 共 0 条</span>
+            <button id="creditsNext" class="secondary" type="button" disabled>
               下一页
             </button>
           </div>
