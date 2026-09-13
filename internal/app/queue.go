@@ -158,6 +158,11 @@ func (a *App) dispatcher() {
 // 再按创建顺序启动排队任务；runJob 负责释放槽位并再次触发调度。
 func (a *App) drainQueue() {
 	for {
+		// 应用关停（上下文取消）后不再启动任务：关停前的兜底通知可能仍滞留在调度通道里，
+		// 若继续处理，会把手工置回“等待上游结果”的任务又改成 running。
+		if a.ctx.Err() != nil {
+			return
+		}
 		select {
 		case a.slots <- struct{}{}:
 		default:
