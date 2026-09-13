@@ -385,6 +385,12 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "创建失败，请稍后重试")
 		return
 	}
+	// 消耗随扣次同事务记入统计日志（携带任务类型与人物分类），失败退款时删除，
+	// 供每日统计邮件按“定稿图/GIF 动图”“男生/女生/小朋友”等维度汇总实际消耗。
+	if _, err = tx.Exec("INSERT INTO usage_stats(job_id,user_id,kind,category,action,created) VALUES(?,?,?,?,?,?)", id, uid, in.Kind, in.Selection.Category, in.Action, created); err != nil {
+		fail(w, 500, "创建失败")
+		return
+	}
 	if _, err = tx.Exec("UPDATE users SET gift=gift-?,paid=paid-? WHERE id=?", giftCost, paidCost, uid); err != nil {
 		fail(w, 500, "扣次失败")
 		return

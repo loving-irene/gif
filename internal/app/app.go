@@ -106,7 +106,9 @@ func New(e Env) (*App, error) {
  CREATE INDEX IF NOT EXISTS works_user ON works(user_id,created DESC);
  CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT,actor TEXT NOT NULL,event TEXT NOT NULL,target TEXT NOT NULL,created INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS credit_history(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id TEXT NOT NULL REFERENCES users(id),event TEXT NOT NULL CHECK(event IN ('register','redeem','admin')),credits INTEGER NOT NULL CHECK(credits>0),note TEXT NOT NULL DEFAULT '',created INTEGER NOT NULL);
- CREATE INDEX IF NOT EXISTS credit_history_created ON credit_history(created,id);`); err != nil {
+ CREATE INDEX IF NOT EXISTS credit_history_created ON credit_history(created,id);
+ CREATE TABLE IF NOT EXISTS usage_stats(id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT NOT NULL UNIQUE,user_id TEXT NOT NULL,kind TEXT NOT NULL,category TEXT NOT NULL DEFAULT '',action TEXT NOT NULL DEFAULT '',created INTEGER NOT NULL);
+ CREATE INDEX IF NOT EXISTS usage_stats_created ON usage_stats(created);`); err != nil {
 		db.Close()
 		cancel()
 		return nil, err
@@ -168,6 +170,22 @@ func New(e Env) (*App, error) {
 				return
 			case <-ticker.C:
 				a.cleanup()
+			}
+		}
+	}()
+	// 每日统计邮件：北京时间每天 00:23 起汇总前一天的新增用户、消耗次数（定稿图/GIF 动图、
+	// 男生/女生/小朋友分类）与兑换码兑换等，发送到通知邮箱；每分钟检查，每天最多成功发送一封。
+	a.wg.Add(1)
+	go func() {
+		defer a.wg.Done()
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				a.dailyStatsTick(time.Now().In(beijingZone))
 			}
 		}
 	}()
@@ -318,6 +336,11 @@ func (a *App) recoverJobs() error {
 		return err
 	}
 	_, err = a.db.Exec("UPDATE jobs SET gift_cost=0,paid_cost=0 WHERE status='interrupted' AND refund_failure=1")
+	if err != nil {
+		return err
+	}
+	// 中断退款的消耗统计记录一并删除，与在线失败退款的统计口径一致。
+	_, err = a.db.Exec("DELETE FROM usage_stats WHERE job_id IN (SELECT id FROM jobs WHERE status='interrupted' AND refund_failure=1)")
 	return err
 }
 func (a *App) Close() { a.cancel(); a.wg.Wait(); a.db.Close() }

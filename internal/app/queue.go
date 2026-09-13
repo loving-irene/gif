@@ -424,6 +424,10 @@ func (a *App) runJob(id string, inline *jobInput) {
 				if er == nil {
 					_, er = refund.Exec("UPDATE jobs SET gift_cost=0,paid_cost=0 WHERE id=?", id)
 				}
+				// 退款成功的同时删除消耗统计记录，保证每日统计只计实际消耗。
+				if er == nil {
+					_, er = refund.Exec("DELETE FROM usage_stats WHERE job_id=?", id)
+				}
 				if er == nil {
 					er = refund.Commit()
 				} else {
