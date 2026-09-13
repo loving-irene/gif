@@ -23,6 +23,10 @@ usage: check_deploy_version.sh [--branch <name>] [--fetch] [--quiet] [applicatio
   4   stuck                      HEAD 已等于 origin/<branch>，但状态文件仍是旧提交
   1   unknown                    状态文件缺失或无法解析、无法解析 origin 引用、不是 git 仓库
   64  用法错误
+
+非 up-to-date 时（交互模式）会询问是否回滚一个提交并重新部署，
+确认后才执行 git reset --hard HEAD~1 与 scripts/auto_deploy.sh；
+--quiet 或空输入/非 y 视为取消，不执行回滚。
 EOF
 }
 
@@ -206,18 +210,14 @@ say_field "status:" "${STATUS}"
 case "$STATUS" in
   newer-commit-available)
     say ""
-    say "提示：origin/${BRANCH} 上有尚未上线的提交。"
-    say "      可等待 5 分钟一次的自动部署 cron，或手工执行："
-    say "      /usr/bin/bash ${SCRIPT_DIR}/auto_deploy.sh"
+    say "提示：origin/${BRANCH} 上有尚未上线的提交，可确认后回滚一个提交并重新部署。"
     ;;
   stuck)
     say ""
     say "提示：HEAD 已经等于 origin/${BRANCH}，但状态文件记录的仍然是旧提交，"
-    say "      说明上一次部署没有成功（构建失败或被跳过），部署处于卡死状态。"
-    say "      请先释放磁盘空间："
+    say "      说明上一次部署没有成功，可确认后回滚一个提交并重新部署。"
+    say "      若因磁盘空间不足导致构建失败，请先释放磁盘空间："
     say "      /usr/bin/bash ${SCRIPT_DIR}/clean_disk.sh"
-    say "      再手工重跑一次部署（auto_deploy.sh 会因状态文件不一致而重新构建）："
-    say "      /usr/bin/bash ${SCRIPT_DIR}/auto_deploy.sh"
     ;;
   unknown)
     say ""
@@ -244,6 +244,43 @@ case "$STATUS" in
     esac
     ;;
 esac
+
+# confirm_rollback 交互确认是否回滚并重新部署；空输入或非 y/yes 视为取消。
+confirm_rollback() {
+  printf '检测到状态 %s：是否回滚一个提交并重新部署？[y/N] ' "$STATUS" >&2
+  local answer=""
+  read -r answer || answer=""
+  case "$answer" in
+    [yY]|[yY][eE][sS]) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# 非 up-to-date 时先交互确认，确认后才回滚一个提交并重新部署；所有路径均使用绝对路径。
+if [ "$STATUS" != "up-to-date" ] && [ "$IS_REPO" -eq 1 ] && [ -n "$HEAD_COMMIT" ]; then
+  say ""
+  if [ "$QUIET" -eq 1 ]; then
+    : # 静默模式：不执行回滚与重新部署，仅输出状态。
+  elif confirm_rollback; then
+    say "已确认，开始回滚并重新部署。"
+    say "执行: git -C ${APP_DIR} reset --hard HEAD~1"
+    if ! git -C "$APP_DIR" reset --hard HEAD~1; then
+      echo "回滚失败：git -C ${APP_DIR} reset --hard HEAD~1" >&2
+      exit "$EXIT_CODE"
+    fi
+    say "已回滚到: $(git -C "$APP_DIR" rev-parse --short HEAD 2>/dev/null || true)"
+    say "执行: /usr/bin/bash ${SCRIPT_DIR}/auto_deploy.sh"
+    if BRANCH="$BRANCH" DEPLOY_STATE_FILE="$STATE_FILE" /usr/bin/bash "${SCRIPT_DIR}/auto_deploy.sh"; then
+      say "自动部署完成，状态已恢复为 up-to-date。"
+      EXIT_CODE=0
+      STATUS="up-to-date"
+    else
+      echo "自动部署失败（auto_deploy.sh 返回非零）" >&2
+    fi
+  else
+    say "未确认，跳过回滚与重新部署。"
+  fi
+fi
 
 if [ "$QUIET" -eq 1 ]; then
   printf '%s\n' "$STATUS"
