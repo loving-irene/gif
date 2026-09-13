@@ -157,16 +157,16 @@ func TestDeviceCredentialAndCSRF(t *testing.T) {
 	}
 }
 
-func TestFreeQuotaLimitStillAllowsExistingEmailLogin(t *testing.T) {
+func TestNewUsersAlwaysGetDefaultCredits(t *testing.T) {
 	a := testApp(t)
 	cfg, _ := a.settings()
-	cfg.RegistrationDailyLimit = 1
+	cfg.DefaultCredits = 7
 	raw, _ := json.Marshal(cfg)
 	a.db.Exec("UPDATE settings SET value=? WHERE key='config'", string(raw))
 	one := loginDevice(t, a, "one")
 	two := loginDevice(t, a, "two")
-	if one.User.Credits != 5 || two.User.Credits != 0 {
-		t.Fatal("network quota should stop extra free grants, not account login")
+	if one.User.Credits != 7 || two.User.Credits != 7 {
+		t.Fatal("every new user should get the default gift credits")
 	}
 }
 
@@ -552,7 +552,6 @@ func TestBrowserHarness(t *testing.T) {
 	a := testApp(t)
 	a.env.BaseURL = "http://localhost:8097"
 	cfg, _ := a.settings()
-	cfg.RegistrationDailyLimit = 100
 	cfg.DefaultCredits = 30
 	raw, _ := json.Marshal(cfg)
 	a.db.Exec("UPDATE settings SET value=? WHERE key='config'", string(raw))

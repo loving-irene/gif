@@ -57,13 +57,10 @@ func (a *App) bootstrap(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		gift := cfg.DefaultCredits
-		if !a.limit("register-gift:"+a.ip(r), cfg.RegistrationDailyLimit, 24*time.Hour) {
-			// 免费额度限流不阻止用户登录已有邮箱账号。
-			gift = 0
-		}
 		// 默认用户名须在开启事务前生成：数据库仅单连接，事务内再查询会死锁。
 		name := a.defaultName()
 		created := time.Now().Unix()
+		ip := a.rawIP(r)
 		tx, e := a.db.Begin()
 		if e != nil {
 			fail(w, 500, "账号创建失败")
@@ -71,10 +68,10 @@ func (a *App) bootstrap(w http.ResponseWriter, r *http.Request) {
 		}
 		defer tx.Rollback()
 		uid = token(16)
-		if _, e = tx.Exec("INSERT INTO users(id,name,gift,created) VALUES(?,?,?,?)", uid, name, gift, created); e == nil {
+		if _, e = tx.Exec("INSERT INTO users(id,name,gift,created,ip) VALUES(?,?,?,?,?)", uid, name, gift, created, ip); e == nil {
 			_, e = tx.Exec("INSERT INTO devices(credential,fingerprint,user_id,created) VALUES(?,?,?,?)", cred, a.mac("fp:"+in.Fingerprint), uid, created)
 		}
-		// 注册赠送同步记入次数历史；限流后零额度赠送不产生记录。
+		// 注册赠送同步记入次数历史。
 		if e == nil && gift > 0 {
 			e = addCredit(tx, uid, creditEventRegister, gift, "", created)
 		}

@@ -121,11 +121,6 @@ func TestServerGIFSynthesis5x5Grid(t *testing.T) {
 
 func TestJobsQueueWhenSlotsFullAndAdminListsActive(t *testing.T) {
 	a := testApp(t)
-	// 本测试需要4个设备账号（管理员+3位用户），放宽同网络注册上限。
-	cfg, _ := a.settings()
-	cfg.RegistrationDailyLimit = 100
-	raw, _ := json.Marshal(cfg)
-	a.db.Exec("UPDATE settings SET value=? WHERE key='config'", string(raw))
 	admin := codeAdmin(t, a, loginDevice(t, a, "admin"))
 	one := loginDevice(t, a, "queue-one")
 	two := loginDevice(t, a, "queue-two")

@@ -261,7 +261,6 @@ func TestValidateSettingsRejectsBadConfigs(t *testing.T) {
 	}{
 		{"兑换帮助超长", func(s *Settings) { s.RedeemHelp = strings.Repeat("字", 2001) }},
 		{"默认次数越界", func(s *Settings) { s.DefaultCredits = 1001 }},
-		{"注册上限越界", func(s *Settings) { s.RegistrationDailyLimit = 0 }},
 		{"分类数量错误", func(s *Settings) { s.Categories = s.Categories[:2] }},
 		{"接口地址非法", func(s *Settings) { s.APIBase = "https://evil.example/api/v1" }},
 		{"模型非法", func(s *Settings) { s.Model = "other-model" }},

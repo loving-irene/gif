@@ -67,8 +67,9 @@ type User struct {
 	Email    string `json:"email"`
 	Credits  int    `json:"credits"`
 	Disabled bool   `json:"disabled"`
-	// Created 只在管理后台账号列表填充；会话等场景保持零值并由 omitempty 隐藏。
-	Created int64 `json:"created,omitempty"`
+	// Created 与 IP 只在管理后台账号列表填充；会话等场景保持零值并由 omitempty 隐藏。
+	Created int64  `json:"created,omitempty"`
+	IP      string `json:"ip,omitempty"`
 }
 type session struct {
 	User  User
@@ -92,7 +93,7 @@ func New(e Env) (*App, error) {
 	a := &App{db: db, env: e, files: files, jobs: map[string]*Job{}, slots: make(chan struct{}, generationSlots), uploads: make(chan struct{}, 2), dispatch: make(chan struct{}, 1), ctx: ctx, cancel: cancel}
 	if _, err = db.Exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
  CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
- CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,email TEXT UNIQUE,name TEXT,gift INTEGER NOT NULL CHECK(gift>=0),paid INTEGER NOT NULL DEFAULT 0 CHECK(paid>=0),disabled INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL);
+ CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,email TEXT UNIQUE,name TEXT,gift INTEGER NOT NULL CHECK(gift>=0),paid INTEGER NOT NULL DEFAULT 0 CHECK(paid>=0),disabled INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL,ip TEXT NOT NULL DEFAULT '');
  CREATE TABLE IF NOT EXISTS devices(credential TEXT PRIMARY KEY,fingerprint TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES users(id),created INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS aliases(old_id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id));
  CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),admin INTEGER NOT NULL DEFAULT 0,expires INTEGER NOT NULL);
@@ -207,7 +208,7 @@ func New(e Env) (*App, error) {
 	return a, nil
 }
 
-// migrateUsers 为旧数据库补齐自定义账户名列。
+// migrateUsers 为旧数据库补齐自定义账户名与注册 IP 列。
 func (a *App) migrateUsers() error {
 	rows, err := a.db.Query("PRAGMA table_info(users)")
 	if err != nil {
@@ -230,6 +231,12 @@ func (a *App) migrateUsers() error {
 	}
 	if !cols["name"] {
 		if _, err = a.db.Exec("ALTER TABLE users ADD COLUMN name TEXT"); err != nil {
+			return err
+		}
+	}
+	// ip 记录注册时的来源 IP，仅用于管理后台展示；历史账号没有记录，后台显示为“-”。
+	if !cols["ip"] {
+		if _, err = a.db.Exec("ALTER TABLE users ADD COLUMN ip TEXT NOT NULL DEFAULT ''"); err != nil {
 			return err
 		}
 	}
@@ -481,14 +488,19 @@ func (a *App) Handler() http.Handler {
 		mux.ServeHTTP(w, r)
 	})
 }
-func (a *App) ip(r *http.Request) string {
+// rawIP 返回请求来源 IP 的明文：代理可信时优先取 X-Real-IP，供注册 IP 记录与管理后台展示。
+func (a *App) rawIP(r *http.Request) string {
 	host, _, _ := net.SplitHostPort(r.RemoteAddr)
 	if a.env.TrustProxy && net.ParseIP(host) != nil && net.ParseIP(host).IsLoopback() {
 		if ip := net.ParseIP(r.Header.Get("X-Real-IP")); ip != nil {
 			host = ip.String()
 		}
 	}
-	return a.mac("ip:" + host)
+	return host
+}
+// ip 返回来源 IP 的哈希值，仅用于限流键，避免在日志/限流表中落明文。
+func (a *App) ip(r *http.Request) string {
+	return a.mac("ip:" + a.rawIP(r))
 }
 func (a *App) limit(key string, n int, window time.Duration) bool {
 	now := time.Now().Unix()
