@@ -517,6 +517,65 @@ func (a *App) draftImage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, max-age=86400")
 	w.Write(image)
 }
+
+// works 返回当前账号云端保存的作品集列表（不含 GIF 本体），供页面与本机作品合并实现跨设备同步。
+// 云端副本最多保留 worksRetention（3天），到期由周期清理删除；retentionSeconds 一并下发，
+// 供前端区分“保留期内消失=被其他设备删除”与“超过保留期消失=服务器到期清理”。
+func (a *App) works(w http.ResponseWriter, r *http.Request) {
+	uid := current(r).User.ID
+	rows, err := a.db.Query("SELECT id,created,name,category,COALESCE(action,''),gif IS NOT NULL FROM works WHERE user_id=? ORDER BY created DESC,rowid DESC LIMIT ?", uid, worksPerUser)
+	if err != nil {
+		fail(w, 500, "读取失败")
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id, name, category, action string
+		var created int64
+		var hasGif bool
+		if rows.Scan(&id, &created, &name, &category, &action, &hasGif) == nil {
+			out = append(out, map[string]any{"id": id, "created": created, "name": name, "category": category, "action": action, "hasGif": hasGif})
+		}
+	}
+	respond(w, 200, map[string]any{"items": out, "retentionSeconds": int64(worksRetention.Seconds())})
+}
+
+// workGif 返回云端作品的 GIF 本体；workSheet 返回动作原图（仅 GIF 合成失败时保留）。
+// 两者都只能读取本人账号的作品。
+func (a *App) workGif(w http.ResponseWriter, r *http.Request)   { a.serveWorkBlob(w, r, "gif") }
+func (a *App) workSheet(w http.ResponseWriter, r *http.Request) { a.serveWorkBlob(w, r, "sheet") }
+
+func (a *App) serveWorkBlob(w http.ResponseWriter, r *http.Request, column string) {
+	uid := current(r).User.ID
+	id := r.PathValue("id")
+	var blob []byte
+	if !idPattern.MatchString(id) || a.db.QueryRow("SELECT "+column+" FROM works WHERE id=? AND user_id=?", id, uid).Scan(&blob) != nil || blob == nil {
+		fail(w, 404, "作品不存在")
+		return
+	}
+	if column == "gif" {
+		w.Header().Set("Content-Type", "image/gif")
+	} else {
+		w.Header().Set("Content-Type", http.DetectContentType(blob))
+	}
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	w.Write(blob)
+}
+
+// workRemove 删除当前账号的一件云端作品（本机副本由页面自行删除）。
+// 对不存在的作品同样返回成功，避免暴露他人作品编号的存在性。
+func (a *App) workRemove(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		ID string `json:"id"`
+	}
+	if decode(w, r, &in, 4096) != nil || !idPattern.MatchString(in.ID) {
+		fail(w, 400, "作品信息无效")
+		return
+	}
+	a.db.Exec("DELETE FROM works WHERE id=? AND user_id=?", in.ID, current(r).User.ID)
+	respond(w, 200, map[string]bool{"ok": true})
+}
 func (a *App) loadStoredJob(id, kind string, created int64, receipt string) (Job, error) {
 	b, err := a.readFile(id, "image")
 	if err != nil {

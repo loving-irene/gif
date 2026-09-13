@@ -244,6 +244,51 @@ func (a *App) saveDraft(uid, receipt string, selection Selection, image []byte, 
 	a.db.Exec("DELETE FROM drafts WHERE user_id=? AND receipt NOT IN (SELECT receipt FROM drafts WHERE user_id=? ORDER BY created DESC,rowid DESC LIMIT ?)", uid, uid, draftsPerUser)
 }
 
+// worksPerUser 是每个账号云端保留的作品张数上限（保留期窗口内），作品集跨设备同步按此淘汰最旧记录。
+const worksPerUser = 30
+
+// worksRetention 是云端作品集的保留时长，与任务结果文件的保留期一致（3天）：
+// 到期后由周期清理删除云端副本，设备需在窗口内完成同步；本机已保存的作品不受影响。
+const worksRetention = resultRetention
+
+// saveWork 在动作任务成功后把作品写入 works 表并按账号淘汰最旧记录，实现同一账号
+// 跨设备的“我的作品集”同步。云端优先保存合成好的 GIF；GIF 合成失败时保存动作原图，
+// 供其他设备拉取后在本机重新合成。云端副本最多保留 worksRetention（3天）。
+// 保存失败不影响本次结果返回。
+func (a *App) saveWork(ctx context.Context, id, uid string, cfg Settings, selection Selection) {
+	var actionID string
+	a.db.QueryRow("SELECT COALESCE(action,'') FROM jobs WHERE id=?", id).Scan(&actionID)
+	name := actionID
+	for _, c := range cfg.Categories {
+		if c.ID != selection.Category {
+			continue
+		}
+		for _, act := range c.Actions {
+			if act.ID == actionID {
+				name = act.Name
+			}
+		}
+	}
+	gif, gifErr := a.readFile(id, "gif")
+	sheet, _ := a.readFile(id, "image")
+	if gifErr != nil {
+		gif = nil
+	}
+	if gif != nil {
+		// 有 GIF 时不再保存动作原图，控制云端存储体积；原图仍保留在生成设备的本机作品集里。
+		sheet = nil
+	}
+	if gif == nil && sheet == nil {
+		a.debug(ctx, "work_save_error", map[string]any{"error": "result files missing"})
+		return
+	}
+	if _, err := a.db.Exec("INSERT OR REPLACE INTO works(id,user_id,created,name,category,action,gif,sheet) VALUES(?,?,?,?,?,?,?,?)", id, uid, time.Now().Unix(), name, selection.Category, actionID, gif, sheet); err != nil {
+		a.debug(ctx, "work_save_error", map[string]any{"error": errorText(err)})
+		return
+	}
+	a.db.Exec("DELETE FROM works WHERE user_id=? AND id NOT IN (SELECT id FROM works WHERE user_id=? ORDER BY created DESC,rowid DESC LIMIT ?)", uid, uid, worksPerUser)
+}
+
 // upstreamTimedOut 判断本次失败是否只是“等上游太久”：只有超时值得留到下一轮继续认领；
 // 服务停止（上下文取消）等原因仍按失败收口，避免把中断当成上游还在生成。
 func upstreamTimedOut(err error) bool {
@@ -353,6 +398,10 @@ func (a *App) runJob(id string, inline *jobInput) {
 	}
 	if jobErr == nil {
 		receipt, gifImage, jobErr = a.applyResult(traceCtx, id, uid, kind, photoHash, selection, output, motionSpecOf(cfg.MotionGrid))
+	}
+	if jobErr == nil && kind == "motion" {
+		// 云端保存作品（供同一账号在其他设备同步），失败不影响本次结果返回。
+		a.saveWork(traceCtx, id, uid, cfg, selection)
 	}
 	if jobErr != nil && upstreamTimedOut(jobErr) && upstream != "" {
 		// 上游仍在生成：保留任务与已扣次数，稍后继续认领同一个上游任务。

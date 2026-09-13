@@ -102,6 +102,8 @@ func New(e Env) (*App, error) {
  CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),request_id TEXT NOT NULL,digest TEXT NOT NULL,kind TEXT NOT NULL,status TEXT NOT NULL,gift_cost INTEGER NOT NULL,paid_cost INTEGER NOT NULL,refund_failure INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL,started INTEGER NOT NULL DEFAULT 0,action TEXT NOT NULL DEFAULT '',receipt TEXT NOT NULL DEFAULT '',dup_digest TEXT NOT NULL DEFAULT '',upstream_task_id TEXT NOT NULL DEFAULT '',upstream_wait_ms INTEGER NOT NULL DEFAULT 0,timing_recorded INTEGER NOT NULL DEFAULT 0,error_message TEXT NOT NULL DEFAULT '',UNIQUE(user_id,request_id));
  CREATE TABLE IF NOT EXISTS drafts(receipt TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),created INTEGER NOT NULL,selection TEXT NOT NULL DEFAULT '{}',image BLOB NOT NULL);
  CREATE INDEX IF NOT EXISTS drafts_user ON drafts(user_id,created DESC);
+ CREATE TABLE IF NOT EXISTS works(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),created INTEGER NOT NULL,name TEXT NOT NULL DEFAULT '',category TEXT NOT NULL DEFAULT '',action TEXT NOT NULL DEFAULT '',gif BLOB,sheet BLOB);
+ CREATE INDEX IF NOT EXISTS works_user ON works(user_id,created DESC);
  CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT,actor TEXT NOT NULL,event TEXT NOT NULL,target TEXT NOT NULL,created INTEGER NOT NULL);`); err != nil {
 		db.Close()
 		cancel()
@@ -318,6 +320,8 @@ func (a *App) cleanup() {
 	a.db.Exec("DELETE FROM sessions WHERE expires<?", now)
 	a.db.Exec("DELETE FROM email_codes WHERE expires<?", now)
 	a.db.Exec("DELETE FROM rate_limits WHERE expires<?", now)
+	// 云端作品集按保留期清理：到期删除云端副本，设备需在窗口内同步；本机副本不受影响。
+	a.db.Exec("DELETE FROM works WHERE created<?", now-int64(worksRetention.Seconds()))
 	// 上游一直没有结果的等待任务超过认领时效后收口为失败，不再占用并发额度与槽位。
 	a.db.Exec("UPDATE jobs SET status='failed',error_message='等待上游结果超时，已按失败收口' WHERE status=? AND created<?", statusPendingUpstream, now-int64(a.waitBudget.Seconds()))
 	a.cleanupFiles()
@@ -350,6 +354,11 @@ func (a *App) Handler() http.Handler {
 	// 云端“我的定稿”：列表 + 图片，用于同一账号跨设备同步定稿。
 	mux.HandleFunc("GET /api/drafts", a.auth(a.drafts, false))
 	mux.HandleFunc("GET /api/drafts/{receipt}/image", a.auth(a.draftImage, false))
+	// 云端“我的作品集”：列表 + GIF/原图 + 删除，用于同一账号跨设备同步作品。
+	mux.HandleFunc("GET /api/works", a.auth(a.works, false))
+	mux.HandleFunc("GET /api/works/{id}/gif", a.auth(a.workGif, false))
+	mux.HandleFunc("GET /api/works/{id}/sheet", a.auth(a.workSheet, false))
+	mux.HandleFunc("POST /api/works/remove", a.auth(a.workRemove, false))
 	mux.HandleFunc("POST /api/accept", a.auth(a.accept, false))
 	mux.HandleFunc("POST /api/admin/login", a.auth(a.adminLogin, false))
 	mux.HandleFunc("GET /api/admin/settings", a.auth(a.adminSettingsGet, true))
