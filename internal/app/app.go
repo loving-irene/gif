@@ -421,6 +421,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /api/admin/audit", a.auth(a.adminAudit, true))
 	mux.HandleFunc("GET /api/admin/jobs", a.auth(a.adminJobs, true))
 	mux.HandleFunc("GET /api/admin/jobs/history", a.auth(a.adminJobHistory, true))
+	mux.HandleFunc("GET /api/admin/dashboard", a.auth(a.adminDashboard, true))
 	mux.HandleFunc("GET /robots.txt", a.robots)
 	mux.HandleFunc("GET /sitemap.xml", a.sitemap)
 	mux.HandleFunc("GET /llms.txt", a.llms)

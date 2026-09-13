@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="robots" content="noindex,nofollow" />
     <title>管理工作台 · 拾光 GIF</title>
-    <link rel="stylesheet" href="/assets/style.v21.css" />
+    <link rel="stylesheet" href="/assets/style.v28.css" />
     <link rel="icon" href="/assets/icon.v1.svg" />
-    <script type="module" src="/assets/admin.v23.js"></script>
+    <script type="module" src="/assets/admin.v24.js"></script>
   </head>
   <body>
     <header class="header wrap admin-wrap">
@@ -39,9 +39,10 @@
       </section>
       <div id="adminContent" hidden>
         <nav class="admin-tabs" id="adminTabs">
-          <button type="button" class="active" data-tab="jobSection">
-            任务列表
+          <button type="button" class="active" data-tab="dashSection">
+            数据看板
           </button>
+          <button type="button" data-tab="jobSection">任务列表</button>
           <button type="button" data-tab="historySection">任务历史</button>
           <button type="button" data-tab="configSection">基础与接口</button>
           <button type="button" data-tab="promptSection">角色与提示词</button>
@@ -50,7 +51,17 @@
           <button type="button" data-tab="userSection">账号管理</button>
           <button type="button" data-tab="auditSection">操作记录</button>
         </nav>
-        <section id="jobSection" class="admin-section admin-panel">
+        <section id="dashSection" class="admin-section admin-panel">
+          <h2>数据看板</h2>
+          <p class="hint">
+            核心运营数据：新增用户、消耗次数、本日消耗分布与兑换码统计，时间均为北京时间。
+          </p>
+          <button id="refreshDash" class="text-button" type="button">
+            ↻ 立即刷新
+          </button>
+          <div id="dashContent"></div>
+        </section>
+        <section id="jobSection" class="admin-section admin-panel" hidden>
           <h2>任务列表</h2>
           <p class="hint">
             展示排队等待和正在生成的任务，每 8 秒自动刷新。任务完成后不再显示；定稿与
