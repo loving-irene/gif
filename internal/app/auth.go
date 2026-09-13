@@ -285,6 +285,10 @@ func (a *App) emailVerify(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			_, err = tx.Exec("UPDATE jobs SET user_id=? WHERE user_id=?", target, s.User.ID)
 		}
+		// 定稿云端记录同样跟随账号合并，保证换绑邮箱后“我的定稿”不丢。
+		if err == nil {
+			_, err = tx.Exec("UPDATE drafts SET user_id=? WHERE user_id=?", target, s.User.ID)
+		}
 		if err == nil {
 			_, err = tx.Exec("INSERT INTO aliases(old_id,user_id) VALUES(?,?) ON CONFLICT(old_id) DO UPDATE SET user_id=excluded.user_id", s.User.ID, target)
 		}

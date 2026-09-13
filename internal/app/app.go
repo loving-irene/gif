@@ -99,6 +99,8 @@ func New(e Env) (*App, error) {
  CREATE TABLE IF NOT EXISTS email_codes(user_id TEXT NOT NULL,email TEXT NOT NULL,code TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,expires INTEGER NOT NULL,PRIMARY KEY(user_id,email));
  CREATE TABLE IF NOT EXISTS codes(hash TEXT PRIMARY KEY,label TEXT NOT NULL,credits INTEGER NOT NULL CHECK(credits>0),used_by TEXT REFERENCES users(id),used_at INTEGER,created INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),request_id TEXT NOT NULL,digest TEXT NOT NULL,kind TEXT NOT NULL,status TEXT NOT NULL,gift_cost INTEGER NOT NULL,paid_cost INTEGER NOT NULL,refund_failure INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL,started INTEGER NOT NULL DEFAULT 0,action TEXT NOT NULL DEFAULT '',receipt TEXT NOT NULL DEFAULT '',dup_digest TEXT NOT NULL DEFAULT '',upstream_task_id TEXT NOT NULL DEFAULT '',upstream_wait_ms INTEGER NOT NULL DEFAULT 0,timing_recorded INTEGER NOT NULL DEFAULT 0,error_message TEXT NOT NULL DEFAULT '',UNIQUE(user_id,request_id));
+ CREATE TABLE IF NOT EXISTS drafts(receipt TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),created INTEGER NOT NULL,selection TEXT NOT NULL DEFAULT '{}',image BLOB NOT NULL);
+ CREATE INDEX IF NOT EXISTS drafts_user ON drafts(user_id,created DESC);
  CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT,actor TEXT NOT NULL,event TEXT NOT NULL,target TEXT NOT NULL,created INTEGER NOT NULL);
  BEGIN;
  UPDATE users SET gift=gift+COALESCE((SELECT SUM(gift_cost) FROM jobs WHERE jobs.user_id=users.id AND status IN ('queued','running','pending_upstream') AND refund_failure=1),0),paid=paid+COALESCE((SELECT SUM(paid_cost) FROM jobs WHERE jobs.user_id=users.id AND status IN ('queued','running','pending_upstream') AND refund_failure=1),0);
@@ -299,6 +301,9 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("POST /api/generate", a.auth(a.generate, false))
 	mux.HandleFunc("GET /api/jobs/{id}", a.auth(a.getJob, false))
 	mux.HandleFunc("GET /api/calls", a.auth(a.calls, false))
+	// 云端“我的定稿”：列表 + 图片，用于同一账号跨设备同步定稿。
+	mux.HandleFunc("GET /api/drafts", a.auth(a.drafts, false))
+	mux.HandleFunc("GET /api/drafts/{receipt}/image", a.auth(a.draftImage, false))
 	mux.HandleFunc("POST /api/accept", a.auth(a.accept, false))
 	mux.HandleFunc("POST /api/admin/login", a.auth(a.adminLogin, false))
 	mux.HandleFunc("GET /api/admin/settings", a.auth(a.adminSettingsGet, true))

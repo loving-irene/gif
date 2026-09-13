@@ -223,8 +223,25 @@ func (a *App) applyResult(ctx context.Context, id, uid, kind, photoHash string, 
 	if kind == "draft" {
 		rec := Receipt{User: uid, Selfie: photoHash, Selection: selection, Expires: time.Now().Add(30 * 24 * time.Hour).Unix(), Draft: hash(string(b))}
 		receipt = a.signReceipt(rec)
+		// 云端保存定稿（供同一账号在其他设备同步），失败不影响本次结果返回。
+		a.saveDraft(uid, receipt, selection, b, ctx)
 	}
 	return receipt, gifImage, nil
+}
+
+// draftsPerUser 是每个账号云端保留的定稿张数上限，与页面“我的定稿”候选数一致。
+const draftsPerUser = 30
+
+// saveDraft 把定稿写入 drafts 表并按账号淘汰最旧记录，实现同一账号跨设备的“我的定稿”同步。
+func (a *App) saveDraft(uid, receipt string, selection Selection, image []byte, ctx context.Context) {
+	selectionJSON, _ := json.Marshal(selection)
+	if _, err := a.db.Exec("INSERT OR REPLACE INTO drafts(receipt,user_id,created,selection,image) VALUES(?,?,?,?,?)", receipt, uid, time.Now().Unix(), string(selectionJSON), image); err != nil {
+		if ctx != nil {
+			a.debug(ctx, "draft_save_error", map[string]any{"error": errorText(err)})
+		}
+		return
+	}
+	a.db.Exec("DELETE FROM drafts WHERE user_id=? AND receipt NOT IN (SELECT receipt FROM drafts WHERE user_id=? ORDER BY created DESC,rowid DESC LIMIT ?)", uid, uid, draftsPerUser)
 }
 
 // upstreamTimedOut 判断本次失败是否只是“等上游太久”：只有超时值得留到下一轮继续认领；

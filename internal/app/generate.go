@@ -460,9 +460,10 @@ func (a *App) pruneCalls(uid string) {
 }
 
 // calls 返回当前账号最近的创作调用记录（角色定稿 / 动作 GIF，最多 100 条）。
+// 失败记录附带失败原因（error_message），供前端展示更友好的提示。
 func (a *App) calls(w http.ResponseWriter, r *http.Request) {
 	uid := current(r).User.ID
-	rows, err := a.db.Query("SELECT kind,COALESCE(action,''),status,gift_cost+paid_cost,created FROM jobs WHERE user_id=? ORDER BY created DESC,rowid DESC LIMIT 100", uid)
+	rows, err := a.db.Query("SELECT kind,COALESCE(action,''),status,gift_cost+paid_cost,COALESCE(error_message,''),created FROM jobs WHERE user_id=? ORDER BY created DESC,rowid DESC LIMIT 100", uid)
 	if err != nil {
 		fail(w, 500, "读取失败")
 		return
@@ -470,13 +471,49 @@ func (a *App) calls(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var kind, action, status string
+		var kind, action, status, message string
 		var cost, created int64
-		if rows.Scan(&kind, &action, &status, &cost, &created) == nil {
-			out = append(out, map[string]any{"kind": kind, "action": action, "status": status, "cost": cost, "created": created})
+		if rows.Scan(&kind, &action, &status, &cost, &message, &created) == nil {
+			out = append(out, map[string]any{"kind": kind, "action": action, "status": status, "cost": cost, "error": message, "created": created})
 		}
 	}
 	respond(w, 200, map[string]any{"items": out})
+}
+
+// drafts 返回当前账号云端保存的定稿列表（不含图片本体），供页面与本机候选合并实现跨设备同步。
+func (a *App) drafts(w http.ResponseWriter, r *http.Request) {
+	uid := current(r).User.ID
+	rows, err := a.db.Query("SELECT receipt,created,selection FROM drafts WHERE user_id=? ORDER BY created DESC,rowid DESC LIMIT ?", uid, draftsPerUser)
+	if err != nil {
+		fail(w, 500, "读取失败")
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var receipt, selectionJSON string
+		var created int64
+		if rows.Scan(&receipt, &created, &selectionJSON) == nil {
+			selection := Selection{}
+			json.Unmarshal([]byte(selectionJSON), &selection)
+			out = append(out, map[string]any{"receipt": receipt, "created": created, "selection": selection})
+		}
+	}
+	respond(w, 200, map[string]any{"items": out})
+}
+
+// draftImage 返回云端定稿的图片本体；只能读取本人账号的定稿。
+func (a *App) draftImage(w http.ResponseWriter, r *http.Request) {
+	uid := current(r).User.ID
+	receipt := r.PathValue("receipt")
+	var image []byte
+	if a.db.QueryRow("SELECT image FROM drafts WHERE receipt=? AND user_id=?", receipt, uid).Scan(&image) != nil {
+		fail(w, 404, "定稿不存在")
+		return
+	}
+	w.Header().Set("Content-Type", http.DetectContentType(image))
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	w.Write(image)
 }
 func (a *App) loadStoredJob(id, kind string, created int64, receipt string) (Job, error) {
 	b, err := a.readFile(id, "image")
