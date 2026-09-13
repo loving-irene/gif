@@ -17,7 +17,7 @@ func TestHomepageShowcaseExamples(t *testing.T) {
 	}
 	body := w.Body.String()
 	// 页面引用的是当前版本的样式表与加载器；升版本号时必须同步改页面引用。
-	for _, asset := range []string{"/assets/style.v22.css", "/assets/showcase.v1.js"} {
+	for _, asset := range []string{"/assets/style.v23.css", "/assets/showcase.v1.js"} {
 		if !strings.Contains(body, asset) {
 			t.Fatal("homepage missing asset reference", asset)
 		}

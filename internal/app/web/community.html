@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#fcf8f2" />
+    <meta name="description" content="{{.Description}}" />
+    <title>{{.Title}}</title>
+    <link rel="canonical" href="{{.Canonical}}" />
+    <meta name="robots" content="noindex,follow" />
+    <link rel="icon" href="/assets/icon.v1.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/assets/style.v24.css" />
+    <script src="/assets/community.v1.js" type="module"></script>
+  </head>
+  <body>
+    <header class="header wrap">
+      <a class="brand" href="/" aria-label="拾光 GIF 首页"
+        ><span class="brand-mark">✳</span
+        ><span>拾光 <b>GIF</b><small>社区分享</small></span></a
+      >
+      <nav>
+        <a class="pill community-make" href="/">✦ 我也要做一张</a>
+      </nav>
+    </header>
+    <main class="wrap">
+      <section class="community-intro" aria-labelledby="communityTitle">
+        <span class="eyebrow">SHARED LITTLE MOMENTS</span>
+        <h1 id="communityTitle">大家分享的小分身</h1>
+        <p>
+          这里的每一张动图都由用户自己上传自拍生成，并主动分享出来。喜欢哪一张，长按或右键即可保存成表情包。
+        </p>
+        <p class="hint">
+          ☁ 社区分享长期保留；只有分享人自己可以取消，取消后这里不再展示。
+        </p>
+      </section>
+      <div
+        id="communityNotice"
+        class="notice"
+        role="status"
+        aria-live="polite"
+        hidden
+      ></div>
+      <section aria-labelledby="communityGridTitle">
+        <h2 id="communityGridTitle" class="sr-title">分享列表</h2>
+        <ul id="communityGrid" class="community-grid"></ul>
+        <div id="communityEmpty" class="empty" hidden>
+          <span>✿</span>
+          <h3>还没有人分享作品</h3>
+          <p>
+            在你的作品集里选一张喜欢的，点「分享」就会出现在这里，成为大家的小灵感。
+          </p>
+          <a class="secondary" href="/">去做一张属于你的动图 →</a>
+        </div>
+        <div class="community-more-row">
+          <button id="communityMoreBtn" class="secondary" type="button" hidden>
+            加载更多分享
+          </button>
+          <p id="communityEnd" class="hint" hidden>✧ 已经看到全部分享啦</p>
+        </div>
+      </section>
+    </main>
+    <footer class="wrap footer">
+      <a class="brand" href="/"><span class="brand-mark">✳</span>拾光 GIF</a>
+      <p>让普通的一天，多一点可爱。</p>
+    </footer>
+    <div id="toast" class="toast" role="status" hidden></div>
+  </body>
+</html>

@@ -295,6 +295,15 @@ func (a *App) emailVerify(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			_, err = tx.Exec("UPDATE works SET user_id=? WHERE user_id=?", target, s.User.ID)
 		}
+		// 社区分享同样跟随账号合并。顺序很重要：先删掉被合并账号里与目标账号重复分享的同一张作品
+		//（community_shares 有 (sharer,work_id) 唯一约束，作品编号跨账号唯一、正常不会重复，这步只作兜底），
+		// 再把它剩余的分享改归属到目标账号——这样既不会撞唯一约束，也不会在 UPDATE 中途触发 users 外键检查。
+		if err == nil {
+			_, err = tx.Exec("DELETE FROM community_shares WHERE sharer=? AND work_id IN (SELECT work_id FROM community_shares WHERE sharer=?)", s.User.ID, target)
+		}
+		if err == nil {
+			_, err = tx.Exec("UPDATE community_shares SET sharer=? WHERE sharer=?", target, s.User.ID)
+		}
 		if err == nil {
 			_, err = tx.Exec("INSERT INTO aliases(old_id,user_id) VALUES(?,?) ON CONFLICT(old_id) DO UPDATE SET user_id=excluded.user_id", s.User.ID, target)
 		}

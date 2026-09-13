@@ -105,6 +105,10 @@ func New(e Env) (*App, error) {
  CREATE INDEX IF NOT EXISTS drafts_user ON drafts(user_id,created DESC);
  CREATE TABLE IF NOT EXISTS works(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),created INTEGER NOT NULL,name TEXT NOT NULL DEFAULT '',category TEXT NOT NULL DEFAULT '',action TEXT NOT NULL DEFAULT '',gif BLOB,sheet BLOB);
  CREATE INDEX IF NOT EXISTS works_user ON works(user_id,created DESC);
+ -- 社区分享池：作品被分享后 GIF 本体复制到这里，与作品集（3天保留）完全独立、永不清理。
+ -- (sharer,work_id) 唯一：同一账号同一张作品只保留一条，重复分享只刷新时间与内容、重新分享不产生重复条目。
+ CREATE TABLE IF NOT EXISTS community_shares(id TEXT PRIMARY KEY,sharer TEXT NOT NULL REFERENCES users(id),work_id TEXT NOT NULL,name TEXT NOT NULL DEFAULT '',image BLOB NOT NULL,action TEXT NOT NULL DEFAULT '',category TEXT NOT NULL DEFAULT '',created INTEGER NOT NULL,updated INTEGER NOT NULL,UNIQUE(sharer,work_id));
+ CREATE INDEX IF NOT EXISTS community_shares_created ON community_shares(created DESC);
  CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT,actor TEXT NOT NULL,event TEXT NOT NULL,target TEXT NOT NULL,created INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS credit_history(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id TEXT NOT NULL REFERENCES users(id),event TEXT NOT NULL CHECK(event IN ('register','redeem','admin')),credits INTEGER NOT NULL CHECK(credits>0),note TEXT NOT NULL DEFAULT '',created INTEGER NOT NULL);
  CREATE INDEX IF NOT EXISTS credit_history_created ON credit_history(created,id);
@@ -358,6 +362,7 @@ func (a *App) cleanup() {
 	a.db.Exec("DELETE FROM rate_limits WHERE expires<?", now)
 	// 云端作品集按保留期清理：到期删除云端副本，设备需在窗口内同步；本机副本不受影响。
 	a.db.Exec("DELETE FROM works WHERE created<?", now-int64(worksRetention.Seconds()))
+	// 社区分享池是独立且永久的：不参与保留期清理，只在分享人主动取消时删除。
 	// 上游一直没有结果的等待任务超过认领时效后收口为失败，不再占用并发额度与槽位。
 	a.db.Exec("UPDATE jobs SET status='failed',error_message='等待上游结果超时，已按失败收口' WHERE status=? AND created<?", statusPendingUpstream, now-int64(a.waitBudget.Seconds()))
 	a.cleanupFiles()
@@ -396,6 +401,12 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /api/works/{id}/sheet", a.auth(a.workSheet, false))
 	mux.HandleFunc("POST /api/works/remove", a.auth(a.workRemove, false))
 	mux.HandleFunc("POST /api/accept", a.auth(a.accept, false))
+	// 社区分享池：公开浏览的分享列表（需登录以标记“我的分享”）、分享/取消分享与动图本体。
+	mux.HandleFunc("GET /api/community", a.auth(a.communityList, false))
+	mux.HandleFunc("GET /api/community/states", a.auth(a.communityStates, false))
+	mux.HandleFunc("GET /api/community/{id}/gif", a.auth(a.communityImage, false))
+	mux.HandleFunc("POST /api/community/share", a.auth(a.communityShare, false))
+	mux.HandleFunc("POST /api/community/unshare", a.auth(a.communityUnshare, false))
 	mux.HandleFunc("POST /api/admin/login", a.auth(a.adminLogin, false))
 	mux.HandleFunc("GET /api/admin/settings", a.auth(a.adminSettingsGet, true))
 	mux.HandleFunc("POST /api/admin/settings", a.auth(a.adminSettingsSave, true))
@@ -413,6 +424,8 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /robots.txt", a.robots)
 	mux.HandleFunc("GET /sitemap.xml", a.sitemap)
 	mux.HandleFunc("GET /llms.txt", a.llms)
+	// 社区页是用户生成内容的公开浏览页，不进 sitemap，并带 noindex 避免收录。
+	mux.HandleFunc("GET /community", a.communityPage)
 	assets, _ := fs.Sub(web, "web")
 	files := http.FileServer(http.FS(assets))
 	mux.Handle("GET /assets/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -458,6 +471,10 @@ func (a *App) Handler() http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			w.Header().Set("X-Robots-Tag", "noindex, nofollow")
+		}
+		// 社区页是用户生成内容，不参与搜索收录。
+		if r.URL.Path == "/community" {
+			w.Header().Set("X-Robots-Tag", "noindex, follow")
 		}
 		if strings.HasPrefix(r.URL.Path, "/assets/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
