@@ -52,7 +52,9 @@ func LoadEnv(path string) (Env, error) {
 		}
 		return def
 	}
-	e := Env{BaseURL: strings.TrimRight(get("GIF_BASE_URL", "http://127.0.0.1:8096"), "/"), Database: get("GIF_DATABASE_PATH", "gif.db"), Secret: get("GIF_SECRET", ""), AdminPassword: get("GIF_ADMIN_PASSWORD", ""), APIKey: get("GEEKAI_API_KEY", ""), Secure: get("GIF_COOKIE_SECURE", "false") == "true", TrustProxy: get("GIF_TRUST_PROXY", "false") == "true", MailHost: get("MAIL_SERVER", ""), MailPort: get("MAIL_PORT", "465"), MailUser: get("MAIL_USERNAME", ""), MailPassword: get("MAIL_PASSWORD", ""), MailFrom: get("MAIL_DEFAULT_SENDER", "")}
+	e := Env{BaseURL: strings.TrimRight(get("GIF_BASE_URL", "http://127.0.0.1:8096"), "/"), Database: get("GIF_DATABASE_PATH", "gif.db"), Secret: get("GIF_SECRET", ""), AdminPassword: get("GIF_ADMIN_PASSWORD", ""), APIKey: get("GEEKAI_API_KEY", ""), Secure: get("GIF_COOKIE_SECURE", "false") == "true", MailHost: get("MAIL_SERVER", ""), MailPort: get("MAIL_PORT", "465"), MailUser: get("MAIL_USERNAME", ""), MailPassword: get("MAIL_PASSWORD", ""), MailFrom: get("MAIL_DEFAULT_SENDER", "")}
+	// 服务仅监听回环地址，默认读取本机反向代理传来的真实 IP；仍可显式关闭。
+	e.TrustProxy = get("GIF_TRUST_PROXY", "true") == "true"
 	e.Debug = strings.EqualFold(get("GIF_DEBUG", "false"), "true")
 	if len(e.Secret) < 32 {
 		return e, errors.New("GIF_SECRET must contain at least 32 characters")

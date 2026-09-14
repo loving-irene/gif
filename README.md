@@ -153,6 +153,27 @@ curl -fsS https://gif.jcc666.top/healthz
 
 `deploy.sh` 会先测试与构建，再原子替换二进制，重启并检查健康；健康失败自动恢复上一二进制并返回失败。自动部署只有成功后才更新 `.last_deployed_commit`。
 
+### 注册真实 IP
+
+服务仅监听回环地址，默认启用 `GIF_TRUST_PROXY=true`，读取本机 Nginx 设置的 `X-Real-IP`，用于新账号的注册 IP 与按 IP 限流。非回环来源的请求头不会被信任；缺失或无效的请求头回退到连接地址，不读取任意 `X-Forwarded-For`。
+
+已有部署的 `.env` 不会被初始化或更新脚本覆盖。如果仍有 `GIF_TRUST_PROXY=false`，需要改成 `true`；同名进程环境变量优先于 `.env`。站点实际生效的 Nginx `location /` 中必须包含：
+
+```nginx
+proxy_set_header X-Real-IP $remote_addr;
+```
+
+`setup_nginx.sh` 已包含此配置，但会保留已有站点配置；请直接补充实际代理位置，保留 HTTPS 配置。如前方还有 CDN 或其他代理，应先在 Nginx 按可信代理网段还原真实客户端地址。
+
+```bash
+sudoedit /var/www/gif/.env
+# 将 GIF_TRUST_PROXY 改为 true，并检查实际站点的 X-Real-IP 配置。
+sudo nginx -t && sudo systemctl reload nginx
+sudo systemctl restart gif
+```
+
+通过公网用新的浏览器设备账号访问，再到 `/who` 检查新账号的注册 IP。直接从服务器本机访问得到回环地址是正常情况。历史账号的注册 IP 不会在登录时更新，已有的 `127.0.0.1` 无法仅凭数据库恢复成当时的真实 IP。
+
 ### 自动部署数据库备份
 
 每次实际执行部署，在测试/构建完成后、替换二进制和重启前，通过Python标准库的SQLite在线备份接口创建一致快照，包含WAL中已提交的数据。默认目录为`/var/backups/gif`，只保留最近 **2份** `gif-auto-*.sqlite3` 自动快照；普通cron检查没有新版本、不执行部署时不会新增备份。手动执行`deploy.sh`同样受到此备份保护。
