@@ -1,14 +1,12 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { frontendAsset } from "./frontend-source.mjs";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const file = process.argv[2] || path.join(root, "internal/app/web/app.v6.js");
+const file = process.argv[2] || frontendAsset("app");
 const source = fs
   .readFileSync(file, "utf8")
-  .replace(/^import[\s\S]*?from "\.\/common\.v2\.js";\s*/, "")
+  .replace(/^import[\s\S]*?from "\.\/common\.v\d+\.js";\s*/, "")
   .replace(/init\(\);\s*$/, "");
 const nodes = new Map();
 const $ = (id) => {
@@ -33,7 +31,7 @@ const context = vm.createContext({
   $,
   document: { querySelectorAll: () => [] },
   account: { credits: 5 },
-  refreshAccount: async () => {
+  commonRefreshAccount: async () => {
     accountReads++;
   },
   api: async (route) => {

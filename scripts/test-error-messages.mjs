@@ -1,12 +1,10 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+import { frontendAsset } from "./frontend-source.mjs";
 const source = fs
   .readFileSync(
-    process.argv[2] || path.join(root, "internal/app/web/common.v2.js"),
+    process.argv[2] || frontendAsset("common"),
     "utf8",
   )
   .replace(/\bexport\s+/g, "");

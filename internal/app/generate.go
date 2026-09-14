@@ -283,6 +283,10 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 	digest := hash(string(raw))
 	// 配置摘要（不含请求编号）随任务一起保存，供下一次提交判断“同款配置”是否已在制作。
 	dupDigest := duplicateInputDigest(in)
+	// SQLite只使用一个连接，但多个独立查询仍可交错；把去重检查和入队视为一个临界区。
+	// 图片校验在锁外完成，上游生成异步执行，不占用提交锁。
+	a.submitMu.Lock()
+	defer a.submitMu.Unlock()
 	var existing, oldDigest string
 	err = a.db.QueryRow("SELECT id,digest FROM jobs WHERE user_id=? AND request_id=?", uid, in.RequestID).Scan(&existing, &oldDigest)
 	if err == nil {
@@ -329,22 +333,29 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 		haveSlot = true
 	default:
 	}
+	// 从占用槽位起就登记释放，覆盖输入写盘失败等提前返回路径。
+	release := haveSlot
+	defer func() {
+		if release {
+			<-a.slots
+			a.signalDispatch()
+		}
+	}()
 	input := &jobInput{Prompt: prompt, Images: images, Selection: in.Selection, PhotoHash: photoHash}
 	id := token(16)
 	created := time.Now().Unix()
+	committed := false
+	defer func() {
+		if !committed {
+			a.removeFile(id, "input.json")
+		}
+	}()
 	// 任务输入统一先落盘再提交事务：排队任务由调度器读回；直接执行的任务在服务重启后
 	// 也能凭这份输入重新排队执行，而不是被中断退款。
 	if b, err := json.Marshal(input); err != nil || a.saveFile(id, "input.json", b) != nil {
 		fail(w, 500, "创建失败，请稍后重试；本次未扣次")
 		return
 	}
-	// 占到槽位时，若后续启动失败需要由本函数释放；成功启动后交给 runJob 释放。
-	release := haveSlot
-	defer func() {
-		if release {
-			<-a.slots
-		}
-	}()
 	tx, err := a.db.Begin()
 	if err != nil {
 		fail(w, 500, "创建失败")
@@ -399,6 +410,7 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "创建失败")
 		return
 	}
+	committed = true
 	estimate := a.estimate(in.Kind, cfg)
 	// 个人调用记录（jobs 表）按账号只保留最近的 100 条，超出部分按创建时间淘汰。
 	a.pruneCalls(uid)
@@ -413,7 +425,7 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 	if haveSlot {
 		release = false
 		a.debug(context.WithValue(traceCtx, debugSensitiveKey{}, []string{a.secret("api_key"), prompt, a.env.Secret}), "job_start", nil)
-		go a.runJob(id, input)
+		a.startJob(id, input)
 	} else {
 		a.signalDispatch()
 	}
@@ -424,13 +436,14 @@ func (a *App) getJob(w http.ResponseWriter, r *http.Request) {
 	uid := current(r).User.ID
 	var owner, status, kind, receipt string
 	var created int64
-	if a.db.QueryRow("SELECT user_id,status,kind,created,COALESCE(receipt,'') FROM jobs WHERE id=?", id).Scan(&owner, &status, &kind, &created, &receipt) != nil || owner != uid {
+	var cost int
+	if a.db.QueryRow("SELECT user_id,status,kind,created,COALESCE(receipt,''),gift_cost+paid_cost FROM jobs WHERE id=?", id).Scan(&owner, &status, &kind, &created, &receipt, &cost) != nil || owner != uid {
 		fail(w, 404, "任务不存在")
 		return
 	}
 	a.jobsMu.Lock()
 	j := a.jobs[id]
-	if j != nil {
+	if j != nil && j.Status == status {
 		copy := *j
 		a.jobsMu.Unlock()
 		if jobIsActive(copy.Status) {
@@ -447,7 +460,7 @@ func (a *App) getJob(w http.ResponseWriter, r *http.Request) {
 	}
 	switch status {
 	case "failed":
-		respond(w, 200, Job{ID: id, Status: "failed", Error: networkErrorMessage, Charged: true, StartedAt: created * 1000})
+		respond(w, 200, Job{ID: id, Status: "failed", Error: networkErrorMessage, Charged: cost > 0, StartedAt: created * 1000})
 	case "succeeded":
 		// 内存缓存失效（如服务器重启或缓存淘汰）后，从服务器文件恢复3天内的结果。
 		if time.Now().Unix()-created < int64(resultRetention.Seconds()) {
@@ -462,9 +475,9 @@ func (a *App) getJob(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// pruneCalls 只保留当前账号最近 100 条创作调用记录（jobs 表即调用日志）。
+// pruneCalls 裁剪最近100条以外的终态记录；在途任务必须保留供执行、退款与恢复。
 func (a *App) pruneCalls(uid string) {
-	a.db.Exec("DELETE FROM jobs WHERE user_id=? AND rowid NOT IN (SELECT rowid FROM jobs WHERE user_id=? ORDER BY created DESC, rowid DESC LIMIT 100)", uid, uid)
+	a.db.Exec("DELETE FROM jobs WHERE user_id=? AND status NOT IN ('queued','running','pending_upstream') AND rowid NOT IN (SELECT rowid FROM jobs WHERE user_id=? ORDER BY created DESC, rowid DESC LIMIT 100)", uid, uid)
 }
 
 // calls 返回当前账号最近的创作调用记录（角色定稿 / 动作 GIF，最多 100 条）。

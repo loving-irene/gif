@@ -40,6 +40,7 @@ type App struct {
 	env        Env
 	files      string
 	jobsMu     sync.Mutex
+	submitMu   sync.Mutex
 	jobs       map[string]*Job
 	slots      chan struct{}
 	uploads    chan struct{}
@@ -47,6 +48,8 @@ type App struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 	wg         sync.WaitGroup
+	workersMu  sync.Mutex
+	workers    sync.WaitGroup
 	mailSend   func(Settings, string, string) error
 	mailNotify func(Settings, string, string, string) error
 	// waitBudget 是任务从创建起可用来完成生成的总时长（提交等待 + 上游结果认领），
@@ -354,7 +357,15 @@ func (a *App) recoverJobs() error {
 	_, err = a.db.Exec("DELETE FROM usage_stats WHERE job_id IN (SELECT id FROM jobs WHERE status='interrupted' AND refund_failure=1)")
 	return err
 }
-func (a *App) Close() { a.cancel(); a.wg.Wait(); a.db.Close() }
+func (a *App) Close() {
+	// 与启动生成任务互斥，确保 Wait 开始后不会再登记新 worker。
+	a.workersMu.Lock()
+	a.cancel()
+	a.workersMu.Unlock()
+	a.wg.Wait()
+	a.workers.Wait()
+	a.db.Close()
+}
 func (a *App) cleanup() {
 	now := time.Now().Unix()
 	a.db.Exec("DELETE FROM sessions WHERE expires<?", now)
@@ -364,7 +375,7 @@ func (a *App) cleanup() {
 	a.db.Exec("DELETE FROM works WHERE created<?", now-int64(worksRetention.Seconds()))
 	// 社区分享池是独立且永久的：不参与保留期清理，只在分享人主动取消时删除。
 	// 上游一直没有结果的等待任务超过认领时效后收口为失败，不再占用并发额度与槽位。
-	a.db.Exec("UPDATE jobs SET status='failed',error_message='等待上游结果超时，已按失败收口' WHERE status=? AND created<?", statusPendingUpstream, now-int64(a.waitBudget.Seconds()))
+	a.expirePendingJobs(now)
 	a.cleanupFiles()
 	a.jobsMu.Lock()
 	defer a.jobsMu.Unlock()
@@ -506,6 +517,7 @@ func (a *App) Handler() http.Handler {
 		mux.ServeHTTP(w, r)
 	})
 }
+
 // rawIP 返回请求来源 IP 的明文：代理可信时优先取 X-Real-IP，供注册 IP 记录与管理后台展示。
 func (a *App) rawIP(r *http.Request) string {
 	host, _, _ := net.SplitHostPort(r.RemoteAddr)
@@ -516,6 +528,7 @@ func (a *App) rawIP(r *http.Request) string {
 	}
 	return host
 }
+
 // ip 返回来源 IP 的哈希值，仅用于限流键，避免在日志/限流表中落明文。
 func (a *App) ip(r *http.Request) string {
 	return a.mac("ip:" + a.rawIP(r))

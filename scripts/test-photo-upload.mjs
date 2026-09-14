@@ -1,17 +1,15 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import path from "node:path";
 import vm from "node:vm";
 import { File } from "node:buffer";
-import { fileURLToPath } from "node:url";
+import { frontendAsset } from "./frontend-source.mjs";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const source = fs
   .readFileSync(
-    process.argv[2] || path.join(root, "internal/app/web/app.v6.js"),
+    process.argv[2] || frontendAsset("app"),
     "utf8",
   )
-  .replace(/^import[\s\S]*?from "\.\/common\.v2\.js";\s*/, "")
+  .replace(/^import[\s\S]*?from "\.\/common\.v\d+\.js";\s*/, "")
   .replace(/init\(\);\s*$/, "");
 let decoded = 0,
   canvases = 0,
@@ -25,6 +23,8 @@ const context = vm.createContext({
   $,
   shown: null,
   console,
+  account: { id: "photo-test" },
+  local: async () => {},
   createImageBitmap: async () => {
     decoded++;
     return {

@@ -6,15 +6,13 @@
 // 5) 制作中的动作标记为“制作中”、不计入已选，且不会被重复提交。
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import path from "node:path";
 import vm from "node:vm";
-import { fileURLToPath } from "node:url";
+import { frontendAsset } from "./frontend-source.mjs";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const file = process.argv[2] || path.join(root, "internal/app/web/app.v21.js");
+const file = process.argv[2] || frontendAsset("app");
 const source = fs
   .readFileSync(file, "utf8")
-  .replace(/^import \{[\s\S]*?\} from "\.\/common\.v4\.js";\s*/, "")
+  .replace(/^import \{[\s\S]*?\} from "\.\/common\.v\d+\.js";\s*/, "")
   .replace(/init\(\);\s*$/, "");
 
 // —— 最小 DOM 与接口替身：只覆盖被测代码真正触碰的部分 ——

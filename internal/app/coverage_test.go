@@ -24,8 +24,12 @@ func instantProvider(a *App) {
 }
 func blockingProvider(a *App) chan struct{} {
 	release := make(chan struct{})
-	a.providerCall = asProviderCall(func(context.Context, Settings, string, []string) (string, error) {
-		<-release
+	a.providerCall = asProviderCall(func(ctx context.Context, _ Settings, _ string, _ []string) (string, error) {
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
 		return sampleImage(false), nil
 	})
 	return release

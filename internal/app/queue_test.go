@@ -396,7 +396,11 @@ func TestRestartResumesUpstreamClaim(t *testing.T) {
 	release := make(chan struct{})
 	a.providerCall = func(ctx context.Context, cfg Settings, prompt string, images []string, onTaskID func(string)) (string, error) {
 		onTaskID("upstream-restart-1")
-		<-release
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
 		return sampleImage(false), nil
 	}
 	id := jobID(t, request(t, a, s, "POST", "/api/generate", draftInput()))

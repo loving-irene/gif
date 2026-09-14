@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test": "node scripts/test-time-estimate.mjs && node scripts/test-service-readiness.mjs && node scripts/test-photo-upload.mjs && node scripts/test-motion-parallel.mjs && node scripts/test-error-messages.mjs",
     "build:share": "node scripts/build-share-poster.cjs"
   },
   "devDependencies": {

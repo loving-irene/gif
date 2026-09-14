@@ -182,12 +182,27 @@ func (a *App) drainQueue() {
 			<-a.slots
 			continue
 		}
-		go a.runJob(id, nil)
+		a.startJob(id, nil)
 	}
 }
 
+// startJob 接管已经占用的槽位；关停时保留任务现场，由下次启动恢复。
+func (a *App) startJob(id string, input *jobInput) {
+	a.workersMu.Lock()
+	defer a.workersMu.Unlock()
+	if a.ctx.Err() != nil {
+		<-a.slots
+		return
+	}
+	a.workers.Add(1)
+	go func() {
+		defer a.workers.Done()
+		a.runJob(id, input)
+	}()
+}
+
 func (a *App) markRunning(id string) bool {
-	res, err := a.db.Exec("UPDATE jobs SET status=?,started=? WHERE id=? AND status<>?", statusRunning, time.Now().Unix(), id, statusRunning)
+	res, err := a.db.Exec("UPDATE jobs SET status=?,started=? WHERE id=? AND status IN (?,?)", statusRunning, time.Now().Unix(), id, statusQueued, statusPendingUpstream)
 	if err != nil {
 		return false
 	}
@@ -295,7 +310,7 @@ func (a *App) saveWork(ctx context.Context, id, uid string, cfg Settings, select
 }
 
 // upstreamTimedOut 判断本次失败是否只是“等上游太久”：只有超时值得留到下一轮继续认领；
-// 服务停止（上下文取消）等原因仍按失败收口，避免把中断当成上游还在生成。
+// 服务停止由 runJob 单独保留现场，不经过超时续查分支。
 func upstreamTimedOut(err error) bool {
 	return errors.Is(err, context.DeadlineExceeded)
 }
@@ -335,10 +350,6 @@ func (a *App) runJob(id string, inline *jobInput) {
 	defer func() { <-a.slots; a.signalDispatch() }()
 	state := a.readJobState(id)
 	kind := state.Kind
-	var giftCost, paidCost int
-	if a.db.QueryRow("SELECT gift_cost,paid_cost FROM jobs WHERE id=?", id).Scan(&giftCost, &paidCost) != nil {
-		return
-	}
 	var uid string
 	if a.db.QueryRow("SELECT user_id FROM jobs WHERE id=?", id).Scan(&uid) != nil {
 		return
@@ -402,7 +413,14 @@ func (a *App) runJob(id string, inline *jobInput) {
 		}
 	}
 	if jobErr == nil {
+		// 关停取消不等于生成失败：保留任务号、已扣次数与输入，供重启恢复。
+		if a.ctx.Err() != nil {
+			return
+		}
 		receipt, gifImage, jobErr = a.applyResult(traceCtx, id, uid, kind, photoHash, selection, output, motionSpecOf(cfg.MotionGrid))
+	}
+	if jobErr != nil && a.ctx.Err() != nil {
+		return
 	}
 	if jobErr == nil && kind == "motion" {
 		// 云端保存作品（供同一账号在其他设备同步），失败不影响本次结果返回。
@@ -422,34 +440,22 @@ func (a *App) runJob(id string, inline *jobInput) {
 		output = ""
 		gifImage = ""
 		receipt = ""
-		if cfgErr == nil && !cfg.ChargeOnFailure {
-			charged = false
-			if refund, er := a.db.Begin(); er == nil {
-				_, er = refund.Exec("UPDATE users SET gift=gift+?,paid=paid+? WHERE id=?", giftCost, paidCost, uid)
-				if er == nil {
-					_, er = refund.Exec("UPDATE jobs SET gift_cost=0,paid_cost=0 WHERE id=?", id)
-				}
-				// 退款成功的同时删除消耗统计记录，保证每日统计只计实际消耗。
-				if er == nil {
-					_, er = refund.Exec("DELETE FROM usage_stats WHERE job_id=?", id)
-				}
-				if er == nil {
-					er = refund.Commit()
-				} else {
-					refund.Rollback()
-				}
-				if er != nil {
-					charged = true
-				}
-			}
+		var changed bool
+		var err error
+		charged, changed, err = a.failJob(id, reason, statusRunning)
+		if err != nil || !changed {
+			a.debug(traceCtx, "job_failure_write_error", map[string]any{"error": errorText(err)})
+			return
 		}
 	}
-	if receipt != "" {
+	if jobState == "succeeded" && receipt != "" {
 		if _, err := a.db.Exec("UPDATE jobs SET status=?,receipt=?,error_message=? WHERE id=?", jobState, receipt, reason, id); err != nil {
 			a.debug(traceCtx, "status_write_error", map[string]any{"error": errorText(err)})
 		}
-	} else if _, err := a.db.Exec("UPDATE jobs SET status=?,error_message=? WHERE id=?", jobState, reason, id); err != nil {
-		a.debug(traceCtx, "status_write_error", map[string]any{"error": errorText(err)})
+	} else if jobState == "succeeded" {
+		if _, err := a.db.Exec("UPDATE jobs SET status=?,error_message=? WHERE id=?", jobState, reason, id); err != nil {
+			a.debug(traceCtx, "status_write_error", map[string]any{"error": errorText(err)})
+		}
 	}
 	timingErr := a.recordTiming(id, kind, cfg, callDuration, jobState)
 	nextEstimate := a.estimate(kind, cfg)
