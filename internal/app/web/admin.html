@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="robots" content="noindex,nofollow" />
     <title>管理工作台 · 拾光 GIF</title>
-    <link rel="stylesheet" href="/assets/style.v28.css" />
+    <link rel="stylesheet" href="/assets/style.v31.css" />
     <link rel="icon" href="/assets/icon.v1.svg" />
-    <script type="module" src="/assets/admin.v24.js"></script>
+    <script type="module" src="/assets/admin.v26.js"></script>
   </head>
   <body>
     <header class="header wrap admin-wrap">
@@ -478,6 +478,12 @@
         </section>
       </div>
     </main>
+    <dialog id="adminValueDialog" class="admin-value-dialog" aria-labelledby="adminValueTitle">
+      <h2 id="adminValueTitle">完整内容</h2>
+      <p class="hint">内容较长时可左右滑动查看，也可选中复制。</p>
+      <pre id="adminValueText" tabindex="0"></pre>
+      <form method="dialog"><button class="secondary">关闭</button></form>
+    </dialog>
     <dialog id="restoreCodeDialog" aria-labelledby="restoreCodeTitle">
       <h2 id="restoreCodeTitle">补录旧兑换码</h2>
       <p>
