@@ -20,7 +20,8 @@ func TestBrowserGIFEncoderDecodes(t *testing.T) {
 	dir := t.TempDir()
 	output := filepath.Join(dir, "fixture.gif")
 	output25 := filepath.Join(dir, "fixture25.gif")
-	cmd := exec.Command(node, "../../scripts/test-gif.mjs", output, output25)
+	output100 := filepath.Join(dir, "fixture100.gif")
+	cmd := exec.Command(node, "../../scripts/test-gif.mjs", output, output25, output100)
 	if b, e := cmd.CombinedOutput(); e != nil {
 		t.Fatalf("encoder: %v %s", e, b)
 	}
@@ -75,6 +76,30 @@ func TestBrowserGIFEncoderDecodes(t *testing.T) {
 		}
 		if _, _, _, alpha := frame.At(0, 0).RGBA(); alpha != 0 {
 			t.Fatal("5x5 transparent background lost")
+		}
+	}
+	// v5 编码器的 10×10 规格：100 帧每帧 128×128、20ms 帧间隔。
+	f100, err := os.Open(output100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f100.Close()
+	g100, err := gif.DecodeAll(f100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(g100.Image) != 100 || g100.LoopCount != 0 || g100.Config.Width != 128 || g100.Config.Height != 128 {
+		t.Fatal("10x10 GIF animation metadata invalid")
+	}
+	for i, frame := range g100.Image {
+		if g100.Disposal[i] != gif.DisposalBackground || g100.Delay[i] != smoothGifFrameDelay {
+			t.Fatal("10x10 frame metadata invalid")
+		}
+		if !hasOpaquePixel(frame) {
+			t.Fatal("10x10 moving subject was lost")
+		}
+		if _, _, _, alpha := frame.At(0, 0).RGBA(); alpha != 0 {
+			t.Fatal("10x10 transparent background lost")
 		}
 	}
 }

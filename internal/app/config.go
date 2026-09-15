@@ -114,8 +114,8 @@ type Settings struct {
 	IdentityPrompt  string   `json:"identityPrompt"`
 	DraftPrompt     string   `json:"draftPrompt"`
 	MotionPrompt    string   `json:"motionPrompt"`
-	// MotionGrid 控制动作序列图的网格规格：4x4 为 4×4 共16格（每帧256×256），
-	// 5x5 为 5×5 共25格（每帧128×128）。生成提示词与 GIF 合成共用该规格。
+	// MotionGrid 控制动作序列图的网格规格：4x4 为16格（每帧256×256），
+	// 5x5 为25格、10x10 为100格（每帧128×128）。生成提示词与 GIF 合成共用该规格。
 	MotionGrid string     `json:"motionGrid"`
 	Styles     []Style    `json:"styles"`
 	Categories []Category `json:"categories"`
@@ -304,7 +304,7 @@ func validateSettings(s Settings) error {
 	}
 	// 旧后台页面不带动作序列图规格（空串），保存前会补默认值，这里允许留空。
 	if s.MotionGrid != "" && !contains(motionGridIDs(), s.MotionGrid) {
-		return errors.New("动作序列图规格仅支持 4×4 或 5×5")
+		return errors.New("动作序列图规格仅支持 4×4、5×5 或 10×10")
 	}
 	if len(s.IdentityPrompt) < 20 || len(s.DraftPrompt) < 20 || len(s.MotionPrompt) < 20 {
 		return errors.New("各步骤提示词不可为空")

@@ -2,7 +2,7 @@ import { writeFile } from "node:fs/promises";
 import {
   encodeGIF,
   stabilizeFrames,
-} from "../internal/app/web/gif-worker.v4.js";
+} from "../internal/app/web/gif-worker.v5.js";
 const frames = [];
 for (let frame = 0; frame < 16; frame++) {
   const pixels = new Uint8ClampedArray(256 * 256 * 4);
@@ -19,7 +19,7 @@ for (let frame = 0; frame < 16; frame++) {
 const bytes = encodeGIF(frames, 256, 256);
 await writeFile(process.argv[2], bytes);
 console.log(`GIF encoded: ${frames.length} frames, ${bytes.length} bytes`);
-// 5×5 规格：25 帧每帧 128×128，使用 v3 编码器交叉验证。
+// 5×5 规格：25 帧每帧 128×128，使用 v5 编码器交叉验证。
 const frames25 = [];
 for (let frame = 0; frame < 25; frame++) {
   const pixels = new Uint8ClampedArray(128 * 128 * 4);
@@ -37,6 +37,25 @@ for (let frame = 0; frame < 25; frame++) {
 const bytes25 = encodeGIF(frames25, 128, 128);
 await writeFile(process.argv[3], bytes25);
 console.log(`GIF encoded: ${frames25.length} frames, ${bytes25.length} bytes`);
+
+// 10×10 规格：100 帧每帧 128×128，编码为 20ms 帧间隔。
+const frames100 = [];
+for (let frame = 0; frame < 100; frame++) {
+  const pixels = new Uint8ClampedArray(128 * 128 * 4);
+  const shift = Math.round(40 + Math.sin((frame / 100) * Math.PI * 2) * 30);
+  for (let y = 35; y < 75; y++)
+    for (let x = shift; x < shift + 24; x++) {
+      const i = (y * 128 + x) * 4;
+      pixels[i] = 90;
+      pixels[i + 1] = 170;
+      pixels[i + 2] = 210;
+      pixels[i + 3] = 255;
+    }
+  frames100.push(pixels);
+}
+const bytes100 = encodeGIF(frames100, 128, 128);
+await writeFile(process.argv[4], bytes100);
+console.log(`GIF encoded: ${frames100.length} frames, ${bytes100.length} bytes`);
 
 // 单帧偏移与尺寸突变应被向相邻帧轨迹校正，但输出尺寸和透明通道保持不变。
 const jitterFrames = [];

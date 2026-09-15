@@ -19,6 +19,9 @@ import (
 // motionSpecPrompt 统一追加，避免切换到 5×5 后上游同时看到互相冲突的 4×4要求。
 func normalizeMotionPrompt(prompt string) string {
 	for _, phrase := range []string{
+		"输出一张1024×1024透明PNG，严格4列×4行共16格，每格256×256。从左到右、从上到下排列同一次完整动作：1—4准备，5—8展开，9—12动作重点，13—16收势回位。",
+		"输出一张1024×1024透明PNG，严格5列×5行共25格，合成后每帧128×128。从左到右、从上到下排列同一次完整动作：1—6准备，7—12展开，13—18动作重点，19—25收势回位。25格必须是按时间等间隔采样的连续动作，相邻格只允许小步长变化，不得跳过中间姿态或重复静止帧。保持镜头、人物水平中心、脚底基准线和人物整体尺寸稳定。",
+		"输出一张1024×1024透明PNG，严格10列×10行共100格，合成后每帧128×128。从左到右、从上到下排列同一次完整动作：1—25准备，26—50展开，51—75动作重点，76—100收势回位。100格必须覆盖同一个完整动作周期并按时间等间隔采样，相邻格只允许极小步长变化，不得跳过中间姿态、重复静止帧或把多个动作拼在一起。保持镜头、人物水平中心、脚底基准线和人物整体尺寸稳定。",
 		"输出一张1024×1024透明PNG，严格4列×4行共16格，每格256×256。",
 		"严格4列×4行共16格，每格256×256。",
 		"输出一张1024x1024透明PNG，严格4列x4行共16格，每格256x256。",
@@ -36,6 +39,15 @@ func normalizeMotionPrompt(prompt string) string {
 		"1—6准备，7—12展开，13—18动作重点，19—25收势回位。",
 		"1-6准备，7-12展开，13-18动作重点，19-25收势回位。",
 		"25格必须是按时间等间隔采样的连续动作，相邻格只允许小步长变化，不得跳过中间姿态或重复静止帧。保持镜头、人物水平中心、脚底基准线和人物整体尺寸稳定；除动作本身必需的连续位移、起跳和落地外，不得左右漂移、上下抖动或忽大忽小。",
+		"输出一张1024×1024透明PNG，严格10列×10行共100格，合成后每帧128×128。",
+		"严格10列×10行共100格，合成后每帧128×128。",
+		"输出一张1024x1024透明PNG，严格10列x10行共100格，合成后每帧128x128。",
+		"严格10列x10行共100格，合成后每帧128x128。",
+		"输出一张1024*1024透明PNG，严格10列*10行共100格，合成后每帧128*128。",
+		"严格10列*10行共100格，合成后每帧128*128。",
+		"1—25准备，26—50展开，51—75动作重点，76—100收势回位。",
+		"1-25准备，26-50展开，51-75动作重点，76-100收势回位。",
+		"100格必须覆盖同一个完整动作周期并按时间等间隔采样，相邻格只允许极小步长变化，不得跳过中间姿态、重复静止帧或把多个动作拼在一起。保持镜头、人物水平中心、脚底基准线和人物整体尺寸稳定；除动作本身必需的连续位移、起跳和落地外，不得左右漂移、上下抖动或忽大忽小。",
 	} {
 		prompt = strings.ReplaceAll(prompt, phrase, "")
 	}
@@ -43,27 +55,31 @@ func normalizeMotionPrompt(prompt string) string {
 }
 
 // motionSpec 是动作序列图的网格规格，由后台配置选择：
-// 4x4 共16格、每帧输出256×256；5x5 共25格、每帧输出128×128。
+// 4x4 共16格、每帧输出256×256；5x5 共25格、10x10 共100格，后两者每帧输出128×128。
 // 上游始终产出 1024×1024 的方形序列图，切格按比例取整划分边界，
-// 因此两种规格都兼容可整除与不可整除（如 5×5 对 1024）的图宽。
+// 因此三种规格都兼容可整除与不可整除（如 5×5、10×10 对 1024）的图宽。
 type motionSpec struct {
-	id     string // 配置编号（4x4 / 5x5），用于提示词与日志
+	id     string // 配置编号（4x4 / 5x5 / 10x10），用于提示词与日志
 	cols   int    // 每边格数
 	frames int    // cols×cols 总帧数
 	size   int    // 输出 GIF 每帧边长
+	delay  int    // GIF 帧延时，单位为 1/100 秒
 }
 
 // motionSpecs 固定可选规格：4×4（1—4准备、5—8展开、9—12重点、13—16收势）
-// 与 5×5（1—6准备、7—12展开、13—18重点、19—25收势）。
+// 与 5×5（1—6准备、7—12展开、13—18重点、19—25收势）、
+// 10×10（每阶段25帧）。
 var motionSpecs = map[string]motionSpec{
-	"4x4": {id: "4x4", cols: 4, frames: 16, size: 256},
-	"5x5": {id: "5x5", cols: 5, frames: 25, size: 128},
+	"4x4":   {id: "4x4", cols: 4, frames: 16, size: 256, delay: gifFrameDelay},
+	"5x5":   {id: "5x5", cols: 5, frames: 25, size: 128, delay: gifFrameDelay},
+	"10x10": {id: "10x10", cols: 10, frames: 100, size: 128, delay: smoothGifFrameDelay},
 }
 
-const gifFrameDelay = 8 // GIF 延时单位为 1/100 秒；8 即统一 80ms（12.5 FPS）。
+const gifFrameDelay = 8       // GIF 延时单位为 1/100 秒；8 即统一 80ms（12.5 FPS）。
+const smoothGifFrameDelay = 2 // 100帧规格使用20ms（50 FPS），总时长仍约2秒。
 
 // motionGridIDs 返回后台可选的动作序列图规格编号。
-func motionGridIDs() []string { return []string{"4x4", "5x5"} }
+func motionGridIDs() []string { return []string{"4x4", "5x5", "10x10"} }
 
 // motionSpecOf 解析规格编号，空值或未知编号回落到默认 4×4。
 func motionSpecOf(id string) motionSpec {
@@ -87,6 +103,8 @@ func motionSpecPrompt(id string) string {
 		s.cols, s.cols, s.frames, cell, s.phases())
 	if s.frames == 25 {
 		prompt += " 25格必须是按时间等间隔采样的连续动作，相邻格只允许小步长变化，不得跳过中间姿态或重复静止帧。保持镜头、人物水平中心、脚底基准线和人物整体尺寸稳定；除动作本身必需的连续位移、起跳和落地外，不得左右漂移、上下抖动或忽大忽小。"
+	} else if s.frames == 100 {
+		prompt += " 100格必须覆盖同一个完整动作周期并按时间等间隔采样，相邻格只允许极小步长变化，不得跳过中间姿态、重复静止帧或把多个动作拼在一起。保持镜头、人物水平中心、脚底基准线和人物整体尺寸稳定；除动作本身必需的连续位移、起跳和落地外，不得左右漂移、上下抖动或忽大忽小。"
 	}
 	return prompt
 }
@@ -94,6 +112,8 @@ func motionSpecPrompt(id string) string {
 // phases 返回 1 起的动作阶段划分文案。
 func (s motionSpec) phases() string {
 	switch s.frames {
+	case 100:
+		return "1—25准备，26—50展开，51—75动作重点，76—100收势回位"
 	case 25:
 		return "1—6准备，7—12展开，13—18动作重点，19—25收势回位"
 	default:
@@ -155,7 +175,7 @@ func synthesizeGIF(sheet []byte, spec motionSpec) ([]byte, error) {
 			}
 		}
 		out.Image = append(out.Image, p)
-		out.Delay = append(out.Delay, gifFrameDelay)
+		out.Delay = append(out.Delay, spec.delay)
 		out.Disposal = append(out.Disposal, gif.DisposalBackground)
 	}
 	var buf bytes.Buffer

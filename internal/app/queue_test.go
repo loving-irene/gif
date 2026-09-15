@@ -111,6 +111,47 @@ func TestServerGIFSynthesis5x5Grid(t *testing.T) {
 	}
 }
 
+// 10×10 规格从 1024×1024 序列图切出100帧，输出128×128并以20ms播放，
+// 保持约2秒的完整动作时长。
+func TestServerGIFSynthesis10x10Grid(t *testing.T) {
+	sheet, err := imageData(sampleSheetGrid(10), 20*1024*1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := synthesizeGIF(sheet, motionSpecOf("10x10"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := gif.DecodeAll(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(g.Image) != 100 || g.LoopCount != 0 || g.Config.Width != 128 || g.Config.Height != 128 {
+		t.Fatal("10x10 GIF animation metadata invalid", len(g.Image), g.Config.Width, g.Config.Height)
+	}
+	for i, frame := range g.Image {
+		if g.Disposal[i] != gif.DisposalBackground || g.Delay[i] != smoothGifFrameDelay {
+			t.Fatal("10x10 frame metadata invalid", i)
+		}
+		if !hasOpaquePixel(frame) {
+			t.Fatal("10x10 moving subject was lost", i)
+		}
+		if _, _, _, alpha := frame.At(0, 0).RGBA(); alpha != 0 {
+			t.Fatal("10x10 transparent background lost", i)
+		}
+	}
+	prompt := motionSpecPrompt("10x10")
+	for _, want := range []string{"严格10列×10行共100格", "1—25准备", "76—100收势回位", "同一个完整动作周期", "相邻格只允许极小步长变化"} {
+		if !strings.Contains(prompt, want) {
+			t.Fatal("10x10 prompt missing", want)
+		}
+	}
+	configured := "保留这段自定义约束。\n输出一张1024×1024透明PNG，严格10列×10行共100格，合成后每帧128×128。从左到右、从上到下排列同一次完整动作：1—25准备，26—50展开，51—75动作重点，76—100收势回位。100格必须覆盖同一个完整动作周期并按时间等间隔采样，相邻格只允许极小步长变化，不得跳过中间姿态、重复静止帧或把多个动作拼在一起。保持镜头、人物水平中心、脚底基准线和人物整体尺寸稳定。"
+	if got := normalizeMotionPrompt(configured); got != "保留这段自定义约束。" {
+		t.Fatal("10x10 prompt normalization left stale clauses", got)
+	}
+}
+
 func TestJobsQueueWhenSlotsFullAndAdminListsActive(t *testing.T) {
 	a := testApp(t)
 	admin := codeAdmin(t, a, loginDevice(t, a, "admin"))

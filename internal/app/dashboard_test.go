@@ -2,6 +2,8 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -128,5 +130,69 @@ func TestAdminDashboardRequiresAdmin(t *testing.T) {
 	s := loginDevice(t, a, "one")
 	if w := request(t, a, s, "GET", "/api/admin/dashboard", nil); w.Code != 403 {
 		t.Fatalf("non-admin dashboard status=%d want 403", w.Code)
+	}
+}
+
+// TestAdminDashboardEmail 验证管理员可主动把当前看板完整推送到通知邮箱，
+// 接口返回实际收件人并写入审计记录。
+func TestAdminDashboardEmail(t *testing.T) {
+	a := testApp(t)
+	s := loginDevice(t, a, "dashboard-mail-admin")
+	loginAdmin(t, a, s)
+	sent := mailReady(t, a, "owner@example.com", nil)
+	now := time.Now().In(beijingZone)
+	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, beijingZone)
+	a.db.Exec("INSERT INTO usage_stats(job_id,user_id,kind,category,created) VALUES('mail-job',?,'motion','female',?)", s.User.ID, day.Unix()+1)
+	a.db.Exec("INSERT INTO codes(hash,label,credits,created) VALUES('mail-code','mail',12,?)", day.Unix()+2)
+
+	w := request(t, a, s, "POST", "/api/admin/dashboard/email", map[string]any{})
+	if w.Code != 200 {
+		t.Fatalf("send dashboard email: %d %s", w.Code, w.Body.String())
+	}
+	var response map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil || response["recipient"] != "owner@example.com" {
+		t.Fatal("unexpected response", err, response)
+	}
+	if sent.To != "owner@example.com" || !strings.Contains(sent.Subject, "拾光 GIF 数据看板 ") {
+		t.Fatal("unexpected mail envelope", sent.To, sent.Subject)
+	}
+	for _, want := range []string{"新增用户", "消耗次数", "本日：1", "累计：1", "兑换码个数：1", "本日消耗 · 任务类型", "GIF 动图：1", "女生：1", "TOP5 · 消耗次数"} {
+		if !strings.Contains(sent.Body, want) {
+			t.Fatalf("dashboard mail missing %q:\n%s", want, sent.Body)
+		}
+	}
+	var actor, target string
+	if err := a.db.QueryRow("SELECT actor,target FROM audit WHERE event='dashboard_email_sent'").Scan(&actor, &target); err != nil || actor != s.User.ID || target != "owner@example.com" {
+		t.Fatal("dashboard mail audit mismatch", err, actor, target)
+	}
+
+	page := request(t, a, nil, "GET", "/who", nil).Body.String()
+	if !strings.Contains(page, `id="sendDashEmail"`) || !strings.Contains(page, "/assets/admin.v31.js") {
+		t.Fatal("dashboard email button or versioned script missing")
+	}
+	raw, err := web.ReadFile("web/admin.v31.js")
+	if err != nil || !strings.Contains(string(raw), "/api/admin/dashboard/email") {
+		t.Fatal("dashboard email frontend action missing", err)
+	}
+}
+
+// TestAdminDashboardEmailFailures 验证非管理员不可发送，未配置与投递失败也不会留下成功审计。
+func TestAdminDashboardEmailFailures(t *testing.T) {
+	a := testApp(t)
+	s := loginDevice(t, a, "dashboard-mail-user")
+	if w := request(t, a, s, "POST", "/api/admin/dashboard/email", map[string]any{}); w.Code != 403 {
+		t.Fatalf("non-admin dashboard email status=%d want 403", w.Code)
+	}
+	loginAdmin(t, a, s)
+	if w := request(t, a, s, "POST", "/api/admin/dashboard/email", map[string]any{}); w.Code != 503 || !strings.Contains(w.Body.String(), "请先配置") {
+		t.Fatalf("unconfigured dashboard email: %d %s", w.Code, w.Body.String())
+	}
+	mailReady(t, a, "", errors.New("smtp down"))
+	if w := request(t, a, s, "POST", "/api/admin/dashboard/email", map[string]any{}); w.Code != 502 {
+		t.Fatalf("failed dashboard email status=%d want 502", w.Code)
+	}
+	var count int
+	if err := a.db.QueryRow("SELECT COUNT(*) FROM audit WHERE event='dashboard_email_sent'").Scan(&count); err != nil || count != 0 {
+		t.Fatal("failed dashboard email was audited", err, count)
 	}
 }
