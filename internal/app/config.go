@@ -115,7 +115,7 @@ type Settings struct {
 	DraftPrompt     string   `json:"draftPrompt"`
 	MotionPrompt    string   `json:"motionPrompt"`
 	// MotionGrid 控制动作序列图的网格规格：4x4 为16格（每帧256×256），
-	// 5x5 为25格、10x10 为100格（每帧128×128）。生成提示词与 GIF 合成共用该规格。
+	// 5x5 为25格（每帧128×128），10x10 为100格（每帧256×256）。生成提示词与 GIF 合成共用该规格。
 	MotionGrid string     `json:"motionGrid"`
 	Styles     []Style    `json:"styles"`
 	Categories []Category `json:"categories"`

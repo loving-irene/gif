@@ -78,7 +78,7 @@ func TestBrowserGIFEncoderDecodes(t *testing.T) {
 			t.Fatal("5x5 transparent background lost")
 		}
 	}
-	// v5 编码器的 10×10 规格：100 帧每帧 128×128、20ms 帧间隔。
+	// v6 编码器的 10×10 规格：100 帧每帧 256×256、20ms 帧间隔。
 	f100, err := os.Open(output100)
 	if err != nil {
 		t.Fatal(err)
@@ -88,7 +88,7 @@ func TestBrowserGIFEncoderDecodes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(g100.Image) != 100 || g100.LoopCount != 0 || g100.Config.Width != 128 || g100.Config.Height != 128 {
+	if len(g100.Image) != 100 || g100.LoopCount != 0 || g100.Config.Width != 256 || g100.Config.Height != 256 {
 		t.Fatal("10x10 GIF animation metadata invalid")
 	}
 	for i, frame := range g100.Image {

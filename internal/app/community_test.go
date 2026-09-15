@@ -394,12 +394,22 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 	if !strings.Contains(body, `href="/community"`) || !strings.Contains(body, `class="community-link"`) {
 		t.Fatal("homepage missing community entry")
 	}
-	for _, asset := range []string{"/assets/app.v34.js", "/assets/style.v29.css"} {
+	for _, asset := range []string{"/assets/app.v35.js", "/assets/style.v29.css"} {
 		if !strings.Contains(body, asset) {
 			t.Fatal("homepage missing updated asset", asset)
 		}
 		if _, err := web.ReadFile("web/" + strings.TrimPrefix(asset, "/assets/")); err != nil {
 			t.Fatal("updated asset not embedded", asset, err)
+		}
+	}
+	raw, err := web.ReadFile("web/app.v35.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := string(raw)
+	for _, want := range []string{`"10x10": { cols: 10, frames: 100, size: 256 }`, `/assets/gif-worker.v6.js`, "shareUploadLimit = 8 * 1024 * 1024"} {
+		if !strings.Contains(source, want) {
+			t.Fatal("homepage motion quality contract missing", want)
 		}
 	}
 }
@@ -417,7 +427,7 @@ func TestHomepageAccountEntryStaysClickable(t *testing.T) {
 	if !strings.Contains(body, `id="accountLockedHint"`) {
 		t.Fatal("account dialog missing locked hint")
 	}
-	raw, err := web.ReadFile("web/app.v34.js")
+	raw, err := web.ReadFile("web/app.v35.js")
 	if err != nil {
 		t.Fatal("homepage script not embedded", err)
 	}

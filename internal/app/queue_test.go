@@ -115,9 +115,16 @@ func TestServerGIFSynthesis5x5Grid(t *testing.T) {
 	}
 }
 
-// 10×10 规格从 2048×2048 序列图切出100帧，输出128×128并以20ms播放，
+// 10×10 规格从 2048×2048 序列图切出100帧，输出256×256并以20ms播放，
 // 保持约2秒的完整动作时长。
 func TestServerGIFSynthesis10x10Grid(t *testing.T) {
+	legacy, err := imageData(sampleSheetGrid(10), 20*1024*1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = synthesizeGIF(legacy, motionSpecOf("10x10")); err == nil || !strings.Contains(err.Error(), "does not match requested 2048x2048") {
+		t.Fatal("10x10 synthesis accepted a low-resolution source sheet", err)
+	}
 	sheet, err := imageData(sampleSheetGridSize(10, 2048), 20*1024*1024)
 	if err != nil {
 		t.Fatal(err)
@@ -130,7 +137,7 @@ func TestServerGIFSynthesis10x10Grid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(g.Image) != 100 || g.LoopCount != 0 || g.Config.Width != 128 || g.Config.Height != 128 {
+	if len(g.Image) != 100 || g.LoopCount != 0 || g.Config.Width != 256 || g.Config.Height != 256 {
 		t.Fatal("10x10 GIF animation metadata invalid", len(g.Image), g.Config.Width, g.Config.Height)
 	}
 	for i, frame := range g.Image {
@@ -153,6 +160,10 @@ func TestServerGIFSynthesis10x10Grid(t *testing.T) {
 	configured := "保留这段自定义约束。\n输出一张1024×1024透明PNG，严格10列×10行共100格，合成后每帧128×128。从左到右、从上到下排列同一次完整动作：1—25准备，26—50展开，51—75动作重点，76—100收势回位。100格必须覆盖同一个完整动作周期并按时间等间隔采样，相邻格只允许极小步长变化，不得跳过中间姿态、重复静止帧或把多个动作拼在一起。保持镜头、人物水平中心、脚底基准线和人物整体尺寸稳定。"
 	if got := normalizeMotionPrompt(configured); got != "保留这段自定义约束。" {
 		t.Fatal("10x10 prompt normalization left stale clauses", got)
+	}
+	configured = "保留新的自定义约束。\n输出一张2048×2048透明PNG，严格10列×10行共100格，合成后每帧256×256。从左到右、从上到下排列同一次完整动作：1—25准备，26—50展开，51—75动作重点，76—100收势回位。100格必须覆盖同一个完整动作周期并按时间等间隔采样，相邻格只允许极小步长变化，不得跳过中间姿态、重复静止帧或把多个动作拼在一起。保持镜头、人物水平中心、脚底基准线和人物整体尺寸稳定。"
+	if got := normalizeMotionPrompt(configured); got != "保留新的自定义约束。" {
+		t.Fatal("10x10 current prompt normalization left generated clauses", got)
 	}
 }
 
@@ -708,7 +719,7 @@ func TestMotionJobRequests2048For10x10(t *testing.T) {
 		t.Fatal(err)
 	}
 	g, err := gif.DecodeAll(bytes.NewReader(gifBytes))
-	if err != nil || len(g.Image) != 100 || g.Config.Width != 128 || g.Config.Height != 128 {
+	if err != nil || len(g.Image) != 100 || g.Config.Width != 256 || g.Config.Height != 256 {
 		t.Fatal("server GIF not 10x10 spec", err, len(g.Image), g.Config.Width)
 	}
 }

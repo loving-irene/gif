@@ -19,8 +19,8 @@ import (
 // 同一账号同一张作品只保留一条（UNIQUE(sharer,work_id)）：重复分享刷新时间与内容，
 // 不产生重复条目，也不会把同一张图刷满整个社区；取消后可以再次分享。
 const (
-	// shareImageLimit 是单张分享图的解码后大小上限；GIF 动图通常 100KB–2MB。
-	shareImageLimit = 4 << 20
+	// shareImageLimit 是单张分享图的解码后大小上限；可容纳256×256的100帧浏览器GIF。
+	shareImageLimit = 8 << 20
 	// communityPageSize 是社区列表单页条数，移动端一屏约 3–4 张，够滑两次。
 	communityPageSize = 30
 	// communityPerUser 是单账号在社区池里的分享条数上限，超出按时间淘汰最旧的。
@@ -121,7 +121,7 @@ func (a *App) communityShare(w http.ResponseWriter, r *http.Request) {
 		Action string `json:"action"`
 		Image  string `json:"image"`
 	}
-	// 上限按「4MB 图片 base64 后约 5.3MB」留余量；超限时 decode 会失败，因此下面单独提示。
+	// 上限按「8MB 图片 base64 后约 10.7MB」留余量；超限时 decode 会失败，因此下面单独提示。
 	if decode(w, r, &in, shareImageLimit*2) != nil {
 		fail(w, 413, "这张作品太大，暂时无法分享，请换一张")
 		return

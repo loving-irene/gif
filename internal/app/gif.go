@@ -16,13 +16,14 @@ import (
 )
 
 // normalizeMotionPrompt 删除旧配置中常见的固定网格句。规格说明由
-// motionSpecPrompt 统一追加，避免切换到 5×5 后上游同时看到互相冲突的 4×4要求。
+// motionSpecPrompt 统一追加，避免切换规格后上游同时看到互相冲突的尺寸和格数要求。
 func normalizeMotionPrompt(prompt string) string {
 	for _, phrase := range []string{
 		"输出一张1024×1024透明PNG，按后台动作序列图规格排列连续帧。",
 		"输出一张1024×1024透明PNG，严格4列×4行共16格，每格256×256。从左到右、从上到下排列同一次完整动作：1—4准备，5—8展开，9—12动作重点，13—16收势回位。",
 		"输出一张1024×1024透明PNG，严格5列×5行共25格，合成后每帧128×128。从左到右、从上到下排列同一次完整动作：1—6准备，7—12展开，13—18动作重点，19—25收势回位。25格必须是按时间等间隔采样的连续动作，相邻格只允许小步长变化，不得跳过中间姿态或重复静止帧。保持镜头、人物水平中心、脚底基准线和人物整体尺寸稳定。",
 		"输出一张1024×1024透明PNG，严格10列×10行共100格，合成后每帧128×128。从左到右、从上到下排列同一次完整动作：1—25准备，26—50展开，51—75动作重点，76—100收势回位。100格必须覆盖同一个完整动作周期并按时间等间隔采样，相邻格只允许极小步长变化，不得跳过中间姿态、重复静止帧或把多个动作拼在一起。保持镜头、人物水平中心、脚底基准线和人物整体尺寸稳定。",
+		"输出一张2048×2048透明PNG，严格10列×10行共100格，合成后每帧256×256。从左到右、从上到下排列同一次完整动作：1—25准备，26—50展开，51—75动作重点，76—100收势回位。100格必须覆盖同一个完整动作周期并按时间等间隔采样，相邻格只允许极小步长变化，不得跳过中间姿态、重复静止帧或把多个动作拼在一起。保持镜头、人物水平中心、脚底基准线和人物整体尺寸稳定。",
 		"输出一张1024×1024透明PNG，严格4列×4行共16格，每格256×256。",
 		"严格4列×4行共16格，每格256×256。",
 		"输出一张1024x1024透明PNG，严格4列x4行共16格，每格256x256。",
@@ -53,6 +54,10 @@ func normalizeMotionPrompt(prompt string) string {
 		"严格10列×10行共100格，源图2048×2048，合成后每帧128×128。",
 		"输出一张2048x2048透明PNG，严格10列x10行共100格，合成后每帧128x128。",
 		"输出一张2048*2048透明PNG，严格10列*10行共100格，合成后每帧128*128。",
+		"输出一张2048×2048透明PNG，严格10列×10行共100格，合成后每帧256×256。",
+		"严格10列×10行共100格，源图2048×2048，合成后每帧256×256。",
+		"输出一张2048x2048透明PNG，严格10列x10行共100格，合成后每帧256x256。",
+		"输出一张2048*2048透明PNG，严格10列*10行共100格，合成后每帧256*256。",
 	} {
 		prompt = strings.ReplaceAll(prompt, phrase, "")
 	}
@@ -60,7 +65,7 @@ func normalizeMotionPrompt(prompt string) string {
 }
 
 // motionSpec 是动作序列图的网格规格，由后台配置选择：
-// 4x4 共16格、每帧输出256×256；5x5 共25格、10x10 共100格，后两者每帧输出128×128。
+// 4x4 共16格、每帧输出256×256；5x5 共25格、每帧输出128×128；10x10 共100格、每帧输出256×256。
 // 4×4/5×5 使用 1024×1024 源图，10×10 使用 2048×2048 源图；切格按比例取整划分边界，
 // 因此三种规格都兼容不能整除格数的图宽。
 type motionSpec struct {
@@ -78,7 +83,7 @@ type motionSpec struct {
 var motionSpecs = map[string]motionSpec{
 	"4x4":   {id: "4x4", cols: 4, frames: 16, sourceSize: 1024, size: 256, delay: gifFrameDelay},
 	"5x5":   {id: "5x5", cols: 5, frames: 25, sourceSize: 1024, size: 128, delay: gifFrameDelay},
-	"10x10": {id: "10x10", cols: 10, frames: 100, sourceSize: 2048, size: 128, delay: smoothGifFrameDelay},
+	"10x10": {id: "10x10", cols: 10, frames: 100, sourceSize: 2048, size: 256, delay: smoothGifFrameDelay},
 }
 
 const gifFrameDelay = 8       // GIF 延时单位为 1/100 秒；8 即统一 80ms（12.5 FPS）。
@@ -103,7 +108,7 @@ func motionSpecPrompt(id string) string {
 	if s.cols == 4 {
 		cell = "，每格256×256"
 	} else {
-		cell = "，合成后每帧128×128"
+		cell = fmt.Sprintf("，合成后每帧%d×%d", s.size, s.size)
 	}
 	prompt := fmt.Sprintf("动作序列图规格（以此为准，前文若出现其他图片尺寸、格数、每格尺寸或阶段划分描述，以本段为准）：一张%d×%d透明PNG，严格%d列×%d行共%d格%s。从左到右、从上到下排列同一次完整动作：%s。每格无边框无间隙无编号无文字，角色武器特效不跨格、不裁切。",
 		s.sourceSize, s.sourceSize, s.cols, s.cols, s.frames, cell, s.phases())
@@ -140,6 +145,9 @@ func synthesizeGIF(sheet []byte, spec motionSpec) ([]byte, error) {
 	width, height := bounds.Dx(), bounds.Dy()
 	if width != height || width < spec.cols || height < spec.cols {
 		return nil, errors.New("motion sheet is not a divisible square grid")
+	}
+	if spec.id == "10x10" && (width != spec.sourceSize || height != spec.sourceSize) {
+		return nil, fmt.Errorf("motion sheet size %dx%d does not match requested %dx%d", width, height, spec.sourceSize, spec.sourceSize)
 	}
 	size := spec.size
 	frames := make([]*image.NRGBA, spec.frames)

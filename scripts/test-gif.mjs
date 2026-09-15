@@ -2,7 +2,7 @@ import { writeFile } from "node:fs/promises";
 import {
   encodeGIF,
   stabilizeFrames,
-} from "../internal/app/web/gif-worker.v5.js";
+} from "../internal/app/web/gif-worker.v6.js";
 const frames = [];
 for (let frame = 0; frame < 16; frame++) {
   const pixels = new Uint8ClampedArray(256 * 256 * 4);
@@ -38,14 +38,14 @@ const bytes25 = encodeGIF(frames25, 128, 128);
 await writeFile(process.argv[3], bytes25);
 console.log(`GIF encoded: ${frames25.length} frames, ${bytes25.length} bytes`);
 
-// 10×10 规格：100 帧每帧 128×128，编码为 20ms 帧间隔。
+// 10×10 规格：100 帧每帧 256×256，编码为 20ms 帧间隔。
 const frames100 = [];
 for (let frame = 0; frame < 100; frame++) {
-  const pixels = new Uint8ClampedArray(128 * 128 * 4);
-  const shift = Math.round(40 + Math.sin((frame / 100) * Math.PI * 2) * 30);
-  for (let y = 35; y < 75; y++)
-    for (let x = shift; x < shift + 24; x++) {
-      const i = (y * 128 + x) * 4;
+  const pixels = new Uint8ClampedArray(256 * 256 * 4);
+  const shift = Math.round(80 + Math.sin((frame / 100) * Math.PI * 2) * 60);
+  for (let y = 70; y < 150; y++)
+    for (let x = shift; x < shift + 48; x++) {
+      const i = (y * 256 + x) * 4;
       pixels[i] = 90;
       pixels[i + 1] = 170;
       pixels[i + 2] = 210;
@@ -53,7 +53,7 @@ for (let frame = 0; frame < 100; frame++) {
     }
   frames100.push(pixels);
 }
-const bytes100 = encodeGIF(frames100, 128, 128);
+const bytes100 = encodeGIF(frames100, 256, 256);
 await writeFile(process.argv[4], bytes100);
 console.log(`GIF encoded: ${frames100.length} frames, ${bytes100.length} bytes`);
 

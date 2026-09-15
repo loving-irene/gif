@@ -150,17 +150,17 @@ func TestAdminDeploymentVersionPageAndAuthorization(t *testing.T) {
 	}
 
 	body := request(t, a, nil, "GET", "/who", nil).Body.String()
-	for _, want := range []string{"/assets/admin.v32.js", `data-tab="gallerySection"`, `id="gallerySection"`, `data-tab="deploymentSection"`, `id="deploymentSection"`, `id="refreshDeployment"`, `id="deploymentOutput"`} {
+	for _, want := range []string{"/assets/admin.v33.js", "10×10 · 源2048×2048 · GIF 256×256", `data-tab="gallerySection"`, `id="gallerySection"`, `data-tab="deploymentSection"`, `id="deploymentSection"`, `id="refreshDeployment"`, `id="deploymentOutput"`} {
 		if !strings.Contains(body, want) {
 			t.Fatal("admin deployment page missing", want)
 		}
 	}
-	raw, err := web.ReadFile("web/admin.v32.js")
+	raw, err := web.ReadFile("web/admin.v33.js")
 	if err != nil {
 		t.Fatal(err)
 	}
 	source := string(raw)
-	for _, want := range []string{"/api/admin/gallery", "loadGallery", "gallerySection: loadGallery", "/api/admin/deployment-version", "loadDeploymentVersion", "deploymentSection: loadDeploymentVersion", `$("deploymentOutput").value = result.output`} {
+	for _, want := range []string{"2048×2048透明PNG", "合成后每帧256×256", "/api/admin/gallery", "loadGallery", "gallerySection: loadGallery", "/api/admin/deployment-version", "loadDeploymentVersion", "deploymentSection: loadDeploymentVersion", `$("deploymentOutput").value = result.output`} {
 		if !strings.Contains(source, want) {
 			t.Fatal("admin deployment script missing", want)
 		}
