@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="robots" content="noindex,nofollow" />
     <title>管理工作台 · 拾光 GIF</title>
-    <link rel="stylesheet" href="/assets/style.v31.css" />
+    <link rel="stylesheet" href="/assets/style.v32.css" />
     <link rel="icon" href="/assets/icon.v1.svg" />
-    <script type="module" src="/assets/admin.v31.js"></script>
+    <script type="module" src="/assets/admin.v32.js"></script>
   </head>
   <body>
     <header class="header wrap admin-wrap">
@@ -42,6 +42,7 @@
           <button type="button" class="active" data-tab="dashSection">
             数据看板
           </button>
+          <button type="button" data-tab="gallerySection">图库</button>
           <button type="button" data-tab="jobSection">任务列表</button>
           <button type="button" data-tab="historySection">任务历史</button>
           <button type="button" data-tab="configSection">基础与接口</button>
@@ -64,6 +65,27 @@
             ✉ 发送邮件
           </button>
           <div id="dashContent"></div>
+        </section>
+        <section id="gallerySection" class="admin-section admin-panel" hidden>
+          <h2>图库</h2>
+          <p class="hint">
+            展示数据库当前仍保留的全部定稿图和 GIF。图片按需加载；历史作品没有额外保存的定稿关联或完整提示词。
+          </p>
+          <div class="gallery-toolbar">
+            <label>搜索<input id="gallerySearch" type="search" maxlength="254" placeholder="账号、用户名、编号、动作" /></label>
+            <button id="refreshGallery" class="text-button" type="button">↻ 刷新图库</button>
+          </div>
+          <h3 class="gallery-heading">定稿图 <span id="galleryDraftCount" class="hint"></span></h3>
+          <div id="galleryDrafts" class="admin-gallery"></div>
+          <p id="galleryDraftsEmpty" class="hint" hidden>没有符合条件的定稿图。</p>
+          <h3 class="gallery-heading">GIF / 动作原图 <span id="galleryWorkCount" class="hint"></span></h3>
+          <div id="galleryWorks" class="admin-gallery"></div>
+          <p id="galleryWorksEmpty" class="hint" hidden>没有符合条件的 GIF 或动作原图。</p>
+          <div class="pager">
+            <button id="galleryPrev" class="secondary" type="button" disabled>上一页</button>
+            <span id="galleryPageInfo" class="hint">第 1 / 1 页 · 共 0 条</span>
+            <button id="galleryNext" class="secondary" type="button" disabled>下一页</button>
+          </div>
         </section>
         <section id="jobSection" class="admin-section admin-panel" hidden>
           <h2>任务列表</h2>
