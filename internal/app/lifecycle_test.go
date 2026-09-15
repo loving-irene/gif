@@ -62,7 +62,7 @@ func TestCloseWaitsForGenerationAndPreservesInput(t *testing.T) {
 	var releaseOnce sync.Once
 	releaseJob := func() { releaseOnce.Do(func() { close(release) }) }
 	defer releaseJob()
-	a.providerCall = func(ctx context.Context, _ Settings, _ string, _ []string, onTaskID func(string)) (string, error) {
+	a.providerCall = func(ctx context.Context, _ Settings, _ string, _ []string, _ string, onTaskID func(string)) (string, error) {
 		onTaskID("shutdown-upstream")
 		close(started)
 		<-ctx.Done()

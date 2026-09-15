@@ -60,7 +60,7 @@ type App struct {
 	pollInterval time.Duration
 	// providerCall 提交一次新的生成请求；providerContinue 只按已记录的上游任务号继续认领结果。
 	// 超时续查走后者，不会产生第二次上游请求。
-	providerCall     func(context.Context, Settings, string, []string, func(string)) (string, error)
+	providerCall     func(context.Context, Settings, string, []string, string, func(string)) (string, error)
 	providerContinue func(context.Context, Settings, string) (string, error)
 	providerClient   func() *http.Client
 }

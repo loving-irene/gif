@@ -342,7 +342,7 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 			a.signalDispatch()
 		}
 	}()
-	input := &jobInput{Prompt: prompt, Images: images, Selection: in.Selection, PhotoHash: photoHash}
+	input := &jobInput{Prompt: prompt, Images: images, ImageSize: providerImageSize(in.Kind, cfg.MotionGrid), MotionGrid: cfg.MotionGrid, Selection: in.Selection, PhotoHash: photoHash}
 	id := token(16)
 	created := time.Now().Unix()
 	committed := false

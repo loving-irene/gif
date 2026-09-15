@@ -29,7 +29,7 @@ func TestDebugLogsExplainProviderFailureWithoutSecrets(t *testing.T) {
 		})}
 	}
 	cfg, _ := a.settings()
-	_, err := a.callProvider(context.WithValue(context.Background(), debugTraceKey{}, "job-test"), cfg, prompt, []string{photo}, nil)
+	_, err := a.callProvider(context.WithValue(context.Background(), debugTraceKey{}, "job-test"), cfg, prompt, []string{photo}, "1024x1024", nil)
 	var failure *providerFailure
 	if !errors.As(err, &failure) || failure.Status != 400 || failure.Code != "validation_error" {
 		t.Fatal("lost structured error", err)
@@ -82,7 +82,7 @@ func TestDebugOffAndNetworkCausePreserved(t *testing.T) {
 		})}
 	}
 	cfg, _ := a.settings()
-	_, err := a.callProvider(context.Background(), cfg, "prompt", []string{sampleImage(false)}, nil)
+	_, err := a.callProvider(context.Background(), cfg, "prompt", []string{sampleImage(false)}, "1024x1024", nil)
 	if err == nil || !strings.Contains(err.Error(), "connection refused") || !strings.Contains(output.String(), "provider_http_end") {
 		t.Fatal("network cause disappeared", err)
 	}

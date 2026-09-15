@@ -35,7 +35,7 @@ func TestGeekAIAdapterPayloadAndAsyncPolling(t *testing.T) {
 				if !ok || len(images) != 2 || images[0] != fixture || images[1] != fixture {
 					t.Error("reference image ordering changed")
 				}
-				if p["model"] != "gpt-image-2.5-sunburst" || p["n"] != float64(1) || p["async"] != true || p["retries"] != float64(0) {
+				if p["model"] != "gpt-image-2.5-sunburst" || p["size"] != "2048x2048" || p["n"] != float64(1) || p["async"] != true || p["retries"] != float64(0) {
 					t.Error("generation contract invalid")
 				}
 				body = `{"task_id":"test-task","task_status":"pending"}`
@@ -50,8 +50,23 @@ func TestGeekAIAdapterPayloadAndAsyncPolling(t *testing.T) {
 		})}
 	}
 	cfg, _ := a.settings()
-	result, err := a.callProvider(context.Background(), cfg, "保留本人特征", []string{fixture, fixture}, nil)
+	result, err := a.callProvider(context.Background(), cfg, "保留本人特征", []string{fixture, fixture}, "2048x2048", nil)
 	if err != nil || result != fixture || calls != 2 {
 		t.Fatalf("adapter failed: calls=%d err=%v", calls, err)
+	}
+}
+
+func TestProviderImageSizeByJobKindAndMotionGrid(t *testing.T) {
+	for _, tc := range []struct {
+		kind, grid, want string
+	}{
+		{"draft", "10x10", "1024x1024"},
+		{"motion", "4x4", "1024x1024"},
+		{"motion", "5x5", "1024x1024"},
+		{"motion", "10x10", "2048x2048"},
+	} {
+		if got := providerImageSize(tc.kind, tc.grid); got != tc.want {
+			t.Fatalf("providerImageSize(%q, %q)=%q, want %q", tc.kind, tc.grid, got, tc.want)
+		}
 	}
 }

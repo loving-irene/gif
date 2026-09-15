@@ -16,6 +16,15 @@ import (
 	"unicode/utf8"
 )
 
+// providerImageSize 只提高100格动作序列图的源分辨率；定稿及原有动作规格保持原成本和尺寸。
+func providerImageSize(kind, motionGrid string) string {
+	if kind != "motion" {
+		return "1024x1024"
+	}
+	size := motionSpecOf(motionGrid).sourceSize
+	return fmt.Sprintf("%dx%d", size, size)
+}
+
 func publicIP(ip net.IP) bool {
 	if ip == nil || !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
 		return false
@@ -185,7 +194,7 @@ func (a *App) continueProvider(ctx context.Context, cfg Settings, taskID string)
 	return a.pollProvider(ctx, cfg, client, p, nil)
 }
 
-func (a *App) callProvider(ctx context.Context, cfg Settings, prompt string, images []string, onTaskID func(string)) (string, error) {
+func (a *App) callProvider(ctx context.Context, cfg Settings, prompt string, images []string, imageSize string, onTaskID func(string)) (string, error) {
 	if ctx.Value(debugTraceKey{}) == nil {
 		ctx = context.WithValue(ctx, debugTraceKey{}, token(8))
 	}
@@ -204,7 +213,10 @@ func (a *App) callProvider(ctx context.Context, cfg Settings, prompt string, ima
 	if taskID, _ := ctx.Value(upstreamTaskKey{}).(string); taskID != "" {
 		return a.pollProvider(ctx, cfg, client, providerResponse{TaskID: taskID, Status: "running"}, onTaskID)
 	}
-	payload := map[string]any{"model": cfg.Model, "prompt": prompt, "size": "1024x1024", "quality": cfg.Quality, "n": 1, "output_format": "png", "response_format": "b64_json", "background": "transparent", "async": true, "retries": 0}
+	if imageSize == "" {
+		imageSize = "1024x1024"
+	}
+	payload := map[string]any{"model": cfg.Model, "prompt": prompt, "size": imageSize, "quality": cfg.Quality, "n": 1, "output_format": "png", "response_format": "b64_json", "background": "transparent", "async": true, "retries": 0}
 	if len(images) == 1 {
 		payload["image"] = images[0]
 	} else {
@@ -214,7 +226,7 @@ func (a *App) callProvider(ctx context.Context, cfg Settings, prompt string, ima
 	if err != nil {
 		return "", err
 	}
-	a.debug(ctx, "provider_request", map[string]any{"model": cfg.Model, "endpoint": "/api/v1/images/generations", "quality": cfg.Quality, "size": "1024x1024", "output_format": "png", "response_format": "b64_json", "background": "transparent", "async": true, "retries": 0, "key_configured": key != "", "image_count": len(images), "images": imageSummaries(images), "prompt_chars": utf8.RuneCountInString(prompt), "request_bytes": len(b)})
+	a.debug(ctx, "provider_request", map[string]any{"model": cfg.Model, "endpoint": "/api/v1/images/generations", "quality": cfg.Quality, "size": imageSize, "output_format": "png", "response_format": "b64_json", "background": "transparent", "async": true, "retries": 0, "key_configured": key != "", "image_count": len(images), "images": imageSummaries(images), "prompt_chars": utf8.RuneCountInString(prompt), "request_bytes": len(b)})
 	req, err := http.NewRequestWithContext(ctx, "POST", cfg.APIBase+"/images/generations", bytes.NewReader(b))
 	if err != nil {
 		return "", err

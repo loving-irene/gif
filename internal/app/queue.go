@@ -9,10 +9,12 @@ import (
 
 // jobInput 是排队任务在服务器上暂存的生成输入，调度器启动任务时读回。
 type jobInput struct {
-	Prompt    string    `json:"prompt"`
-	Images    []string  `json:"images"`
-	Selection Selection `json:"selection"`
-	PhotoHash string    `json:"photoHash"`
+	Prompt     string    `json:"prompt"`
+	Images     []string  `json:"images"`
+	ImageSize  string    `json:"imageSize,omitempty"`
+	MotionGrid string    `json:"motionGrid,omitempty"`
+	Selection  Selection `json:"selection"`
+	PhotoHash  string    `json:"photoHash"`
 }
 
 // 任务状态：queued（等待服务器槽位）、running（正在执行）、pending_upstream（已提交上游、
@@ -377,9 +379,17 @@ func (a *App) runJob(id string, inline *jobInput) {
 	var jobErr error
 	prompt := ""
 	photoHash := ""
+	motionGrid := cfg.MotionGrid
 	selection := Selection{}
 	if input != nil {
 		prompt, photoHash, selection = input.Prompt, input.PhotoHash, input.Selection
+		if input.MotionGrid != "" {
+			motionGrid = input.MotionGrid
+		}
+		if input.ImageSize == "" {
+			// 兼容升级前已经落盘、尚未提交到上游的排队任务。
+			input.ImageSize = providerImageSize(kind, motionGrid)
+		}
 	}
 	if cfgErr != nil || (input == nil && !state.Resumed) {
 		jobErr = errors.New("job input unavailable")
@@ -403,7 +413,7 @@ func (a *App) runJob(id string, inline *jobInput) {
 				output, jobErr = a.providerContinue(ctx, cfg, upstream)
 			} else {
 				// 上游任务号一拿到就记下来，超时后据此继续认领，不会重复提交生成请求。
-				output, jobErr = a.providerCall(ctx, cfg, prompt, input.Images, func(taskID string) {
+				output, jobErr = a.providerCall(ctx, cfg, prompt, input.Images, input.ImageSize, func(taskID string) {
 					upstream = taskID
 					a.recordUpstream(id, taskID)
 				})
@@ -417,7 +427,7 @@ func (a *App) runJob(id string, inline *jobInput) {
 		if a.ctx.Err() != nil {
 			return
 		}
-		receipt, gifImage, jobErr = a.applyResult(traceCtx, id, uid, kind, photoHash, selection, output, motionSpecOf(cfg.MotionGrid))
+		receipt, gifImage, jobErr = a.applyResult(traceCtx, id, uid, kind, photoHash, selection, output, motionSpecOf(motionGrid))
 	}
 	if jobErr != nil && a.ctx.Err() != nil {
 		return

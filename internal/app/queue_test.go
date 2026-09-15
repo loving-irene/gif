@@ -21,8 +21,8 @@ import (
 
 // asProviderCall 把只关心“提示词 + 参考图”的测试桩适配为带上游任务号回调的接口；
 // 需要验证超时续查的测试直接设置 a.providerCall / a.providerContinue。
-func asProviderCall(fn func(context.Context, Settings, string, []string) (string, error)) func(context.Context, Settings, string, []string, func(string)) (string, error) {
-	return func(ctx context.Context, cfg Settings, prompt string, images []string, _ func(string)) (string, error) {
+func asProviderCall(fn func(context.Context, Settings, string, []string) (string, error)) func(context.Context, Settings, string, []string, string, func(string)) (string, error) {
+	return func(ctx context.Context, cfg Settings, prompt string, images []string, _ string, _ func(string)) (string, error) {
 		return fn(ctx, cfg, prompt, images)
 	}
 }
@@ -30,12 +30,16 @@ func asProviderCall(fn func(context.Context, Settings, string, []string) (string
 // sampleSheetGrid 生成 cols×cols 网格的 1024×1024 透明 PNG 序列图：
 // 每格中央画一个带偏移的不透明色块，其余保持透明，用于验证切格、缩放与透明处置。
 func sampleSheetGrid(cols int) string {
-	img := image.NewNRGBA(image.Rect(0, 0, 1024, 1024))
+	return sampleSheetGridSize(cols, 1024)
+}
+
+func sampleSheetGridSize(cols, size int) string {
+	img := image.NewNRGBA(image.Rect(0, 0, size, size))
 	body := color.NRGBA{168, 186, 147, 255}
 	head := color.NRGBA{244, 199, 164, 255}
 	for n := 0; n < cols*cols; n++ {
-		x0, y0 := (n%cols)*1024/cols, (n/cols)*1024/cols
-		x1, y1 := ((n%cols)+1)*1024/cols, ((n/cols)+1)*1024/cols
+		x0, y0 := (n%cols)*size/cols, (n/cols)*size/cols
+		x1, y1 := ((n%cols)+1)*size/cols, ((n/cols)+1)*size/cols
 		offset := n % cols * 3
 		draw.Draw(img, image.Rect(x0+30+offset, y0+60, x1-30, y1-30), &image.Uniform{body}, image.Point{}, draw.Src)
 		draw.Draw(img, image.Rect(x0+30+offset, y0+20, x1-30+offset, y0+70), &image.Uniform{head}, image.Point{}, draw.Src)
@@ -111,10 +115,10 @@ func TestServerGIFSynthesis5x5Grid(t *testing.T) {
 	}
 }
 
-// 10×10 规格从 1024×1024 序列图切出100帧，输出128×128并以20ms播放，
+// 10×10 规格从 2048×2048 序列图切出100帧，输出128×128并以20ms播放，
 // 保持约2秒的完整动作时长。
 func TestServerGIFSynthesis10x10Grid(t *testing.T) {
-	sheet, err := imageData(sampleSheetGrid(10), 20*1024*1024)
+	sheet, err := imageData(sampleSheetGridSize(10, 2048), 20*1024*1024)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +145,7 @@ func TestServerGIFSynthesis10x10Grid(t *testing.T) {
 		}
 	}
 	prompt := motionSpecPrompt("10x10")
-	for _, want := range []string{"严格10列×10行共100格", "1—25准备", "76—100收势回位", "同一个完整动作周期", "相邻格只允许极小步长变化"} {
+	for _, want := range []string{"2048×2048透明PNG", "严格10列×10行共100格", "1—25准备", "76—100收势回位", "同一个完整动作周期", "相邻格只允许极小步长变化"} {
 		if !strings.Contains(prompt, want) {
 			t.Fatal("10x10 prompt missing", want)
 		}
@@ -427,7 +431,7 @@ func TestRestartResumesUpstreamClaim(t *testing.T) {
 	s := loginDevice(t, a, "restart-upstream")
 	// 提交成功拿到上游任务号后阻塞等待：进程被杀时任务停留在 running、上游任务号已落盘。
 	release := make(chan struct{})
-	a.providerCall = func(ctx context.Context, cfg Settings, prompt string, images []string, onTaskID func(string)) (string, error) {
+	a.providerCall = func(ctx context.Context, cfg Settings, prompt string, images []string, _ string, onTaskID func(string)) (string, error) {
 		onTaskID("upstream-restart-1")
 		select {
 		case <-release:
@@ -461,7 +465,7 @@ func TestRestartResumesUpstreamClaim(t *testing.T) {
 	// 调度启动后按原任务号续查；期间不允许再提交新的生成请求。
 	var submits atomic.Int32
 	resumed := make(chan string, 4)
-	a2.providerCall = func(ctx context.Context, cfg Settings, prompt string, images []string, onTaskID func(string)) (string, error) {
+	a2.providerCall = func(ctx context.Context, cfg Settings, prompt string, images []string, _ string, onTaskID func(string)) (string, error) {
 		submits.Add(1)
 		return "", context.DeadlineExceeded
 	}
@@ -662,6 +666,50 @@ func TestMotionJobDeliversServerGIF5x5(t *testing.T) {
 	g, err := gif.DecodeAll(bytes.NewReader(gifBytes))
 	if err != nil || len(g.Image) != 25 || g.Config.Width != 128 || g.Config.Height != 128 {
 		t.Fatal("server GIF not 5x5 spec", err, len(g.Image), g.Config.Width)
+	}
+}
+
+func TestMotionJobRequests2048For10x10(t *testing.T) {
+	a := testApp(t)
+	s := loginDevice(t, a, "motion-10x10")
+	cfg, _ := a.settings()
+	cfg.MotionGrid = "10x10"
+	raw, _ := json.Marshal(cfg)
+	a.db.Exec("UPDATE settings SET value=? WHERE key='config'", string(raw))
+	var prompts, sizes []string
+	a.providerCall = func(_ context.Context, _ Settings, prompt string, images []string, imageSize string, _ func(string)) (string, error) {
+		prompts = append(prompts, prompt)
+		sizes = append(sizes, imageSize)
+		if len(images) == 2 {
+			return sampleSheetGridSize(10, 2048), nil
+		}
+		return sampleImage(false), nil
+	}
+	input := draftInput()
+	id := jobID(t, request(t, a, s, "POST", "/api/generate", input))
+	draft := waitJob(t, a, s, id)
+	w := request(t, a, s, "POST", "/api/accept", map[string]string{"receipt": draft.Receipt})
+	var accepted map[string]string
+	json.Unmarshal(w.Body.Bytes(), &accepted)
+	motion := GenerateInput{RequestID: token(16), Kind: "motion", Selection: input.Selection, Action: "attack", Selfie: input.Selfie, Draft: draft.Image, Receipt: accepted["receipt"]}
+	id = jobID(t, request(t, a, s, "POST", "/api/generate", motion))
+	result := waitJob(t, a, s, id)
+	if result.Status != "succeeded" || len(result.Gif) == 0 {
+		t.Fatal("10x10 motion job missing server GIF", result.Status)
+	}
+	if len(sizes) != 2 || sizes[0] != "1024x1024" || sizes[1] != "2048x2048" {
+		t.Fatal("provider image sizes do not match job specs", sizes)
+	}
+	if len(prompts) != 2 || !strings.Contains(prompts[1], "2048×2048透明PNG") || strings.Contains(prompts[1], "1024×1024透明PNG") {
+		t.Fatal("10x10 motion prompt did not use the 2048 source size")
+	}
+	gifBytes, err := base64.StdEncoding.DecodeString(result.Gif[len("data:image/gif;base64,"):])
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := gif.DecodeAll(bytes.NewReader(gifBytes))
+	if err != nil || len(g.Image) != 100 || g.Config.Width != 128 || g.Config.Height != 128 {
+		t.Fatal("server GIF not 10x10 spec", err, len(g.Image), g.Config.Width)
 	}
 }
 

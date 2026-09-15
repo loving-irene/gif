@@ -19,6 +19,7 @@ import (
 // motionSpecPrompt 统一追加，避免切换到 5×5 后上游同时看到互相冲突的 4×4要求。
 func normalizeMotionPrompt(prompt string) string {
 	for _, phrase := range []string{
+		"输出一张1024×1024透明PNG，按后台动作序列图规格排列连续帧。",
 		"输出一张1024×1024透明PNG，严格4列×4行共16格，每格256×256。从左到右、从上到下排列同一次完整动作：1—4准备，5—8展开，9—12动作重点，13—16收势回位。",
 		"输出一张1024×1024透明PNG，严格5列×5行共25格，合成后每帧128×128。从左到右、从上到下排列同一次完整动作：1—6准备，7—12展开，13—18动作重点，19—25收势回位。25格必须是按时间等间隔采样的连续动作，相邻格只允许小步长变化，不得跳过中间姿态或重复静止帧。保持镜头、人物水平中心、脚底基准线和人物整体尺寸稳定。",
 		"输出一张1024×1024透明PNG，严格10列×10行共100格，合成后每帧128×128。从左到右、从上到下排列同一次完整动作：1—25准备，26—50展开，51—75动作重点，76—100收势回位。100格必须覆盖同一个完整动作周期并按时间等间隔采样，相邻格只允许极小步长变化，不得跳过中间姿态、重复静止帧或把多个动作拼在一起。保持镜头、人物水平中心、脚底基准线和人物整体尺寸稳定。",
@@ -48,6 +49,10 @@ func normalizeMotionPrompt(prompt string) string {
 		"1—25准备，26—50展开，51—75动作重点，76—100收势回位。",
 		"1-25准备，26-50展开，51-75动作重点，76-100收势回位。",
 		"100格必须覆盖同一个完整动作周期并按时间等间隔采样，相邻格只允许极小步长变化，不得跳过中间姿态、重复静止帧或把多个动作拼在一起。保持镜头、人物水平中心、脚底基准线和人物整体尺寸稳定；除动作本身必需的连续位移、起跳和落地外，不得左右漂移、上下抖动或忽大忽小。",
+		"输出一张2048×2048透明PNG，严格10列×10行共100格，合成后每帧128×128。",
+		"严格10列×10行共100格，源图2048×2048，合成后每帧128×128。",
+		"输出一张2048x2048透明PNG，严格10列x10行共100格，合成后每帧128x128。",
+		"输出一张2048*2048透明PNG，严格10列*10行共100格，合成后每帧128*128。",
 	} {
 		prompt = strings.ReplaceAll(prompt, phrase, "")
 	}
@@ -56,23 +61,24 @@ func normalizeMotionPrompt(prompt string) string {
 
 // motionSpec 是动作序列图的网格规格，由后台配置选择：
 // 4x4 共16格、每帧输出256×256；5x5 共25格、10x10 共100格，后两者每帧输出128×128。
-// 上游始终产出 1024×1024 的方形序列图，切格按比例取整划分边界，
-// 因此三种规格都兼容可整除与不可整除（如 5×5、10×10 对 1024）的图宽。
+// 4×4/5×5 使用 1024×1024 源图，10×10 使用 2048×2048 源图；切格按比例取整划分边界，
+// 因此三种规格都兼容不能整除格数的图宽。
 type motionSpec struct {
-	id     string // 配置编号（4x4 / 5x5 / 10x10），用于提示词与日志
-	cols   int    // 每边格数
-	frames int    // cols×cols 总帧数
-	size   int    // 输出 GIF 每帧边长
-	delay  int    // GIF 帧延时，单位为 1/100 秒
+	id         string // 配置编号（4x4 / 5x5 / 10x10），用于提示词与日志
+	cols       int    // 每边格数
+	frames     int    // cols×cols 总帧数
+	sourceSize int    // 上游方形序列图边长
+	size       int    // 输出 GIF 每帧边长
+	delay      int    // GIF 帧延时，单位为 1/100 秒
 }
 
 // motionSpecs 固定可选规格：4×4（1—4准备、5—8展开、9—12重点、13—16收势）
 // 与 5×5（1—6准备、7—12展开、13—18重点、19—25收势）、
 // 10×10（每阶段25帧）。
 var motionSpecs = map[string]motionSpec{
-	"4x4":   {id: "4x4", cols: 4, frames: 16, size: 256, delay: gifFrameDelay},
-	"5x5":   {id: "5x5", cols: 5, frames: 25, size: 128, delay: gifFrameDelay},
-	"10x10": {id: "10x10", cols: 10, frames: 100, size: 128, delay: smoothGifFrameDelay},
+	"4x4":   {id: "4x4", cols: 4, frames: 16, sourceSize: 1024, size: 256, delay: gifFrameDelay},
+	"5x5":   {id: "5x5", cols: 5, frames: 25, sourceSize: 1024, size: 128, delay: gifFrameDelay},
+	"10x10": {id: "10x10", cols: 10, frames: 100, sourceSize: 2048, size: 128, delay: smoothGifFrameDelay},
 }
 
 const gifFrameDelay = 8       // GIF 延时单位为 1/100 秒；8 即统一 80ms（12.5 FPS）。
@@ -99,8 +105,8 @@ func motionSpecPrompt(id string) string {
 	} else {
 		cell = "，合成后每帧128×128"
 	}
-	prompt := fmt.Sprintf("动作序列图规格（以此为准，前文若出现其他格数、每格尺寸或阶段划分描述，以本段为准）：一张1024×1024透明PNG，严格%d列×%d行共%d格%s。从左到右、从上到下排列同一次完整动作：%s。每格无边框无间隙无编号无文字，角色武器特效不跨格、不裁切。",
-		s.cols, s.cols, s.frames, cell, s.phases())
+	prompt := fmt.Sprintf("动作序列图规格（以此为准，前文若出现其他图片尺寸、格数、每格尺寸或阶段划分描述，以本段为准）：一张%d×%d透明PNG，严格%d列×%d行共%d格%s。从左到右、从上到下排列同一次完整动作：%s。每格无边框无间隙无编号无文字，角色武器特效不跨格、不裁切。",
+		s.sourceSize, s.sourceSize, s.cols, s.cols, s.frames, cell, s.phases())
 	if s.frames == 25 {
 		prompt += " 25格必须是按时间等间隔采样的连续动作，相邻格只允许小步长变化，不得跳过中间姿态或重复静止帧。保持镜头、人物水平中心、脚底基准线和人物整体尺寸稳定；除动作本身必需的连续位移、起跳和落地外，不得左右漂移、上下抖动或忽大忽小。"
 	} else if s.frames == 100 {
@@ -123,7 +129,7 @@ func (s motionSpec) phases() string {
 
 // synthesizeGIF 在服务器端把动作序列图按规格切格并合成为循环 GIF。
 // 算法与浏览器端 gif-worker 保持一致：先按相邻帧的局部中位轨迹轻量稳定主体，
-// 再使用 15-bit 颜色直方图 + 中位切分共享调色板；0 号索引透明，统一每帧 80ms，
+// 再使用 15-bit 颜色直方图 + 中位切分共享调色板；0 号索引透明，帧延时由规格决定，
 // 逐帧恢复背景以正确呈现透明。
 func synthesizeGIF(sheet []byte, spec motionSpec) ([]byte, error) {
 	img, _, err := image.Decode(bytes.NewReader(sheet))
@@ -140,7 +146,7 @@ func synthesizeGIF(sheet []byte, spec motionSpec) ([]byte, error) {
 	for n := 0; n < spec.frames; n++ {
 		frame := image.NewNRGBA(image.Rect(0, 0, size, size))
 		// 按比例取整划分格边界：可整除时与原逐格切分完全一致，
-		// 不可整除时（5×5 对 1024）每格相差不超过 1 像素，缩放到输出尺寸后无差别。
+		// 不可整除时每格相差不超过 1 像素，随后统一缩放到输出尺寸。
 		x0, y0 := (n%spec.cols)*width/spec.cols, (n/spec.cols)*height/spec.cols
 		x1, y1 := ((n%spec.cols)+1)*width/spec.cols, ((n/spec.cols)+1)*height/spec.cols
 		cell := image.Rect(x0, y0, x1, y1)
