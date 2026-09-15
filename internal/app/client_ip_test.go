@@ -46,6 +46,28 @@ func TestLoadEnvTrustProxy(t *testing.T) {
 	}
 }
 
+func TestLoadEnvAliyunDirectMail(t *testing.T) {
+	t.Setenv("GIF_SECRET", strings.Repeat("a", 64))
+	t.Setenv("GIF_ADMIN_PASSWORD", "test-admin-password-123")
+	t.Setenv("GIF_COOKIE_SECURE", "false")
+	t.Setenv("ALIYUN_DM_SENDER", "notice@example.com")
+	t.Setenv("ALIYUN_DM_SMTP_PASSWORD", "aliyun-test-password")
+	t.Setenv("MAIL_SERVER", "legacy.example.com")
+	t.Setenv("MAIL_USERNAME", "legacy@example.com")
+
+	env, err := LoadEnv(filepath.Join(t.TempDir(), "missing.env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env.AliyunMailSender != "notice@example.com" || env.AliyunMailPassword != "aliyun-test-password" {
+		t.Fatal("Aliyun Direct Mail environment not loaded")
+	}
+	cfg := defaults(env)
+	if cfg.MailHost != aliyunMailHost || cfg.MailPort != aliyunMailPort || cfg.MailUser != env.AliyunMailSender || cfg.MailFrom != env.AliyunMailSender {
+		t.Fatal("unexpected Aliyun Direct Mail defaults", cfg.MailHost, cfg.MailPort, cfg.MailUser, cfg.MailFrom)
+	}
+}
+
 func TestRawIPProxyTrustBoundary(t *testing.T) {
 	for _, tc := range []struct {
 		name, remote, realIP, forwarded, want string

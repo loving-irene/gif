@@ -20,7 +20,7 @@ func feedbackRecipient(s Settings) string {
 
 // feedbackConfigured 判断反馈通知所需的邮箱配置是否完整。
 func (a *App) feedbackConfigured(s Settings) bool {
-	return s.MailHost != "" && s.MailFrom != "" && feedbackRecipient(s) != "" && a.secret("mail_password") != ""
+	return a.mailConfigured(s) && feedbackRecipient(s) != ""
 }
 
 // feedbackBody 生成通知正文：包含反馈原文与提交账号信息，便于必要时回复用户。

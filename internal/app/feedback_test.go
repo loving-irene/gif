@@ -21,13 +21,13 @@ func mailReady(t *testing.T, a *App, feedbackEmail string, sendErr error) *sentM
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.MailHost, cfg.MailPort, cfg.MailUser, cfg.MailFrom = "smtp.example.com", "465", "studio", "studio@example.com"
+	cfg.MailHost, cfg.MailPort, cfg.MailUser, cfg.MailFrom = aliyunMailHost, aliyunMailPort, "studio@example.com", "studio@example.com"
 	cfg.FeedbackEmail = feedbackEmail
 	raw, _ := json.Marshal(cfg)
 	if _, err = a.db.Exec("UPDATE settings SET value=? WHERE key='config'", string(raw)); err != nil {
 		t.Fatal(err)
 	}
-	if err = a.setSecret("mail_password", "mail-secret"); err != nil {
+	if err = a.setSecret(aliyunMailPasswordKey, "mail-secret"); err != nil {
 		t.Fatal(err)
 	}
 	sent := &sentMail{}

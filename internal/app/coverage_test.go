@@ -332,25 +332,43 @@ func TestAdminUserSearchUpdateAndDisable(t *testing.T) {
 	}
 }
 
-func TestAdminSettingsRejectBadMailConfig(t *testing.T) {
+func TestAdminSettingsForcesAliyunMailConfig(t *testing.T) {
 	a := testApp(t)
 	admin := codeAdmin(t, a, loginDevice(t, a, "admin"))
 	cfg, _ := a.settings()
-	cases := []struct {
-		name   string
-		mutate func(*Settings)
-	}{
-		{"主机含非法字符", func(s *Settings) { s.MailHost = "bad host" }},
-		{"端口不支持", func(s *Settings) { s.MailHost = "smtp.example.com"; s.MailPort = "25" }},
-		{"发件邮箱无效", func(s *Settings) { s.MailHost = "smtp.example.com"; s.MailFrom = "not-an-email" }},
+	cfg.MailHost = "smtp.example.com"
+	cfg.MailPort = "587"
+	cfg.MailUser = "NOTICE@Example.com"
+	cfg.MailFrom = "other@example.com"
+	w := request(t, a, admin, "POST", "/api/admin/settings", map[string]any{"settings": cfg, "mailPassword": "aliyun-test-password"})
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
 	}
-	for _, tc := range cases {
-		s := cfg
-		tc.mutate(&s)
-		w := request(t, a, admin, "POST", "/api/admin/settings", map[string]any{"settings": s})
-		if w.Code != 400 {
-			t.Fatal("bad mail config accepted:", tc.name, w.Code, w.Body.String())
-		}
+	saved, _ := a.settings()
+	if saved.MailHost != aliyunMailHost || saved.MailPort != aliyunMailPort || saved.MailUser != "notice@example.com" || saved.MailFrom != saved.MailUser {
+		t.Fatal("Aliyun mail settings not normalised", saved.MailHost, saved.MailPort, saved.MailUser, saved.MailFrom)
+	}
+	if !a.mailConfigured(saved) {
+		t.Fatal("complete Aliyun mail settings reported as unavailable")
+	}
+
+	bad := saved
+	bad.MailUser = "not-an-email"
+	if w = request(t, a, admin, "POST", "/api/admin/settings", map[string]any{"settings": bad}); w.Code != 400 {
+		t.Fatal("invalid Aliyun sender accepted", w.Code, w.Body.String())
+	}
+}
+
+func TestAliyunMailDoesNotReuseLegacySMTPPassword(t *testing.T) {
+	a := testApp(t)
+	cfg, _ := a.settings()
+	cfg.MailUser = "notice@example.com"
+	cfg.MailFrom = cfg.MailUser
+	if err := a.setSecret("mail_password", "legacy-password"); err != nil {
+		t.Fatal(err)
+	}
+	if a.mailConfigured(cfg) {
+		t.Fatal("legacy SMTP password enabled the Aliyun mail channel")
 	}
 }
 

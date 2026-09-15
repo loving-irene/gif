@@ -42,7 +42,7 @@ func (a *App) adminSettingsGet(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "配置读取失败")
 		return
 	}
-	respond(w, 200, map[string]any{"settings": s, "apiKeySet": a.secret("api_key") != "", "mailPasswordSet": a.secret("mail_password") != ""})
+	respond(w, 200, map[string]any{"settings": s, "apiKeySet": a.secret("api_key") != "", "mailPasswordSet": a.secret(aliyunMailPasswordKey) != ""})
 }
 func (a *App) adminSettingsSave(w http.ResponseWriter, r *http.Request) {
 	var in struct {
@@ -55,6 +55,11 @@ func (a *App) adminSettingsSave(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err.Error())
 		return
 	}
+	// SMTP端点由服务端固定，发信地址同时用于认证、信封发件人和邮件头发件人。
+	in.Settings.MailHost = aliyunMailHost
+	in.Settings.MailPort = aliyunMailPort
+	in.Settings.MailUser = strings.TrimSpace(in.Settings.MailUser)
+	in.Settings.MailFrom = in.Settings.MailUser
 	if err := validateSettings(in.Settings); err != nil {
 		fail(w, 400, err.Error())
 		return
@@ -65,24 +70,18 @@ func (a *App) adminSettingsSave(w http.ResponseWriter, r *http.Request) {
 	if in.Settings.MotionGrid == "" {
 		in.Settings.MotionGrid = "4x4"
 	}
-	if len(in.APIKey) > 1024 || len(in.MailPassword) > 1024 || strings.ContainsAny(in.APIKey, "\r\n") {
+	if len(in.APIKey) > 1024 || len(in.MailPassword) > 1024 || strings.ContainsAny(in.APIKey+in.MailPassword, "\r\n") {
 		fail(w, 400, "密钥格式无效")
 		return
 	}
-	if in.Settings.MailHost != "" {
-		if !hostPattern.MatchString(in.Settings.MailHost) || strings.ContainsAny(in.Settings.MailFrom+in.Settings.MailUser, "\r\n") {
-			fail(w, 400, "邮件配置无效")
+	if in.Settings.MailUser != "" {
+		sender, ok := validEmail(in.Settings.MailUser)
+		if !ok {
+			fail(w, 400, "阿里云发信地址无效")
 			return
 		}
-		port, err := strconv.Atoi(in.Settings.MailPort)
-		if err != nil || (port != 465 && port != 587) {
-			fail(w, 400, "邮件端口仅支持465或587，强制TLS")
-			return
-		}
-		if _, ok := validEmail(in.Settings.MailFrom); !ok {
-			fail(w, 400, "发件邮箱无效")
-			return
-		}
+		in.Settings.MailUser = sender
+		in.Settings.MailFrom = sender
 	}
 	tx, err := a.db.Begin()
 	if err != nil {
@@ -92,7 +91,7 @@ func (a *App) adminSettingsSave(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 	raw, _ := json.Marshal(in.Settings)
 	_, err = tx.Exec("UPDATE settings SET value=? WHERE key='config'", string(raw))
-	for k, v := range map[string]string{"api_key": in.APIKey, "mail_password": in.MailPassword} {
+	for k, v := range map[string]string{"api_key": in.APIKey, aliyunMailPasswordKey: in.MailPassword} {
 		if v != "" && err == nil {
 			_, err = tx.Exec("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", k, a.encrypt(v))
 		}

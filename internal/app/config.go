@@ -17,10 +17,16 @@ import (
 )
 
 type Env struct {
-	BaseURL, Database, Secret, AdminPassword, APIKey, MailHost, MailPort, MailUser, MailPassword, MailFrom string
-	DeployDir, DeployBranch, DeployStateFile                                                               string
-	Secure, TrustProxy, Debug                                                                              bool
+	BaseURL, Database, Secret, AdminPassword, APIKey, AliyunMailSender, AliyunMailPassword string
+	DeployDir, DeployBranch, DeployStateFile                                               string
+	Secure, TrustProxy, Debug                                                              bool
 }
+
+const (
+	aliyunMailHost        = "smtpdm.aliyun.com"
+	aliyunMailPort        = "465"
+	aliyunMailPasswordKey = "aliyun_mail_password"
+)
 
 func LoadEnv(path string) (Env, error) {
 	values := map[string]string{}
@@ -53,7 +59,7 @@ func LoadEnv(path string) (Env, error) {
 		}
 		return def
 	}
-	e := Env{BaseURL: strings.TrimRight(get("GIF_BASE_URL", "http://127.0.0.1:8096"), "/"), Database: get("GIF_DATABASE_PATH", "gif.db"), Secret: get("GIF_SECRET", ""), AdminPassword: get("GIF_ADMIN_PASSWORD", ""), APIKey: get("GEEKAI_API_KEY", ""), Secure: get("GIF_COOKIE_SECURE", "false") == "true", MailHost: get("MAIL_SERVER", ""), MailPort: get("MAIL_PORT", "465"), MailUser: get("MAIL_USERNAME", ""), MailPassword: get("MAIL_PASSWORD", ""), MailFrom: get("MAIL_DEFAULT_SENDER", ""), DeployDir: get("APP_DIR", "."), DeployBranch: get("BRANCH", "main"), DeployStateFile: get("DEPLOY_STATE_FILE", ".last_deployed_commit")}
+	e := Env{BaseURL: strings.TrimRight(get("GIF_BASE_URL", "http://127.0.0.1:8096"), "/"), Database: get("GIF_DATABASE_PATH", "gif.db"), Secret: get("GIF_SECRET", ""), AdminPassword: get("GIF_ADMIN_PASSWORD", ""), APIKey: get("GEEKAI_API_KEY", ""), Secure: get("GIF_COOKIE_SECURE", "false") == "true", AliyunMailSender: get("ALIYUN_DM_SENDER", ""), AliyunMailPassword: get("ALIYUN_DM_SMTP_PASSWORD", ""), DeployDir: get("APP_DIR", "."), DeployBranch: get("BRANCH", "main"), DeployStateFile: get("DEPLOY_STATE_FILE", ".last_deployed_commit")}
 	// 服务仅监听回环地址，默认读取本机反向代理传来的真实 IP；仍可显式关闭。
 	e.TrustProxy = get("GIF_TRUST_PROXY", "true") == "true"
 	e.Debug = strings.EqualFold(get("GIF_DEBUG", "false"), "true")
@@ -190,7 +196,7 @@ func validateStyles(list []Style) error {
 func defaults(e Env) Settings {
 	return Settings{
 		DefaultCredits: 5, UserConcurrency: 5, ChargeOnFailure: true,
-		APIBase: "https://geekai.co/api/v1", Model: "gpt-image-2.5-sunburst", Quality: "high", AssetHosts: []string{"static.geekai.co", "geekai.co"}, MailHost: e.MailHost, MailPort: e.MailPort, MailUser: e.MailUser, MailFrom: e.MailFrom,
+		APIBase: "https://geekai.co/api/v1", Model: "gpt-image-2.5-sunburst", Quality: "high", AssetHosts: []string{"static.geekai.co", "geekai.co"}, MailHost: aliyunMailHost, MailPort: aliyunMailPort, MailUser: e.AliyunMailSender, MailFrom: e.AliyunMailSender,
 		IdentityPrompt: "以自拍中的本人为身份参考，人物辨识度最高优先。保留脸型宽长比例、下颌轮廓、眉形、眼型、眼距、鼻形、嘴形、五官相对位置、发际线、发型、发色、肤色，以及清晰可见的眼镜、痣、雀斑。只做必要的裁切、曝光和白平衡调整，不瘦脸、不尖下巴、不放大眼睛、不美白、不改变年龄。不要变成通用动漫脸，不添加原图没有的身份特征。采用精致二维插画、清晰轮廓、简洁阴影、轻度Q版身体比例，面部明显对应本人。无法判断的衣服和身体依据下方设定设计。",
 		DraftPrompt:    "本轮只输出一张静态角色定稿图，同一张图内包含正面脸部近景和完整全身造型，供本人核对。纯净浅色背景，面部无遮挡，完整发型、手脚和装备入镜。无文字、无水印、无动作序列。分类：{{category}}。服装：{{clothes}}。配色：{{color}}。武器：{{weapon}}。",
 		MotionPrompt:   "图1是本人自拍，图2是已确认角色定稿。图1核对身份，图2固定画风、服装、比例、装备及配色，只改变动作表情。动作：{{action}}。输出一张1024×1024透明PNG，按后台动作序列图规格排列连续帧。仅全身角色连续动作，不包含定稿图的脸部近景。镜头固定，大小稳定，地面基准线一致。允许合理位移，跳跃允许离地，结尾回起始位置，自然衔接第一帧。每格无边框无间隙无编号无文字，留安全边距，角色武器特效不跨格、不裁切。真实透明背景，不画棋盘格。脸部可见，避免转背、过度模糊、遮脸、五官变形、肢体错误和重复静止帧。",
@@ -245,6 +251,9 @@ func (a *App) settings() (Settings, error) {
 	if err == nil {
 		err = json.Unmarshal([]byte(raw), &s)
 	}
+	// 邮件通道固定为阿里云邮件推送华东1（杭州），不接受数据库中的旧服务端点。
+	s.MailHost = aliyunMailHost
+	s.MailPort = aliyunMailPort
 	// 兼容较早的配置：未设置单用户并发任务数时使用默认值 5。
 	if s.UserConcurrency < 1 {
 		s.UserConcurrency = 5
@@ -256,6 +265,11 @@ func (a *App) settings() (Settings, error) {
 	// 兼容较早的配置：缺少画风定义时补入默认的默认、Q版与水墨风格。
 	s.Styles = normalizeStyles(s.Styles)
 	return s, err
+}
+
+func (a *App) mailConfigured(s Settings) bool {
+	_, senderValid := validEmail(s.MailUser)
+	return s.MailHost == aliyunMailHost && s.MailPort == aliyunMailPort && senderValid && s.MailUser == s.MailFrom && a.secret(aliyunMailPasswordKey) != ""
 }
 func (a *App) secret(name string) string {
 	var value string

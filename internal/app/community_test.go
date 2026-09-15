@@ -271,10 +271,10 @@ func TestCommunitySharesFollowAccountMerge(t *testing.T) {
 	device := loginDevice(t, a, "share-merge")
 	gif := gifFixture(t)
 	cfg, _ := a.settings()
-	cfg.MailHost, cfg.MailFrom = "smtp.example.com", "studio@example.com"
+	cfg.MailHost, cfg.MailPort, cfg.MailUser, cfg.MailFrom = aliyunMailHost, aliyunMailPort, "studio@example.com", "studio@example.com"
 	raw, _ := json.Marshal(cfg)
 	a.db.Exec("UPDATE settings SET value=? WHERE key='config'", string(raw))
-	a.setSecret("mail_password", "test-only-mail-password")
+	a.setSecret(aliyunMailPasswordKey, "test-only-mail-password")
 	// 已绑定邮箱的设备账号先把作品分享出去。邮箱归属由 users.email 决定（验证码只是凭据），
 	// 因此这里直接把邮箱写到该账号上，再由另一台设备走完整的“发送验证码 → 验证”触发合并。
 	if _, err := a.db.Exec("UPDATE users SET email=? WHERE id=?", "merger@example.com", device.User.ID); err != nil {

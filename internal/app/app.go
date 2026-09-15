@@ -150,7 +150,7 @@ func New(e Env) (*App, error) {
 		a.Close()
 		return nil, err
 	}
-	for name, value := range map[string]string{"api_key": e.APIKey, "mail_password": e.MailPassword} {
+	for name, value := range map[string]string{"api_key": e.APIKey, aliyunMailPasswordKey: e.AliyunMailPassword} {
 		if value != "" && a.secret(name) == "" {
 			if err = a.setSecret(name, value); err != nil {
 				a.Close()
@@ -626,7 +626,7 @@ func (a *App) catalog(w http.ResponseWriter, r *http.Request) {
 	for i := range s.Styles {
 		s.Styles[i].Prompt = ""
 	}
-	respond(w, 200, map[string]any{"categories": s.Categories, "styles": s.Styles, "chargeOnFailure": s.ChargeOnFailure, "configured": a.secret("api_key") != "", "emailConfigured": s.MailHost != "" && s.MailFrom != "" && a.secret("mail_password") != "", "feedbackConfigured": a.feedbackConfigured(s), "estimates": a.estimates(s), "redeemHelp": s.RedeemHelp, "userConcurrency": s.UserConcurrency, "generationSlots": cap(a.slots), "motionGrid": s.MotionGrid})
+	respond(w, 200, map[string]any{"categories": s.Categories, "styles": s.Styles, "chargeOnFailure": s.ChargeOnFailure, "configured": a.secret("api_key") != "", "emailConfigured": a.mailConfigured(s), "feedbackConfigured": a.feedbackConfigured(s), "estimates": a.estimates(s), "redeemHelp": s.RedeemHelp, "userConcurrency": s.UserConcurrency, "generationSlots": cap(a.slots), "motionGrid": s.MotionGrid})
 }
 func (a *App) logout(w http.ResponseWriter, r *http.Request) {
 	s := current(r)

@@ -193,7 +193,7 @@ func (a *App) emailSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cfg, err := a.settings()
-	if err != nil || cfg.MailHost == "" || cfg.MailFrom == "" || a.secret("mail_password") == "" {
+	if err != nil || !a.mailConfigured(cfg) {
 		fail(w, 503, "邮箱服务尚未配置，请联系管理员")
 		return
 	}
@@ -362,32 +362,21 @@ func mailMessage(from, to, subject, body string) string {
 
 // sendMailMessage 通过已配置的SMTP账号投递一封纯文本邮件，主题与正文由调用方给出。
 func (a *App) sendMailMessage(s Settings, to, subject, body string) error {
-	address := net.JoinHostPort(s.MailHost, s.MailPort)
-	conf := &tls.Config{ServerName: s.MailHost, MinVersion: tls.VersionTLS12}
+	address := net.JoinHostPort(aliyunMailHost, aliyunMailPort)
+	conf := &tls.Config{ServerName: aliyunMailHost, MinVersion: tls.VersionTLS12}
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
-	var conn net.Conn
-	var err error
-	if s.MailPort == "465" {
-		conn, err = tls.DialWithDialer(dialer, "tcp", address, conf)
-	} else {
-		conn, err = dialer.Dial("tcp", address)
-	}
+	conn, err := tls.DialWithDialer(dialer, "tcp", address, conf)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 	conn.SetDeadline(time.Now().Add(20 * time.Second))
-	client, err := smtp.NewClient(conn, s.MailHost)
+	client, err := smtp.NewClient(conn, aliyunMailHost)
 	if err != nil {
 		return err
 	}
 	defer client.Close()
-	if s.MailPort != "465" {
-		if err = client.StartTLS(conf); err != nil {
-			return err
-		}
-	}
-	if err = client.Auth(smtp.PlainAuth("", s.MailUser, a.secret("mail_password"), s.MailHost)); err != nil {
+	if err = client.Auth(smtp.PlainAuth("", s.MailUser, a.secret(aliyunMailPasswordKey), aliyunMailHost)); err != nil {
 		return err
 	}
 	from, err := mail.ParseAddress(s.MailFrom)

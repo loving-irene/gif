@@ -480,10 +480,10 @@ func TestEmailSendAndVerifyWithoutExternalDelivery(t *testing.T) {
 	a := testApp(t)
 	s := loginDevice(t, a, "one")
 	cfg, _ := a.settings()
-	cfg.MailHost, cfg.MailFrom = "smtp.example.com", "studio@example.com"
+	cfg.MailHost, cfg.MailPort, cfg.MailUser, cfg.MailFrom = aliyunMailHost, aliyunMailPort, "studio@example.com", "studio@example.com"
 	raw, _ := json.Marshal(cfg)
 	a.db.Exec("UPDATE settings SET value=? WHERE key='config'", string(raw))
-	a.setSecret("mail_password", "test-only-mail-password")
+	a.setSecret(aliyunMailPasswordKey, "test-only-mail-password")
 	var received string
 	a.mailSend = func(_ Settings, to, code string) error {
 		if to != "reader@example.com" {

@@ -15,10 +15,8 @@ GIF_TRUST_PROXY=true
 GIF_DEBUG=false
 GIF_ADMIN_PASSWORD=${admin_password}
 GEEKAI_API_KEY=
-MAIL_SERVER=
-MAIL_PORT=465
-MAIL_USERNAME=
-MAIL_PASSWORD=
-MAIL_DEFAULT_SENDER=
+# Aliyun Direct Mail, China (Hangzhou). These can also be set in /who.
+ALIYUN_DM_SENDER=
+ALIYUN_DM_SMTP_PASSWORD=
 ENV
 echo '.env created with unique secrets. Read GIF_ADMIN_PASSWORD locally to sign in; do not paste secrets into logs or commit this file.'
