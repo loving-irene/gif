@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat >&2 <<'EOF'
-usage: check_deploy_version.sh [--branch <name>] [--fetch] [--quiet] [application-directory]
+usage: check_deploy_version.sh [--branch <name>] [--fetch] [--quiet] [--non-interactive] [application-directory]
 
 判断线上是否已经运行跟踪分支的最新提交。gif-server 不支持 version 子命令，
 "已部署提交"只能取自 scripts/auto_deploy.sh 部署成功后写入的状态文件
@@ -15,6 +15,8 @@ usage: check_deploy_version.sh [--branch <name>] [--fetch] [--quiet] [applicatio
   --branch <name>  跟踪的分支，默认 main（也可用环境变量 BRANCH）
   --fetch          先执行 git fetch origin <branch>，确保比较的是远端最新提交
   --quiet          只输出状态关键字，便于 cron 或监控脚本判断
+  --non-interactive
+                   输出完整检查结果，但不询问或执行回滚部署
 
 状态与退出码：
 
@@ -26,7 +28,7 @@ usage: check_deploy_version.sh [--branch <name>] [--fetch] [--quiet] [applicatio
 
 非 up-to-date 时（交互模式）会询问是否回滚一个提交并重新部署，
 确认后才执行 git reset --hard HEAD~1 与 scripts/auto_deploy.sh；
---quiet 或空输入/非 y 视为取消，不执行回滚。
+  --quiet、--non-interactive 或空输入/非 y 视为取消，不执行回滚。
 EOF
 }
 
@@ -34,6 +36,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BRANCH="${BRANCH:-main}"
 DO_FETCH=0
 QUIET=0
+NON_INTERACTIVE=0
 APP_DIR="${APP_DIR:-}"
 
 while [ "$#" -gt 0 ]; do
@@ -56,6 +59,9 @@ while [ "$#" -gt 0 ]; do
       ;;
     --quiet)
       QUIET=1
+      ;;
+    --non-interactive)
+      NON_INTERACTIVE=1
       ;;
     -*)
       echo "unknown option: $1" >&2
@@ -257,7 +263,7 @@ confirm_rollback() {
 }
 
 # 非 up-to-date 时先交互确认，确认后才回滚一个提交并重新部署；所有路径均使用绝对路径。
-if [ "$STATUS" != "up-to-date" ] && [ "$IS_REPO" -eq 1 ] && [ -n "$HEAD_COMMIT" ]; then
+if [ "$STATUS" != "up-to-date" ] && [ "$IS_REPO" -eq 1 ] && [ -n "$HEAD_COMMIT" ] && [ "$NON_INTERACTIVE" -eq 0 ]; then
   say ""
   if [ "$QUIET" -eq 1 ]; then
     : # 静默模式：不执行回滚与重新部署，仅输出状态。

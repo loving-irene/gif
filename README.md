@@ -224,11 +224,12 @@ sudo ./scripts/clean_disk.sh              # 生产环境释放空间
 
 `scripts/check_deploy_version.sh` 判断线上是否已经运行`origin/<branch>`的最新提交。`gif-server`不支持`version`子命令，所以“已部署提交”只能取自`auto_deploy.sh`部署成功后写入的`.last_deployed_commit`状态文件（可用`DEPLOY_STATE_FILE`覆盖，相对路径按应用目录解析）。
 
-管理后台“部署版本”页签使用同一判定口径，展示当前部署、`HEAD`、最近抓取的`origin/<branch>`、提交摘要与检查时间。Web进程只读本地Git信息，不执行`git fetch`或部署；由于自动部署默认每5分钟抓取一次，后台仅在`.git/FETCH_HEAD`不超过15分钟时确认“最新版本”，超时会明确显示远端信息过期，避免把陈旧引用误判为最新。应用目录、分支与状态文件分别沿用`APP_DIR`、`BRANCH`、`DEPLOY_STATE_FILE`，默认值为当前工作目录、`main`与`.last_deployed_commit`。
+管理后台“部署版本”页签以`--non-interactive`执行同一脚本，并原样展示脚本的标准输出与错误输出，不再在Go或前端重复解析Git状态。Web进程不会执行`git fetch`、回滚或部署；应用目录、分支与状态文件分别沿用`APP_DIR`、`BRANCH`、`DEPLOY_STATE_FILE`，默认值为当前工作目录、`main`与`.last_deployed_commit`。
 
 ```bash
 ./scripts/check_deploy_version.sh                 # 完整诊断输出
 ./scripts/check_deploy_version.sh --quiet         # 只输出状态关键字，便于cron或监控
+./scripts/check_deploy_version.sh --non-interactive # 输出完整结果，但不询问或执行回滚部署
 ./scripts/check_deploy_version.sh --fetch         # 先git fetch，比较远端最新提交
 ./scripts/check_deploy_version.sh --branch main   # 指定跟踪分支（默认main，也支持BRANCH环境变量）
 ```

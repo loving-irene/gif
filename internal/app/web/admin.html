@@ -7,7 +7,7 @@
     <title>管理工作台 · 拾光 GIF</title>
     <link rel="stylesheet" href="/assets/style.v31.css" />
     <link rel="icon" href="/assets/icon.v1.svg" />
-    <script type="module" src="/assets/admin.v28.js"></script>
+    <script type="module" src="/assets/admin.v29.js"></script>
   </head>
   <body>
     <header class="header wrap admin-wrap">
@@ -479,28 +479,10 @@
         </section>
         <section id="deploymentSection" class="admin-section admin-panel" hidden>
           <h2>部署版本</h2>
-          <p class="hint">
-            对比部署成功记录与最近抓取的远端分支；远端记录超过 15 分钟未更新时，不判定为最新版本。
-          </p>
           <button id="refreshDeployment" class="text-button" type="button">
             ↻ 立即刷新
           </button>
-          <p>
-            <span id="deploymentBadge" class="admin-badge neutral">正在读取</span>
-            <strong id="deploymentHeadline">正在确认当前部署版本</strong>
-          </p>
-          <p id="deploymentDetail" class="hint"></p>
-          <div class="admin-table-wrap">
-            <table class="admin-table">
-              <thead>
-                <tr>
-                  <th>项目</th>
-                  <th>版本信息</th>
-                </tr>
-              </thead>
-              <tbody id="deploymentRows"></tbody>
-            </table>
-          </div>
+          <textarea id="deploymentOutput" rows="14" readonly spellcheck="false" aria-label="部署版本检查输出">正在读取...</textarea>
         </section>
       </div>
     </main>

@@ -70,11 +70,14 @@ second_commit="$(commit_file second.txt)"
 git -C "$APP_DIR" update-ref refs/remotes/origin/main "$second_commit"
 expect_quiet 4 stuck
 
-stuck_output="$(run_check || true)"
+stuck_output="$(run_check --non-interactive || true)"
 grep -qF 'stuck' <<<"$stuck_output"
 grep -qF '提示' <<<"$stuck_output"
 grep -qF 'clean_disk.sh' <<<"$stuck_output"
-grep -qF 'auto_deploy.sh' <<<"$stuck_output"
+if grep -qF '是否回滚' <<<"$stuck_output" || grep -qF '未确认' <<<"$stuck_output"; then
+  echo "non-interactive deploy version check prompted for rollback" >&2
+  exit 1
+fi
 
 # 3) 重新部署成功后恢复 up-to-date
 write_state "$second_commit"
@@ -87,29 +90,28 @@ git -C "$APP_DIR" reset -q --hard "$second_commit"
 write_state "$second_commit"
 expect_quiet 3 newer-commit-available
 
-newer_output="$(run_check || true)"
+newer_output="$(run_check --non-interactive || true)"
 grep -qF 'newer-commit-available' <<<"$newer_output"
 grep -qF '提示' <<<"$newer_output"
-grep -qF '5 分钟' <<<"$newer_output"
-grep -qF 'auto_deploy.sh' <<<"$newer_output"
+grep -qF '尚未上线' <<<"$newer_output"
 
 # 5) 状态文件缺失 -> 1 unknown
 rm -f "$STATE_FILE"
 expect_quiet 1 unknown
-missing_output="$(run_check || true)"
+missing_output="$(run_check --non-interactive || true)"
 grep -qF 'last_deployed_commit' <<<"$missing_output"
 grep -qF '提示' <<<"$missing_output"
 
 # 6) 状态文件内容无法解析为本仓库提交 -> 1 unknown
 write_state "not-a-commit"
 expect_quiet 1 unknown
-grep -qF 'not-a-commit' <<<"$(run_check)"
+grep -qF 'not-a-commit' <<<"$(run_check --non-interactive)"
 
 # 7) 缺少 origin 跟踪引用 -> 1 unknown（不能误判为落后）
 write_state "$second_commit"
 git -C "$APP_DIR" update-ref -d refs/remotes/origin/main
 expect_quiet 1 unknown
-grep -qF -- '--fetch' <<<"$(run_check)"
+grep -qF -- '--fetch' <<<"$(run_check --non-interactive)"
 
 # 8) 不是 git 仓库 -> 1 unknown
 not_repo="${TEST_DIR}/not-repo"
@@ -144,7 +146,7 @@ grep -qF "$custom_state" <<<"$(DEPLOY_STATE_FILE="$custom_state" /usr/bin/bash "
 # 11) 运行二进制状态：gif-server.previous 存在时也要显示
 printf '#!/usr/bin/env bash\n' >"${APP_DIR}/gif-server.previous"
 chmod 755 "${APP_DIR}/gif-server.previous"
-grep -qF 'gif-server=present, gif-server.previous=present' <<<"$(run_check)"
+grep -qF 'gif-server=present, gif-server.previous=present' <<<"$(run_check --non-interactive)"
 rm -f "${APP_DIR}/gif-server"
 
 # 12) --fetch 失败时明确报失败，不误判为最新
