@@ -65,11 +65,7 @@ func TestServerGIFSynthesisMatchesBrowserEncoder(t *testing.T) {
 		if g.Disposal[i] != gif.DisposalBackground {
 			t.Fatal("transparent frame disposal invalid")
 		}
-		delay := 10
-		if i >= 4 && i <= 7 {
-			delay = 6
-		}
-		if g.Delay[i] != delay {
+		if g.Delay[i] != gifFrameDelay {
 			t.Fatal("frame timing invalid")
 		}
 		if _, _, _, alpha := frame.At(128, 130).RGBA(); alpha == 0 {
@@ -82,7 +78,7 @@ func TestServerGIFSynthesisMatchesBrowserEncoder(t *testing.T) {
 }
 
 // 5×5 规格与上游约定仍产出 1024×1024 序列图：1024 不能被 5 整除，
-// 验证按比例取整切格后得到 25 帧、每帧 128×128，展开阶段（第 7—12 帧）稍快。
+// 验证按比例取整切格后得到 25 帧、每帧 128×128，并使用统一 80ms 帧间隔。
 func TestServerGIFSynthesis5x5Grid(t *testing.T) {
 	sheet, err := imageData(sampleSheetGrid(5), 20*1024*1024)
 	if err != nil {
@@ -103,11 +99,7 @@ func TestServerGIFSynthesis5x5Grid(t *testing.T) {
 		if g.Disposal[i] != gif.DisposalBackground {
 			t.Fatal("transparent frame disposal invalid")
 		}
-		delay := 10
-		if i >= 6 && i <= 11 {
-			delay = 6
-		}
-		if g.Delay[i] != delay {
+		if g.Delay[i] != gifFrameDelay {
 			t.Fatal("frame timing invalid")
 		}
 		if _, _, _, alpha := frame.At(64, 90).RGBA(); alpha == 0 {
@@ -617,7 +609,9 @@ func TestMotionJobDeliversServerGIF5x5(t *testing.T) {
 	if j.Status != "succeeded" || len(j.Gif) == 0 {
 		t.Fatal("motion job missing server GIF", j.Status)
 	}
-	if len(prompts) != 2 || !strings.Contains(prompts[1], "严格5列×5行共25格") || !strings.Contains(prompts[1], "以此为准") {
+	if len(prompts) != 2 || !strings.Contains(prompts[1], "严格5列×5行共25格") || !strings.Contains(prompts[1], "以此为准") ||
+		!strings.Contains(prompts[1], "按时间等间隔采样") || !strings.Contains(prompts[1], "相邻格只允许小步长变化") ||
+		!strings.Contains(prompts[1], "人物水平中心、脚底基准线和人物整体尺寸稳定") {
 		t.Fatal("motion prompt missing 5x5 grid spec override")
 	}
 	gifBytes, err := base64.StdEncoding.DecodeString(j.Gif[len("data:image/gif;base64,"):])

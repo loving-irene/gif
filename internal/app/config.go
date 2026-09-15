@@ -18,6 +18,7 @@ import (
 
 type Env struct {
 	BaseURL, Database, Secret, AdminPassword, APIKey, MailHost, MailPort, MailUser, MailPassword, MailFrom string
+	DeployDir, DeployBranch, DeployStateFile                                                               string
 	Secure, TrustProxy, Debug                                                                              bool
 }
 
@@ -52,7 +53,7 @@ func LoadEnv(path string) (Env, error) {
 		}
 		return def
 	}
-	e := Env{BaseURL: strings.TrimRight(get("GIF_BASE_URL", "http://127.0.0.1:8096"), "/"), Database: get("GIF_DATABASE_PATH", "gif.db"), Secret: get("GIF_SECRET", ""), AdminPassword: get("GIF_ADMIN_PASSWORD", ""), APIKey: get("GEEKAI_API_KEY", ""), Secure: get("GIF_COOKIE_SECURE", "false") == "true", MailHost: get("MAIL_SERVER", ""), MailPort: get("MAIL_PORT", "465"), MailUser: get("MAIL_USERNAME", ""), MailPassword: get("MAIL_PASSWORD", ""), MailFrom: get("MAIL_DEFAULT_SENDER", "")}
+	e := Env{BaseURL: strings.TrimRight(get("GIF_BASE_URL", "http://127.0.0.1:8096"), "/"), Database: get("GIF_DATABASE_PATH", "gif.db"), Secret: get("GIF_SECRET", ""), AdminPassword: get("GIF_ADMIN_PASSWORD", ""), APIKey: get("GEEKAI_API_KEY", ""), Secure: get("GIF_COOKIE_SECURE", "false") == "true", MailHost: get("MAIL_SERVER", ""), MailPort: get("MAIL_PORT", "465"), MailUser: get("MAIL_USERNAME", ""), MailPassword: get("MAIL_PASSWORD", ""), MailFrom: get("MAIL_DEFAULT_SENDER", ""), DeployDir: get("APP_DIR", "."), DeployBranch: get("BRANCH", "main"), DeployStateFile: get("DEPLOY_STATE_FILE", ".last_deployed_commit")}
 	// 服务仅监听回环地址，默认读取本机反向代理传来的真实 IP；仍可显式关闭。
 	e.TrustProxy = get("GIF_TRUST_PROXY", "true") == "true"
 	e.Debug = strings.EqualFold(get("GIF_DEBUG", "false"), "true")
@@ -96,17 +97,17 @@ type Style struct {
 	Prompt   string `json:"prompt"`
 }
 type Settings struct {
-	DefaultCredits         int      `json:"defaultCredits"`
-	UserConcurrency        int      `json:"userConcurrency"`
-	ChargeOnFailure        bool     `json:"chargeOnFailure"`
-	RedeemHelp             string   `json:"redeemHelp"`
-	APIBase                string   `json:"apiBase"`
-	Model                  string   `json:"model"`
-	Quality                string   `json:"quality"`
-	AssetHosts             []string `json:"assetHosts"`
-	IdentityPrompt         string   `json:"identityPrompt"`
-	DraftPrompt            string   `json:"draftPrompt"`
-	MotionPrompt           string   `json:"motionPrompt"`
+	DefaultCredits  int      `json:"defaultCredits"`
+	UserConcurrency int      `json:"userConcurrency"`
+	ChargeOnFailure bool     `json:"chargeOnFailure"`
+	RedeemHelp      string   `json:"redeemHelp"`
+	APIBase         string   `json:"apiBase"`
+	Model           string   `json:"model"`
+	Quality         string   `json:"quality"`
+	AssetHosts      []string `json:"assetHosts"`
+	IdentityPrompt  string   `json:"identityPrompt"`
+	DraftPrompt     string   `json:"draftPrompt"`
+	MotionPrompt    string   `json:"motionPrompt"`
 	// MotionGrid 控制动作序列图的网格规格：4x4 为 4×4 共16格（每帧256×256），
 	// 5x5 为 5×5 共25格（每帧128×128）。生成提示词与 GIF 合成共用该规格。
 	MotionGrid string     `json:"motionGrid"`

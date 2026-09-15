@@ -1,7 +1,11 @@
 package app
 
 import (
+	"image"
+	"image/color"
+	"image/draw"
 	"image/gif"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,23 +40,17 @@ func TestBrowserGIFEncoderDecodes(t *testing.T) {
 		if g.Disposal[i] != gif.DisposalBackground {
 			t.Fatal("transparent frame disposal invalid")
 		}
-		delay := 10
-		if i >= 4 && i <= 7 {
-			delay = 6
-		}
-		if g.Delay[i] != delay {
+		if g.Delay[i] != gifFrameDelay {
 			t.Fatal("frame timing invalid")
 		}
-		_, _, _, alpha := frame.At(11+i*8, 40).RGBA()
-		if alpha == 0 {
+		if !hasOpaquePixel(frame) {
 			t.Fatal("moving subject was lost")
 		}
-		_, _, _, alpha = frame.At(0, 0).RGBA()
-		if alpha != 0 {
+		if _, _, _, alpha := frame.At(0, 0).RGBA(); alpha != 0 {
 			t.Fatal("transparent background lost")
 		}
 	}
-	// v3 编码器的 5×5 规格：25 帧每帧 128×128，第 7—12 帧稍快。
+	// v4 编码器的 5×5 规格：25 帧每帧 128×128、统一 80ms 帧间隔。
 	f25, err := os.Open(output25)
 	if err != nil {
 		t.Fatal(err)
@@ -69,20 +67,66 @@ func TestBrowserGIFEncoderDecodes(t *testing.T) {
 		if g25.Disposal[i] != gif.DisposalBackground {
 			t.Fatal("5x5 transparent frame disposal invalid")
 		}
-		delay := 10
-		if i >= 6 && i <= 11 {
-			delay = 6
-		}
-		if g25.Delay[i] != delay {
+		if g25.Delay[i] != gifFrameDelay {
 			t.Fatal("5x5 frame timing invalid")
 		}
-		_, _, _, alpha := frame.At(10+i*4, 20).RGBA()
-		if alpha == 0 {
+		if !hasOpaquePixel(frame) {
 			t.Fatal("5x5 moving subject was lost")
 		}
-		_, _, _, alpha = frame.At(0, 0).RGBA()
-		if alpha != 0 {
+		if _, _, _, alpha := frame.At(0, 0).RGBA(); alpha != 0 {
 			t.Fatal("5x5 transparent background lost")
 		}
 	}
+}
+
+func TestStabilizeFramesCorrectsSingleFrameJitter(t *testing.T) {
+	frames := make([]*image.NRGBA, 5)
+	for i := range frames {
+		frames[i] = image.NewNRGBA(image.Rect(0, 0, 128, 128))
+		x0, y0, width, height := 40+i, 50+i, 30, 50
+		if i == 2 {
+			x0, y0, width, height = 50, 62, 34, 48
+		}
+		draw.Draw(frames[i], image.Rect(x0, y0, x0+width, y0+height), &image.Uniform{C: color.NRGBA{R: 180, G: 90, B: 60, A: 255}}, image.Point{}, draw.Src)
+	}
+	before := measureSubject(frames[2])
+	after := measureSubject(stabilizeFrames(frames, 128)[2])
+	const expectedCenter = 58
+	const expectedFoot = 103
+	const expectedArea = 1500
+	if math.Abs(after.centerX-expectedCenter) >= math.Abs(before.centerX-expectedCenter) {
+		t.Fatal("horizontal center jitter was not reduced", before.centerX, after.centerX)
+	}
+	if math.Abs(after.foot-expectedFoot) >= math.Abs(before.foot-expectedFoot) {
+		t.Fatal("foot-line jitter was not reduced", before.foot, after.foot)
+	}
+	if math.Abs(after.area-expectedArea) >= math.Abs(before.area-expectedArea) {
+		t.Fatal("subject size jitter was not reduced", before.area, after.area)
+	}
+}
+
+func TestStabilizeFramesPreservesContinuousJump(t *testing.T) {
+	feet := []int{100, 94, 88, 82, 78, 82, 88, 94, 100}
+	frames := make([]*image.NRGBA, len(feet))
+	for i, foot := range feet {
+		frames[i] = image.NewNRGBA(image.Rect(0, 0, 128, 128))
+		draw.Draw(frames[i], image.Rect(49, foot-48, 79, foot), &image.Uniform{C: color.NRGBA{R: 180, G: 90, B: 60, A: 255}}, image.Point{}, draw.Src)
+	}
+	stable := stabilizeFrames(frames, 128)
+	ground := measureSubject(stable[0]).foot
+	apex := measureSubject(stable[4]).foot
+	if ground-apex < 12 {
+		t.Fatal("continuous jump was flattened", ground, apex)
+	}
+}
+
+func hasOpaquePixel(frame image.Image) bool {
+	for y := frame.Bounds().Min.Y; y < frame.Bounds().Max.Y; y++ {
+		for x := frame.Bounds().Min.X; x < frame.Bounds().Max.X; x++ {
+			if _, _, _, alpha := frame.At(x, y).RGBA(); alpha != 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
