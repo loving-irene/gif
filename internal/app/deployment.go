@@ -161,6 +161,29 @@ func shortCommit(hash string) string {
 
 func gitOutput(ctx context.Context, dir string, args ...string) (string, error) {
 	command := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	// systemd 以 www-data 运行服务，而仓库通常由部署账号拥有。Git 的
+	// dubious ownership 检查会拒绝这种只读查询；仅把当前仓库目录加入
+	// safe.directory，不放宽为全局通配符，也不修改用户或系统配置文件。
+	if safeDir, err := filepath.Abs(dir); err == nil {
+		if resolved, resolveErr := filepath.EvalSymlinks(safeDir); resolveErr == nil {
+			safeDir = resolved
+		}
+		env := os.Environ()
+		setEnv := func(key, value string) {
+			prefix := key + "="
+			for i, item := range env {
+				if strings.HasPrefix(item, prefix) {
+					env[i] = prefix + value
+					return
+				}
+			}
+			env = append(env, prefix+value)
+		}
+		setEnv("GIT_CONFIG_COUNT", "1")
+		setEnv("GIT_CONFIG_KEY_0", "safe.directory")
+		setEnv("GIT_CONFIG_VALUE_0", safeDir)
+		command.Env = env
+	}
 	out, err := command.Output()
 	return strings.TrimSpace(string(out)), err
 }

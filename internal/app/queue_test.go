@@ -609,7 +609,7 @@ func TestMotionJobDeliversServerGIF5x5(t *testing.T) {
 	if j.Status != "succeeded" || len(j.Gif) == 0 {
 		t.Fatal("motion job missing server GIF", j.Status)
 	}
-	if len(prompts) != 2 || !strings.Contains(prompts[1], "严格5列×5行共25格") || !strings.Contains(prompts[1], "以此为准") ||
+	if len(prompts) != 2 || strings.Contains(prompts[1], "严格4列×4行共16格") || !strings.Contains(prompts[1], "严格5列×5行共25格") || !strings.Contains(prompts[1], "以此为准") ||
 		!strings.Contains(prompts[1], "按时间等间隔采样") || !strings.Contains(prompts[1], "相邻格只允许小步长变化") ||
 		!strings.Contains(prompts[1], "人物水平中心、脚底基准线和人物整体尺寸稳定") {
 		t.Fatal("motion prompt missing 5x5 grid spec override")

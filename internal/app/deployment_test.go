@@ -100,6 +100,20 @@ func TestInspectDeploymentVersionStates(t *testing.T) {
 	}
 }
 
+func TestInspectDeploymentVersionWithDifferentRepositoryOwner(t *testing.T) {
+	// Git 提供此测试开关来模拟仓库归属与当前进程不同；服务实际由
+	// www-data 运行，而部署仓库通常属于部署账号。
+	t.Setenv("GIT_TEST_ASSUME_DIFFERENT_OWNER", "1")
+	now := time.Now().Truncate(time.Second)
+	dir, _ := deploymentTestRepo(t, now)
+	version := inspectDeploymentVersion(context.Background(), Env{
+		DeployDir: dir, DeployBranch: "main", DeployStateFile: ".last_deployed_commit",
+	}, now)
+	if version.Status != "up-to-date" || !version.Latest {
+		t.Fatalf("different-owner deployment version mismatch: %+v", version)
+	}
+}
+
 func TestAdminDeploymentVersionPageAndAuthorization(t *testing.T) {
 	now := time.Now().Truncate(time.Second)
 	dir, _ := deploymentTestRepo(t, now)
@@ -125,12 +139,12 @@ func TestAdminDeploymentVersionPageAndAuthorization(t *testing.T) {
 	}
 
 	body := request(t, a, nil, "GET", "/who", nil).Body.String()
-	for _, want := range []string{"/assets/admin.v27.js", `data-tab="deploymentSection"`, `id="deploymentSection"`, `id="refreshDeployment"`} {
+	for _, want := range []string{"/assets/admin.v28.js", `data-tab="deploymentSection"`, `id="deploymentSection"`, `id="refreshDeployment"`} {
 		if !strings.Contains(body, want) {
 			t.Fatal("admin deployment page missing", want)
 		}
 	}
-	raw, err := web.ReadFile("web/admin.v27.js")
+	raw, err := web.ReadFile("web/admin.v28.js")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -276,7 +276,8 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 		appearance := "分类：{{category}}。服装：{{clothes}}。配色：{{color}}。武器：{{weapon}}。"
 		// 末尾附加以后台配置为准的网格规格说明：模板里写死的格数与所选规格不一致时以此覆盖，
 		// 生成侧（格数）与合成侧（切格方式）始终使用同一配置。
-		prompt = cfg.IdentityPrompt + "\n" + style.Prompt + "\n" + cat.Prompt + "\n" + renderPrompt(appearance, in.Selection, cat, "") + "\n" + renderPrompt(cfg.MotionPrompt, in.Selection, cat, action) + "\n" + motionSpecPrompt(cfg.MotionGrid)
+		motionPrompt := normalizeMotionPrompt(renderPrompt(cfg.MotionPrompt, in.Selection, cat, action))
+		prompt = cfg.IdentityPrompt + "\n" + style.Prompt + "\n" + cat.Prompt + "\n" + renderPrompt(appearance, in.Selection, cat, "") + "\n" + motionPrompt + "\n" + motionSpecPrompt(cfg.MotionGrid)
 		images = append(images, in.Draft)
 	}
 	raw, _ := json.Marshal(in)
