@@ -167,10 +167,10 @@ func TestAdminDashboardEmail(t *testing.T) {
 	}
 
 	page := request(t, a, nil, "GET", "/who", nil).Body.String()
-	if !strings.Contains(page, `id="sendDashEmail"`) || !strings.Contains(page, "/assets/admin.v34.js") {
+	if !strings.Contains(page, `id="sendDashEmail"`) || !strings.Contains(page, "/assets/admin.v35.js") {
 		t.Fatal("dashboard email button or versioned script missing")
 	}
-	raw, err := web.ReadFile("web/admin.v34.js")
+	raw, err := web.ReadFile("web/admin.v35.js")
 	if err != nil || !strings.Contains(string(raw), "/api/admin/dashboard/email") {
 		t.Fatal("dashboard email frontend action missing", err)
 	}

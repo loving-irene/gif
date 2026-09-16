@@ -1,0 +1,29 @@
+/* 拾光 GIF 图片展示 · v2：原尺寸展示，后台 GIF 关联动作序列原图。 */
+.gallery-card {
+  min-width: 0;
+}
+
+.gallery-card img,
+.admin-gallery-card img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  aspect-ratio: auto;
+  margin-inline: auto;
+}
+
+.admin-gallery-source {
+  margin-top: 10px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+}
+
+.admin-gallery-source a {
+  display: block;
+  margin-top: 5px;
+}
+
+.admin-gallery-source p {
+  white-space: normal;
+}
