@@ -1,0 +1,14 @@
+/* 拾光 GIF 图片展示 · v1：按原尺寸居中，仅在容器不足时等比缩小。 */
+.gallery-card {
+  min-width: 0;
+}
+
+.gallery-card img,
+.admin-gallery-card img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  aspect-ratio: auto;
+  margin-inline: auto;
+}
