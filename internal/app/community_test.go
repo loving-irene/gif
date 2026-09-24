@@ -367,7 +367,7 @@ func TestCommunityPageRendering(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `id="communityGrid"`) {
 		t.Fatal("community page missing", w.Code)
 	}
-	for _, asset := range []string{"/assets/community.v5.js", "/assets/style.v36.css"} {
+	for _, asset := range []string{"/assets/community.v5.js", "/assets/style.v40.css"} {
 		if !strings.Contains(w.Body.String(), asset) {
 			t.Fatal("community page missing asset", asset)
 		}
@@ -375,7 +375,7 @@ func TestCommunityPageRendering(t *testing.T) {
 			t.Fatal("community asset not embedded", asset, err)
 		}
 	}
-	cssRaw, err := web.ReadFile("web/style.v36.css")
+	cssRaw, err := web.ReadFile("web/style.v40.css")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -417,7 +417,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 	if !strings.Contains(body, `href="/community"`) || !strings.Contains(body, `class="community-link"`) {
 		t.Fatal("homepage missing community entry")
 	}
-	for _, asset := range []string{"/assets/app.v45.js", "/assets/style.v36.css"} {
+	for _, asset := range []string{"/assets/app.v49.js", "/assets/style.v40.css"} {
 		if !strings.Contains(body, asset) {
 			t.Fatal("homepage missing updated asset", asset)
 		}
@@ -425,15 +425,38 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 			t.Fatal("updated asset not embedded", asset, err)
 		}
 	}
-	raw, err := web.ReadFile("web/app.v45.js")
+	raw, err := web.ReadFile("web/app.v49.js")
 	if err != nil {
 		t.Fatal(err)
 	}
 	source := string(raw)
-	for _, want := range []string{`"10x10": { cols: 10, frames: 100, size: 256 }`, `/assets/gif-worker.v7.js`, "shareUploadLimit = 8 * 1024 * 1024"} {
+	for _, want := range []string{
+		`"10x10": { cols: 10, frames: 100, size: 256 }`,
+		`/assets/gif-worker.v7.js`,
+		"shareUploadLimit = 8 * 1024 * 1024",
+		"gallery-meta",
+		"gallery-gif",
+		"work.hasSheet",
+	} {
 		if !strings.Contains(source, want) {
 			t.Fatal("homepage motion quality contract missing", want)
 		}
+	}
+	if strings.Contains(source, "gallery-sheet") || strings.Contains(source, "保存原图") {
+		t.Fatal("frontend gallery must not show motion sheet; admin gallery only")
+	}
+	cssRaw, err := web.ReadFile("web/style.v40.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	css := string(cssRaw)
+	gallery := cssRuleBlock(t, css, ".gallery")
+	if !strings.Contains(gallery, "grid-template-columns: repeat(5, minmax(0, 1fr))") {
+		t.Fatal("desktop gallery should show five cards per row", gallery)
+	}
+	card := cssRuleBlock(t, css, ".gallery-card")
+	if !strings.Contains(card, "display: flex") {
+		t.Fatal("gallery card should be horizontal text+gif layout", card)
 	}
 }
 
@@ -450,7 +473,7 @@ func TestHomepageAccountEntryStaysClickable(t *testing.T) {
 	if !strings.Contains(body, `id="accountLockedHint"`) {
 		t.Fatal("account dialog missing locked hint")
 	}
-	raw, err := web.ReadFile("web/app.v45.js")
+	raw, err := web.ReadFile("web/app.v49.js")
 	if err != nil {
 		t.Fatal("homepage script not embedded", err)
 	}

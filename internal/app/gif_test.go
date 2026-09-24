@@ -12,6 +12,18 @@ import (
 	"testing"
 )
 
+func TestInsetCellTrimsBleedMargin(t *testing.T) {
+	cell := image.Rect(0, 0, 200, 200)
+	got := insetCell(cell)
+	if got.Dx() != 180 || got.Dy() != 180 || got.Min.X != 10 || got.Min.Y != 10 {
+		t.Fatalf("inset=%v", got)
+	}
+	tiny := image.Rect(0, 0, 3, 3)
+	if insetCell(tiny).Empty() {
+		t.Fatal("tiny cell should still yield a usable region")
+	}
+}
+
 func TestBrowserGIFEncoderDecodes(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {

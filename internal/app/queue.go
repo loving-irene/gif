@@ -274,8 +274,8 @@ const worksPerUser = 30
 const worksRetention = resultRetention
 
 // saveWork 在动作任务成功后把作品写入 works 表并按账号淘汰最旧记录，实现同一账号
-// 跨设备的“我的作品集”同步。云端优先保存合成好的 GIF；GIF 合成失败时保存动作原图，
-// 供其他设备拉取后在本机重新合成。云端副本最多保留 worksRetention（3天）。
+// 跨设备的“我的作品集”同步。云端同时保存合成好的 GIF 与动作序列原图，供作品集展示、
+// 重新合成与后台图库核对；GIF 合成失败时至少保留动作原图。云端副本最多保留 worksRetention（3天）。
 // 保存失败不影响本次结果返回。
 func (a *App) saveWork(ctx context.Context, id, uid string, cfg Settings, selection Selection) {
 	var actionID string
@@ -295,10 +295,6 @@ func (a *App) saveWork(ctx context.Context, id, uid string, cfg Settings, select
 	sheet, _ := a.readFile(id, "image")
 	if gifErr != nil {
 		gif = nil
-	}
-	if gif != nil {
-		// 有 GIF 时不再保存动作原图，控制云端存储体积；原图仍保留在生成设备的本机作品集里。
-		sheet = nil
 	}
 	if gif == nil && sheet == nil {
 		a.debug(ctx, "work_save_error", map[string]any{"error": "result files missing"})

@@ -42,7 +42,12 @@ func (a *App) adminSettingsGet(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "配置读取失败")
 		return
 	}
-	respond(w, 200, map[string]any{"settings": s, "apiKeySet": a.secret("api_key") != "", "mailPasswordSet": a.secret(aliyunMailPasswordKey) != ""})
+	respond(w, 200, map[string]any{
+		"settings":        s,
+		"apiKeySet":       a.secret("api_key") != "",
+		"mailPasswordSet": a.secret(aliyunMailPasswordKey) != "",
+		"providers":       imageProviders(),
+	})
 }
 func (a *App) adminSettingsSave(w http.ResponseWriter, r *http.Request) {
 	var in struct {
@@ -60,6 +65,8 @@ func (a *App) adminSettingsSave(w http.ResponseWriter, r *http.Request) {
 	in.Settings.MailPort = aliyunMailPort
 	in.Settings.MailUser = strings.TrimSpace(in.Settings.MailUser)
 	in.Settings.MailFrom = in.Settings.MailUser
+	in.Settings.APIBase = strings.TrimRight(strings.TrimSpace(in.Settings.APIBase), "/")
+	in.Settings = normalizeProviderSettings(in.Settings)
 	if err := validateSettings(in.Settings); err != nil {
 		fail(w, 400, err.Error())
 		return

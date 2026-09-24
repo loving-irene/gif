@@ -111,7 +111,7 @@ func motionSpecPrompt(id string) string {
 	} else {
 		cell = fmt.Sprintf("，合成后每帧%d×%d", s.size, s.size)
 	}
-	prompt := fmt.Sprintf("动作序列图规格（以此为准，前文若出现其他图片尺寸、格数、每格尺寸或阶段划分描述，以本段为准）：一张%d×%d透明PNG，严格%d列×%d行共%d格%s。从左到右、从上到下排列同一次完整动作：%s。每格无边框无间隙无编号无文字，角色武器特效不跨格、不裁切。",
+	prompt := fmt.Sprintf("动作序列图规格（以此为准，前文若出现其他图片尺寸、格数、每格尺寸或阶段划分描述，以本段为准）：一张%d×%d透明PNG，严格%d列×%d行共%d格%s。从左到右、从上到下排列同一次完整动作：%s。每格无边框无间隙无编号无文字；角色完整缩在单格内，四周留透明安全边距，禁止邻格内容渗入（尤其下一格头顶不得出现在本格脚底），武器特效不跨格、不裁切。",
 		s.sourceSize, s.sourceSize, s.cols, s.cols, s.frames, cell, s.phases())
 	if s.frames == 25 {
 		prompt += " 25格必须是按时间等间隔采样的连续动作，相邻格只允许小步长变化，不得跳过中间姿态或重复静止帧。保持镜头、人物水平中心、脚底基准线和人物整体尺寸稳定；除动作本身必需的连续位移、起跳和落地外，不得左右漂移、上下抖动或忽大忽小。"
@@ -159,10 +159,12 @@ func synthesizeGIF(sheet []byte, spec motionSpec) ([]byte, error) {
 		x0, y0 := (n%spec.cols)*width/spec.cols, (n/spec.cols)*height/spec.cols
 		x1, y1 := ((n%spec.cols)+1)*width/spec.cols, ((n/spec.cols)+1)*height/spec.cols
 		cell := image.Rect(x0, y0, x1, y1)
-		if cell.Dx() == size && cell.Dy() == size {
-			draw.Draw(frame, frame.Rect, img, cell.Min, draw.Src)
+		// 内缩约 5%：裁掉邻格渗边（常见为下一格头顶出现在脚底），再放大回输出尺寸。
+		src := insetCell(cell)
+		if src.Dx() == size && src.Dy() == size {
+			draw.Draw(frame, frame.Rect, img, src.Min, draw.Src)
 		} else {
-			xdraw.CatmullRom.Scale(frame, frame.Rect, img, cell, xdraw.Src, nil)
+			xdraw.CatmullRom.Scale(frame, frame.Rect, img, src, xdraw.Src, nil)
 		}
 		frames[n] = frame
 	}
@@ -198,6 +200,28 @@ func synthesizeGIF(sheet []byte, spec motionSpec) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// insetCell 从格四周内缩约 5%，裁掉邻格渗边；至少保留半格可用区域。
+func insetCell(cell image.Rectangle) image.Rectangle {
+	dx, dy := cell.Dx(), cell.Dy()
+	ix, iy := dx/20, dy/20
+	if ix < 1 {
+		ix = 1
+	}
+	if iy < 1 {
+		iy = 1
+	}
+	if ix*2 >= dx {
+		ix = dx / 4
+	}
+	if iy*2 >= dy {
+		iy = dy / 4
+	}
+	if ix < 1 || iy < 1 {
+		return cell
+	}
+	return image.Rect(cell.Min.X+ix, cell.Min.Y+iy, cell.Max.X-ix, cell.Max.Y-iy)
 }
 
 type subjectMetrics struct {

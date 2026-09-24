@@ -2,17 +2,88 @@ package app
 
 import "strings"
 
-// ImageModel 描述 OpenRouter 画图模型在本地对比与正式生成时的适配方式。
+// ImageModel 描述画图模型在本地对比与正式生成时的适配方式。
 type ImageModel struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Vendor   string `json:"vendor"`
-	Family   string `json:"family"` // openai | seedream | banana | qwen | flux | mai | recraft | krea | riverflow | grok
+	Family   string `json:"family"` // openai | seedream | banana | qwen | flux | mai | recraft | krea | riverflow | grok | generic
 	Latest   bool   `json:"latest"`
 	Supports bool   `json:"supportsRef"`
 }
 
-const openRouterAPIBase = "https://openrouter.ai/api/v1"
+// ImageProvider 是后台「基础与接口」可选的画图中转供应商。
+type ImageProvider struct {
+	ID         string       `json:"id"`
+	Name       string       `json:"name"`
+	APIBase    string       `json:"apiBase"`
+	AssetHosts []string     `json:"assetHosts"`
+	Models     []ImageModel `json:"models"`
+}
+
+const (
+	openRouterAPIBase = "https://openrouter.ai/api/v1"
+	geekAIAPIBase     = "https://geekai.co/api/v1"
+)
+
+func imageProviders() []ImageProvider {
+	return []ImageProvider{
+		{
+			ID: "openrouter", Name: "OpenRouter", APIBase: openRouterAPIBase,
+			AssetHosts: []string{"openrouter.ai"}, Models: latestImageModels(),
+		},
+		{
+			ID: "geekai", Name: "GeekAI", APIBase: geekAIAPIBase,
+			AssetHosts: []string{"static.geekai.co", "geekai.co"}, Models: geekAIImageModels(),
+		},
+	}
+}
+
+func imageProviderByID(id string) (ImageProvider, bool) {
+	for _, p := range imageProviders() {
+		if p.ID == id {
+			return p, true
+		}
+	}
+	return ImageProvider{}, false
+}
+
+func imageProviderByAPIBase(apiBase string) (ImageProvider, bool) {
+	base := strings.TrimRight(strings.TrimSpace(apiBase), "/")
+	for _, p := range imageProviders() {
+		if strings.TrimRight(p.APIBase, "/") == base {
+			return p, true
+		}
+	}
+	return ImageProvider{}, false
+}
+
+func allowedAPIBases() []string {
+	out := make([]string, 0, len(imageProviders()))
+	for _, p := range imageProviders() {
+		out = append(out, p.APIBase)
+	}
+	return out
+}
+
+// geekAIImageModels 是 GeekAI 中转常用的短 ID 模型列表（与 OpenRouter 的 vendor/model 路径不同）。
+func geekAIImageModels() []ImageModel {
+	return []ImageModel{
+		{ID: "gpt-image-2.5-sunburst", Name: "GPT Image 2.5 Sunburst", Vendor: "OpenAI", Family: "openai", Latest: true, Supports: true},
+		{ID: "gpt-image-2.5-flare", Name: "GPT Image 2.5 Flare", Vendor: "OpenAI", Family: "openai", Latest: true, Supports: true},
+		{ID: "gpt-image-2", Name: "GPT Image 2", Vendor: "OpenAI", Family: "openai", Latest: true, Supports: true},
+		{ID: "doubao-seedream-5.0-pro", Name: "Seedream 5.0 Pro", Vendor: "ByteDance", Family: "seedream", Latest: true, Supports: true},
+		{ID: "doubao-seedream-5.0-lite", Name: "Seedream 5.0 Lite", Vendor: "ByteDance", Family: "seedream", Latest: true, Supports: true},
+		{ID: "nano-banana-pro", Name: "Nano Banana Pro", Vendor: "Google", Family: "banana", Latest: true, Supports: true},
+		{ID: "nano-banana-2", Name: "Nano Banana 2", Vendor: "Google", Family: "banana", Latest: true, Supports: true},
+		{ID: "qwen-image-3.0-pro", Name: "Qwen Image 3.0 Pro", Vendor: "Qwen", Family: "qwen", Latest: true, Supports: true},
+		{ID: "qwen-image-3.0", Name: "Qwen Image 3.0", Vendor: "Qwen", Family: "qwen", Latest: true, Supports: true},
+		{ID: "kling-image-v3-omni", Name: "Kling Image V3 Omni", Vendor: "Kling", Family: "generic", Latest: true, Supports: true},
+		{ID: "jimeng_t2i_v40", Name: "即梦 4.0", Vendor: "Jimeng", Family: "generic", Latest: true, Supports: true},
+		{ID: "stable-image-ultra", Name: "Stable Image Ultra", Vendor: "Stability", Family: "generic", Latest: true, Supports: true},
+		{ID: "wan2.7-image", Name: "万相 2.7", Vendor: "Wan", Family: "generic", Latest: true, Supports: true},
+	}
+}
 
 // latestImageModels 每个系列取 OpenRouter 文生图能力最强的 2 个（来自 /api/v1/images/models）。
 func latestImageModels() []ImageModel {
@@ -50,27 +121,60 @@ func latestImageModels() []ImageModel {
 }
 
 func imageModelByID(id string) (ImageModel, bool) {
-	for _, m := range latestImageModels() {
-		if m.ID == id {
-			return m, true
+	for _, p := range imageProviders() {
+		for _, m := range p.Models {
+			if m.ID == id {
+				return m, true
+			}
 		}
 	}
 	return ImageModel{}, false
 }
 
 func allowedImageModelIDs() []string {
-	out := make([]string, 0, len(latestImageModels())+8)
-	for _, m := range latestImageModels() {
-		out = append(out, m.ID)
+	out := make([]string, 0, 48)
+	seen := map[string]bool{}
+	for _, p := range imageProviders() {
+		for _, m := range p.Models {
+			if seen[m.ID] {
+				continue
+			}
+			seen[m.ID] = true
+			out = append(out, m.ID)
+		}
 	}
-	// 兼容旧后台仍可能存着的 GeekAI 短 ID / OpenRouter 变体。
+	// 兼容旧后台仍可能存着的 OpenRouter 变体。
 	for _, id := range []string{
 		"openai/gpt-image-2.5-flare", "openai/gpt-image-2", "openai/gpt-5-image", "openai/gpt-5-image-mini",
-		"gpt-image-2.5-sunburst", "gpt-image-2.5-flare", "gpt-image-2",
+		"gpt-image-2.5-sunburst-all", "gpt-image-2.5-flare-all",
 	} {
-		out = append(out, id)
+		if !seen[id] {
+			out = append(out, id)
+		}
 	}
 	return out
+}
+
+func modelsForAPIBase(apiBase string) []ImageModel {
+	if p, ok := imageProviderByAPIBase(apiBase); ok {
+		return p.Models
+	}
+	return latestImageModels()
+}
+
+func modelAllowedForAPIBase(apiBase, model string) bool {
+	for _, m := range modelsForAPIBase(apiBase) {
+		if m.ID == model {
+			return true
+		}
+	}
+	// 兼容列表中的历史 ID：仅当当前供应商是 OpenRouter 时放行。
+	if p, ok := imageProviderByAPIBase(apiBase); ok && p.ID == "openrouter" {
+		return contains([]string{
+			"openai/gpt-image-2.5-flare", "openai/gpt-image-2", "openai/gpt-5-image", "openai/gpt-5-image-mini",
+		}, model)
+	}
+	return false
 }
 
 func modelFamily(id string) string {
@@ -78,15 +182,13 @@ func modelFamily(id string) string {
 		return m.Family
 	}
 	switch {
-	case stringsHasPrefix(id, "openai/gpt"):
-		return "openai"
-	case stringsHasPrefix(id, "gpt-image"):
+	case stringsHasPrefix(id, "openai/gpt") || stringsHasPrefix(id, "gpt-image"):
 		return "openai"
 	case stringsHasPrefix(id, "bytedance-seed/") || stringsHasPrefix(id, "doubao-seedream"):
 		return "seedream"
 	case stringsHasPrefix(id, "google/gemini") || stringsHasPrefix(id, "nano-banana"):
 		return "banana"
-	case stringsHasPrefix(id, "qwen/"):
+	case stringsHasPrefix(id, "qwen/") || stringsHasPrefix(id, "qwen-image"):
 		return "qwen"
 	case stringsHasPrefix(id, "black-forest-labs/") || stringsHasPrefix(id, "flux"):
 		return "flux"
@@ -189,22 +291,38 @@ func buildImagePayload(model, prompt, imageSize, quality string, images []string
 	return payload
 }
 
-// migrateToOpenRouter 把旧 GeekAI 默认接口/短模型 ID 迁移到 OpenRouter。
-func migrateToOpenRouter(s Settings) Settings {
-	if s.APIBase == "" || s.APIBase == "https://geekai.co/api/v1" {
+// buildGeekAIPayload 使用 GeekAI 异步 generations 接口字段（size / image|images / async）。
+func buildGeekAIPayload(model, prompt, imageSize, quality string, images []string) map[string]any {
+	if imageSize == "" {
+		imageSize = "1024x1024"
+	}
+	payload := map[string]any{
+		"model":           model,
+		"prompt":          prompt,
+		"size":            imageSize,
+		"quality":         quality,
+		"n":               1,
+		"output_format":   "png",
+		"response_format": "b64_json",
+		"background":      "transparent",
+		"async":           true,
+		"retries":         0,
+	}
+	if len(images) == 1 {
+		payload["image"] = images[0]
+	} else if len(images) > 1 {
+		payload["images"] = images
+	}
+	return payload
+}
+
+// normalizeProviderSettings 规范化供应商地址与对应模型，不再强制把 GeekAI 迁走。
+func normalizeProviderSettings(s Settings) Settings {
+	s.APIBase = strings.TrimRight(strings.TrimSpace(s.APIBase), "/")
+	if s.APIBase == "" {
 		s.APIBase = openRouterAPIBase
 	}
-	needAssets := len(s.AssetHosts) == 0
-	for _, h := range s.AssetHosts {
-		if strings.Contains(h, "geekai") {
-			needAssets = true
-			break
-		}
-	}
-	if needAssets {
-		s.AssetHosts = []string{"openrouter.ai"}
-	}
-	legacy := map[string]string{
+	legacyToOpenRouter := map[string]string{
 		"gpt-image-2.5-sunburst":     "openai/gpt-image-2.5-sunburst",
 		"gpt-image-2.5-flare":        "openai/gpt-image-2.5-flare",
 		"gpt-image-2":                "openai/gpt-image-2",
@@ -221,11 +339,40 @@ func migrateToOpenRouter(s Settings) Settings {
 		"stable-image-ultra":         "black-forest-labs/flux.2-pro",
 		"wan2.7-image":               "qwen/qwen-image-3",
 	}
-	if mapped, ok := legacy[s.Model]; ok {
-		s.Model = mapped
+	openRouterToGeekAI := map[string]string{}
+	for short, full := range legacyToOpenRouter {
+		if _, exists := openRouterToGeekAI[full]; !exists {
+			openRouterToGeekAI[full] = short
+		}
 	}
-	if !contains(allowedImageModelIDs(), s.Model) {
-		s.Model = "openai/gpt-image-2.5-sunburst"
+	if p, ok := imageProviderByAPIBase(s.APIBase); ok {
+		switch p.ID {
+		case "openrouter":
+			if mapped, hit := legacyToOpenRouter[s.Model]; hit {
+				s.Model = mapped
+			}
+			if !modelAllowedForAPIBase(s.APIBase, s.Model) {
+				s.Model = "openai/gpt-image-2.5-sunburst"
+			}
+			if len(s.AssetHosts) == 0 {
+				s.AssetHosts = append([]string{}, p.AssetHosts...)
+			}
+		case "geekai":
+			if mapped, hit := openRouterToGeekAI[s.Model]; hit {
+				s.Model = mapped
+			}
+			if !modelAllowedForAPIBase(s.APIBase, s.Model) {
+				s.Model = "gpt-image-2.5-sunburst"
+			}
+			if len(s.AssetHosts) == 0 {
+				s.AssetHosts = append([]string{}, p.AssetHosts...)
+			}
+		}
 	}
 	return s
+}
+
+// migrateToOpenRouter 保留旧名供调用点兼容；实际改为规范化，允许继续使用 GeekAI。
+func migrateToOpenRouter(s Settings) Settings {
+	return normalizeProviderSettings(s)
 }

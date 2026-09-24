@@ -8,7 +8,7 @@ import (
 
 // 流程展示必须始终单行：手机也不能换行，否则「自拍照 → 定稿 → GIF」会折成两行。
 func TestHomepageShowcaseFlowSingleRow(t *testing.T) {
-	raw, err := web.ReadFile("web/style.v36.css")
+	raw, err := web.ReadFile("web/style.v40.css")
 	if err != nil {
 		t.Fatal("homepage stylesheet not embedded", err)
 	}
@@ -48,7 +48,7 @@ func TestHomepageShowcaseExamples(t *testing.T) {
 	if strings.Contains(body, `class="hero"`) {
 		t.Fatal("homepage should not render the removed hero section")
 	}
-	if !strings.Contains(body, "/assets/style.v36.css") {
+	if !strings.Contains(body, "/assets/style.v40.css") {
 		t.Fatal("homepage missing stylesheet")
 	}
 	if !strings.Contains(body, `id="showcaseTitle"`) || !strings.Contains(body, `class="showcase-flow"`) {

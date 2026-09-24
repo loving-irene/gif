@@ -150,19 +150,53 @@ func TestAdminDeploymentVersionPageAndAuthorization(t *testing.T) {
 	}
 
 	body := request(t, a, nil, "GET", "/who", nil).Body.String()
-	for _, want := range []string{"/assets/admin.v41.js", "10×10 · 源2048×2048 · GIF 256×256", `data-tab="gallerySection"`, `id="gallerySection"`, `data-tab="deploymentSection"`, `id="deploymentSection"`, `id="refreshDeployment"`, `id="deploymentOutput"`} {
+	for _, want := range []string{"/assets/admin.v48.js", "/assets/style.v42.css", "10×10 · 源2048×2048 · GIF 256×256", `data-tab="gallerySection"`, `id="gallerySection"`, `data-tab="deploymentSection"`, `id="deploymentSection"`, `id="refreshDeployment"`, `id="deploymentOutput"`, `id="galleryPreviewDialog"`} {
 		if !strings.Contains(body, want) {
 			t.Fatal("admin deployment page missing", want)
 		}
 	}
-	raw, err := web.ReadFile("web/admin.v41.js")
+	raw, err := web.ReadFile("web/admin.v48.js")
 	if err != nil {
 		t.Fatal(err)
 	}
 	source := string(raw)
-	for _, want := range []string{"/api/admin/gallery", "loadGallery", "gallerySection: loadGallery", "/api/admin/deployment-version", "loadDeploymentVersion", "deploymentSection: loadDeploymentVersion", `$("deploymentOutput").value = result.output`} {
+	for _, want := range []string{"/api/admin/gallery", "loadGallery", "gallerySection: loadGallery", "/api/admin/deployment-version", "loadDeploymentVersion", "deploymentSection: loadDeploymentVersion", `$("deploymentOutput").value = result.output`, "admin-gallery-meta", "admin-gallery-media", "openGalleryPreview", "GIF（点击查看原尺寸）", "if (!b.dataset.tab) continue"} {
 		if !strings.Contains(source, want) {
 			t.Fatal("admin deployment script missing", want)
 		}
+	}
+	if strings.Contains(body, "admin-tab-link") || strings.Contains(body, `style="align-self:center`) {
+		t.Fatal("compare tab should use the same admin-tabs styles as other labels")
+	}
+	if !strings.Contains(body, `href="/compare"`) || !strings.Contains(body, "模型对比") {
+		t.Fatal("admin tabs missing compare entry")
+	}
+	styleRaw, err := web.ReadFile("web/style.v42.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	style := string(styleRaw)
+	if !strings.Contains(style, ".admin-tabs a,\n.admin-tabs button {") || !strings.Contains(style, ".admin-tabs button.active {") {
+		t.Fatal("admin tabs must style link and button the same way, with active state")
+	}
+	if !strings.Contains(style, ".dash-card {") || !strings.Contains(style, ".dash-cards {") {
+		t.Fatal("admin dashboard card styles missing")
+	}
+	cssRaw, err := web.ReadFile("web/image-display.v6.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	css := string(cssRaw)
+	card := cssRuleBlock(t, css, ".admin-gallery-card")
+	if !strings.Contains(card, "display: flex") {
+		t.Fatal("admin gallery card should be horizontal text+media layout", card)
+	}
+	grid := cssRuleBlock(t, css, ".admin-gallery")
+	if !strings.Contains(grid, "grid-template-columns: repeat(4, minmax(0, 1fr))") {
+		t.Fatal("admin gallery should show four cards per row", grid)
+	}
+	preview := cssRuleBlock(t, css, ".gallery-preview-dialog[open]")
+	if !strings.Contains(preview, "place-items: center") {
+		t.Fatal("gallery preview should center the image on screen", preview)
 	}
 }

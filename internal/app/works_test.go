@@ -40,6 +40,7 @@ type workItem struct {
 	Category string `json:"category"`
 	Action   string `json:"action"`
 	HasGif   bool   `json:"hasGif"`
+	HasSheet bool   `json:"hasSheet"`
 }
 type workList struct {
 	Items            []workItem `json:"items"`
@@ -62,17 +63,21 @@ func TestWorksSyncAcrossDevices(t *testing.T) {
 		t.Fatal("works list wrong:", w.Body.String())
 	}
 	item := list.Items[0]
-	if item.ID != id || !item.HasGif || item.Name != "蓄力攻击" || item.Category != "male" || item.Action != "attack" {
+	if item.ID != id || !item.HasGif || !item.HasSheet || item.Name != "蓄力攻击" || item.Category != "male" || item.Action != "attack" {
 		t.Fatal("work item wrong:", item)
 	}
 	// 列表同时下发保留窗口（3天），供前端区分用户删除与到期清理。
 	if list.RetentionSeconds != int64(worksRetention.Seconds()) {
 		t.Fatal("retention window wrong:", list.RetentionSeconds)
 	}
-	// 本人可取回 GIF。
+	// 本人可取回 GIF 与动作序列原图。
 	w = request(t, a, one, "GET", "/api/works/"+id+"/gif", nil)
 	if w.Code != 200 || w.Header().Get("Content-Type") != "image/gif" || !strings.HasPrefix(w.Body.String(), "GIF") {
 		t.Fatal("work gif wrong:", w.Code, w.Header().Get("Content-Type"))
+	}
+	w = request(t, a, one, "GET", "/api/works/"+id+"/sheet", nil)
+	if w.Code != 200 || w.Header().Get("Content-Type") != "image/png" {
+		t.Fatal("work sheet wrong:", w.Code, w.Header().Get("Content-Type"))
 	}
 	// 其他账号看不到也取不到。
 	if w = request(t, a, two, "GET", "/api/works", nil); w.Code != 200 {

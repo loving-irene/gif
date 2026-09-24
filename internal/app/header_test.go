@@ -27,7 +27,7 @@ func TestNarrowHeaderStacksLogoAboveEntries(t *testing.T) {
 	a := testApp(t)
 	body := request(t, a, nil, "GET", "/", nil).Body.String()
 	// /assets/ 是 immutable 长期缓存，改样式必须换文件名，页面引用要同步更新。
-	if !strings.Contains(body, "/assets/style.v36.css") {
+	if !strings.Contains(body, "/assets/style.v40.css") {
 		t.Fatal("homepage should reference the stacked-header stylesheet")
 	}
 	// 双行的前提：品牌是页头的直接子元素、入口都装在 nav 里——品牌若在 nav 内，
@@ -43,7 +43,7 @@ func TestNarrowHeaderStacksLogoAboveEntries(t *testing.T) {
 		t.Fatal("页头结构应为：品牌在前、入口 nav 在后，且品牌不在 nav 里")
 	}
 
-	raw, err := web.ReadFile("web/style.v36.css")
+	raw, err := web.ReadFile("web/style.v40.css")
 	if err != nil {
 		t.Fatal("homepage stylesheet not embedded", err)
 	}

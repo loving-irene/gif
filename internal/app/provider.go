@@ -217,21 +217,33 @@ func (a *App) callProvider(ctx context.Context, cfg Settings, prompt string, ima
 	if imageSize == "" {
 		imageSize = "1024x1024"
 	}
-	payload := buildImagePayload(cfg.Model, prompt, imageSize, cfg.Quality, images)
+	prov, _ := imageProviderByAPIBase(cfg.APIBase)
+	var payload map[string]any
+	endpoint := "/images"
+	async := false
+	switch prov.ID {
+	case "geekai":
+		payload = buildGeekAIPayload(cfg.Model, prompt, imageSize, cfg.Quality, images)
+		endpoint = "/images/generations"
+		async = true
+	default:
+		payload = buildImagePayload(cfg.Model, prompt, imageSize, cfg.Quality, images)
+	}
 	b, err := json.Marshal(payload)
 	if err != nil {
 		return "", err
 	}
-	endpoint := "/images"
-	a.debug(ctx, "provider_request", map[string]any{"model": cfg.Model, "endpoint": endpoint, "quality": cfg.Quality, "size": imageSize, "family": modelFamily(cfg.Model), "async": false, "key_configured": key != "", "image_count": len(images), "images": imageSummaries(images), "prompt_chars": utf8.RuneCountInString(prompt), "request_bytes": len(b)})
+	a.debug(ctx, "provider_request", map[string]any{"provider": prov.ID, "model": cfg.Model, "endpoint": endpoint, "quality": cfg.Quality, "size": imageSize, "family": modelFamily(cfg.Model), "async": async, "key_configured": key != "", "image_count": len(images), "images": imageSummaries(images), "prompt_chars": utf8.RuneCountInString(prompt), "request_bytes": len(b)})
 	req, err := http.NewRequestWithContext(ctx, "POST", strings.TrimRight(cfg.APIBase, "/")+endpoint, bytes.NewReader(b))
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+key)
-	req.Header.Set("HTTP-Referer", "https://gif.jcc666.top")
-	req.Header.Set("X-Title", "拾光 GIF")
+	if prov.ID != "geekai" {
+		req.Header.Set("HTTP-Referer", "https://gif.jcc666.top")
+		req.Header.Set("X-Title", "拾光 GIF")
+	}
 	// Never retry a generation POST: one dispatch is one user credit.
 	res, err := a.providerHTTP(ctx, client, req, "submit")
 	if err != nil {

@@ -1,0 +1,149 @@
+/* 拾光 GIF 图片展示 · v3：后台图库左文右图；原图仍可点开原尺寸。 */
+.gallery-card {
+  min-width: 0;
+}
+
+.gallery-card img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  aspect-ratio: auto;
+  margin-inline: auto;
+}
+
+.admin-gallery {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.admin-gallery-card {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  padding: 8px;
+}
+
+.admin-gallery-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.admin-gallery-meta h3 {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-gallery-meta p {
+  margin: 0;
+  font-size: 9px;
+  color: var(--muted);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-gallery-media {
+  flex-shrink: 0;
+  width: 72px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.admin-gallery-card img.admin-gallery-main,
+.admin-gallery-media > img {
+  display: block;
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  background: #f7f3eb;
+  border-radius: 8px;
+  margin: 0;
+  aspect-ratio: 1;
+}
+
+.admin-gallery-media > p,
+.admin-gallery-source > p {
+  margin: 0;
+  font-size: 8px;
+  color: var(--muted);
+  line-height: 1.3;
+  white-space: normal;
+}
+
+.admin-gallery-missing {
+  width: 72px;
+  height: 72px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  font-size: 9px;
+  color: var(--muted);
+  background: #f7f3eb;
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.admin-gallery-source {
+  margin-top: 2px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--line);
+}
+
+.admin-gallery-source a {
+  display: block;
+  margin-top: 3px;
+}
+
+.admin-gallery-source img {
+  display: block;
+  width: 72px;
+  height: auto;
+  max-height: 48px;
+  object-fit: contain;
+  background: #f7f3eb;
+  border-radius: 6px;
+  margin: 0;
+}
+
+@media (max-width: 800px) {
+  .admin-gallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .admin-gallery-card {
+    padding: 6px;
+    gap: 6px;
+  }
+
+  .admin-gallery-media,
+  .admin-gallery-card img.admin-gallery-main,
+  .admin-gallery-media > img,
+  .admin-gallery-missing,
+  .admin-gallery-source img {
+    width: 56px;
+  }
+
+  .admin-gallery-card img.admin-gallery-main,
+  .admin-gallery-media > img,
+  .admin-gallery-missing {
+    height: 56px;
+  }
+}

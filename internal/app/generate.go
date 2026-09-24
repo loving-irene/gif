@@ -593,7 +593,7 @@ func (a *App) draftImage(w http.ResponseWriter, r *http.Request) {
 // 供前端区分“保留期内消失=被其他设备删除”与“超过保留期消失=服务器到期清理”。
 func (a *App) works(w http.ResponseWriter, r *http.Request) {
 	uid := current(r).User.ID
-	rows, err := a.db.Query("SELECT id,created,name,category,COALESCE(action,''),gif IS NOT NULL FROM works WHERE user_id=? ORDER BY created DESC,rowid DESC LIMIT ?", uid, worksPerUser)
+	rows, err := a.db.Query("SELECT id,created,name,category,COALESCE(action,''),gif IS NOT NULL,sheet IS NOT NULL FROM works WHERE user_id=? ORDER BY created DESC,rowid DESC LIMIT ?", uid, worksPerUser)
 	if err != nil {
 		fail(w, 500, "读取失败")
 		return
@@ -603,15 +603,15 @@ func (a *App) works(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var id, name, category, action string
 		var created int64
-		var hasGif bool
-		if rows.Scan(&id, &created, &name, &category, &action, &hasGif) == nil {
-			out = append(out, map[string]any{"id": id, "created": created, "name": name, "category": category, "action": action, "hasGif": hasGif})
+		var hasGif, hasSheet bool
+		if rows.Scan(&id, &created, &name, &category, &action, &hasGif, &hasSheet) == nil {
+			out = append(out, map[string]any{"id": id, "created": created, "name": name, "category": category, "action": action, "hasGif": hasGif, "hasSheet": hasSheet})
 		}
 	}
 	respond(w, 200, map[string]any{"items": out, "retentionSeconds": int64(worksRetention.Seconds())})
 }
 
-// workGif 返回云端作品的 GIF 本体；workSheet 返回动作原图（仅 GIF 合成失败时保留）。
+// workGif 返回云端作品的 GIF 本体；workSheet 返回动作序列原图（与 GIF 一并保存，便于核对与重新合成）。
 // 两者都只能读取本人账号的作品。
 func (a *App) workGif(w http.ResponseWriter, r *http.Request)   { a.serveWorkBlob(w, r, "gif") }
 func (a *App) workSheet(w http.ResponseWriter, r *http.Request) { a.serveWorkBlob(w, r, "sheet") }
