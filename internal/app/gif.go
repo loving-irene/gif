@@ -82,22 +82,23 @@ type motionSpec struct {
 // 10×10（每阶段25帧）。
 var motionSpecs = map[string]motionSpec{
 	"4x4":   {id: "4x4", cols: 4, frames: 16, sourceSize: 1024, size: 256, delay: gifFrameDelay},
-	"5x5":   {id: "5x5", cols: 5, frames: 25, sourceSize: 1024, size: 128, delay: gifFrameDelay},
+	"5x5":   {id: "5x5", cols: 5, frames: 25, sourceSize: 1024, size: 128, delay: smoothishGifFrameDelay},
 	"10x10": {id: "10x10", cols: 10, frames: 100, sourceSize: 2048, size: 256, delay: smoothGifFrameDelay},
 }
 
-const gifFrameDelay = 8       // GIF 延时单位为 1/100 秒；8 即统一 80ms（12.5 FPS）。
-const smoothGifFrameDelay = 2 // 100帧规格使用20ms（50 FPS），总时长仍约2秒。
+const gifFrameDelay = 8           // GIF 延时单位为 1/100 秒；8 即统一 80ms（12.5 FPS）。
+const smoothishGifFrameDelay = 7  // 25帧规格使用70ms，总时长约1.75秒，比16帧更顺、比100帧更稳。
+const smoothGifFrameDelay = 2     // 100帧规格使用20ms（50 FPS），总时长仍约2秒。
 
 // motionGridIDs 返回后台可选的动作序列图规格编号。
 func motionGridIDs() []string { return []string{"4x4", "5x5", "10x10"} }
 
-// motionSpecOf 解析规格编号，空值或未知编号回落到默认 4×4。
+// motionSpecOf 解析规格编号，空值或未知编号回落到默认 5×5。
 func motionSpecOf(id string) motionSpec {
 	if s, ok := motionSpecs[id]; ok {
 		return s
 	}
-	return motionSpecs["4x4"]
+	return motionSpecs["5x5"]
 }
 
 // motionSpecPrompt 是追加在动作提示词末尾的规格说明：后台切换网格规格后，

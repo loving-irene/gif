@@ -12,7 +12,8 @@ import (
 type testTransport func(*http.Request) (*http.Response, error)
 
 func (f testTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-func TestGeekAIAdapterPayloadAndAsyncPolling(t *testing.T) {
+
+func TestOpenRouterAdapterPayloadAndSyncResult(t *testing.T) {
 	a := testApp(t)
 	calls := 0
 	fixture := sampleImage(false)
@@ -22,38 +23,42 @@ func TestGeekAIAdapterPayloadAndAsyncPolling(t *testing.T) {
 			if r.Header.Get("Authorization") != "Bearer fake-only-test-key" {
 				t.Error("missing provider credential")
 			}
-			body := ""
-			if calls == 1 {
-				if r.Method != "POST" || r.URL.String() != "https://geekai.co/api/v1/images/generations" {
-					t.Error("wrong generation route")
-				}
-				var p map[string]any
-				if json.NewDecoder(r.Body).Decode(&p) != nil {
-					t.Fatal("invalid JSON")
-				}
-				images, ok := p["images"].([]any)
-				if !ok || len(images) != 2 || images[0] != fixture || images[1] != fixture {
-					t.Error("reference image ordering changed")
-				}
-				if p["model"] != "gpt-image-2.5-sunburst" || p["size"] != "2048x2048" || p["n"] != float64(1) || p["async"] != true || p["retries"] != float64(0) {
-					t.Error("generation contract invalid")
-				}
-				body = `{"task_id":"test-task","task_status":"pending"}`
-			} else {
-				if r.Method != "GET" || r.URL.Path != "/api/v1/images/test-task" {
-					t.Error("unexpected status route")
-				}
-				b, _ := json.Marshal(map[string]any{"task_status": "succeed", "data": []map[string]string{{"b64_json": strings.SplitN(fixture, ",", 2)[1]}}})
-				body = string(b)
+			if r.Method != "POST" || r.URL.String() != "https://openrouter.ai/api/v1/images" {
+				t.Error("wrong generation route", r.Method, r.URL.String())
 			}
-			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+			var p map[string]any
+			if json.NewDecoder(r.Body).Decode(&p) != nil {
+				t.Fatal("invalid JSON")
+			}
+			refs, ok := p["input_references"].([]any)
+			if !ok || len(refs) != 2 {
+				t.Error("reference image ordering changed", p["input_references"])
+			}
+			if p["model"] != "openai/gpt-image-2.5-sunburst" || p["n"] != float64(1) {
+				t.Error("generation contract invalid", p)
+			}
+			if p["size"] != nil || p["resolution"] != nil {
+				t.Error("openai payload must not send size/resolution", p)
+			}
+			if p["aspect_ratio"] != "1:1" || p["background"] != "transparent" {
+				t.Error("openai aspect/background invalid", p)
+			}
+			b, _ := json.Marshal(map[string]any{"data": []map[string]string{{"b64_json": strings.SplitN(fixture, ",", 2)[1], "media_type": "image/png"}}})
+			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(string(b)))}, nil
 		})}
 	}
 	cfg, _ := a.settings()
 	result, err := a.callProvider(context.Background(), cfg, "保留本人特征", []string{fixture, fixture}, "2048x2048", nil)
-	if err != nil || result != fixture || calls != 2 {
-		t.Fatalf("adapter failed: calls=%d err=%v", calls, err)
+	if err != nil || result != fixture || calls != 1 {
+		t.Fatalf("adapter failed: calls=%d err=%v result_prefix=%q", calls, err, truncate(result, 40))
 	}
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
 }
 
 func TestProviderImageSizeByJobKindAndMotionGrid(t *testing.T) {

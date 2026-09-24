@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="/assets/style.v32.css" />
     <link rel="stylesheet" href="/assets/image-display.v2.css" />
     <link rel="icon" href="/assets/icon.v1.svg" />
-    <script type="module" src="/assets/admin.v36.js"></script>
+    <script type="module" src="/assets/admin.v41.js"></script>
   </head>
   <body>
     <header class="header wrap admin-wrap">
@@ -47,12 +47,13 @@
           <button type="button" data-tab="jobSection">任务列表</button>
           <button type="button" data-tab="historySection">任务历史</button>
           <button type="button" data-tab="configSection">基础与接口</button>
-          <button type="button" data-tab="promptSection">角色与提示词</button>
+          <button type="button" data-tab="promptSection">定稿与动作提示词</button>
           <button type="button" data-tab="codeSection">兑换码</button>
           <button type="button" data-tab="creditSection">兑换记录</button>
           <button type="button" data-tab="userSection">账号管理</button>
           <button type="button" data-tab="auditSection">操作记录</button>
           <button type="button" data-tab="deploymentSection">部署版本</button>
+          <a class="admin-tab-link" href="/compare" style="align-self:center;margin-left:0.5rem">模型对比</a>
         </nav>
         <section id="dashSection" class="admin-section admin-panel">
           <h2>数据看板</h2>
@@ -211,18 +212,36 @@
                 >服务接口地址<input
                   id="apiBase"
                   type="url"
-                  value="https://geekai.co/api/v1"
+                  value="https://openrouter.ai/api/v1"
                   required
                   readonly /></label
               ><label
-                >GPT Image 2.5 模型<select id="model">
-                  <option value="gpt-image-2.5-sunburst">
-                    Sunburst · 精细编辑
-                  </option>
-                  <option value="gpt-image-2.5-flare">Flare · 快速生成</option>
-                </select></label
+                >画图模型（正式创作默认）<select id="model">
+                  <option value="openai/gpt-5.4-image-2">OpenAI · GPT-5.4 Image 2</option>
+                  <option value="openai/gpt-image-2.5-sunburst">OpenAI · GPT Image 2.5 Sunburst</option>
+                  <option value="bytedance-seed/seedream-5-0-pro">ByteDance · Seedream 5.0 Pro</option>
+                  <option value="bytedance-seed/seedream-5-0-lite">ByteDance · Seedream 5.0 Lite</option>
+                  <option value="google/gemini-3-pro-image">Google · Nano Banana Pro</option>
+                  <option value="google/gemini-3.1-flash-image">Google · Nano Banana 2</option>
+                  <option value="qwen/qwen-image-3-pro">Qwen · Image 3 Pro</option>
+                  <option value="qwen/qwen-image-3">Qwen · Image 3</option>
+                  <option value="black-forest-labs/flux.2-max">BFL · FLUX.2 Max</option>
+                  <option value="black-forest-labs/flux.2-pro">BFL · FLUX.2 Pro</option>
+                  <option value="microsoft/mai-image-2.6">Microsoft · MAI-Image-2.6</option>
+                  <option value="microsoft/mai-image-2.6-flash">Microsoft · MAI-Image-2.6 Flash</option>
+                  <option value="recraft/recraft-v4.1-pro">Recraft · V4.1 Pro</option>
+                  <option value="recraft/recraft-v4.1">Recraft · V4.1</option>
+                  <option value="krea/krea-2-large">Krea · 2 Large</option>
+                  <option value="krea/krea-2-medium">Krea · 2 Medium</option>
+                  <option value="sourceful/riverflow-v2.5-pro">Sourceful · Riverflow V2.5 Pro</option>
+                  <option value="sourceful/riverflow-v2.5-fast">Sourceful · Riverflow V2.5 Fast</option>
+                  <option value="x-ai/grok-imagine-image-2.0">xAI · Grok Imagine 2.0</option>
+                  <option value="x-ai/grok-imagine-image-quality">xAI · Grok Imagine Quality</option>
+                </select>
+                <small class="hint">多模型横评请打开 <a href="/compare">/compare</a></small>
+              </label
               ><label
-                >图片质量<select id="quality">
+                >图片质量（主要作用于 GPT Image）<select id="quality">
                   <option>low</option>
                   <option>medium</option>
                   <option>high</option>
@@ -230,7 +249,7 @@
                   <option>max</option>
                 </select></label
               ><label
-                >GeekAI API Key<input
+                >OpenRouter API Key<input
                   id="apiKey"
                   type="password"
                   autocomplete="new-password"
@@ -284,35 +303,26 @@
             class="admin-section admin-panel"
             hidden
           >
-            <h2>角色模板与各步骤提示词</h2>
+            <h2>角色定稿与动作</h2>
             <p class="hint">
-              可用变量：{{category}}、{{clothes}}、{{color}}、{{weapon}}、{{action}}。动作序列图会按下方所选规格生成并合成；系统会在动作提示词末尾附加以所选规格为准的说明，模板里写死的格数描述可保留不改。修改仅作用于之后的请求。
+              前台流程：上传自拍 → 选动作 → 一次生成定稿与动画。定稿提示词用于静态定稿；各动作的「动作过程」用于序列图，系统会在末尾附加以所选规格为准的说明。修改仅作用于之后的请求。
             </p>
             <label
               >动作序列图规格<select id="motionGrid">
-                <option value="4x4">4×4 · 16格 · 每帧256×256（默认）</option>
-                <option value="5x5">5×5 · 25格 · 每帧128×128</option>
+                <option value="5x5">5×5 · 25格 · 每帧128×128（默认）</option>
+                <option value="4x4">4×4 · 16格 · 每帧256×256</option>
                 <option value="10x10">10×10 · 源2048×2048 · GIF 256×256</option>
               </select></label
             >
             <label
-              >照片处理 / 人物特征保留<textarea
-                id="identityPrompt"
-                required
-              ></textarea></label
-            ><label
-              >静态角色定稿<textarea
+              >角色定稿<textarea
                 id="draftPrompt"
                 required
-              ></textarea></label
-            ><label
-              >动作序列图<textarea id="motionPrompt" required></textarea>
-            </label>
+              ></textarea
+            ></label>
             <p class="hint">
-              画风提示词按用户上传自拍后选择的画风生效，会同时加入角色定稿与动作
-              GIF 的提示词；「默认」保持原有的轻度Q版效果。前台只展示名称与说明，不返回提示词内容。
+              下方只维护动作名称与过程；服装、武器、画风等选项已从前台移除，仍由系统默认补齐。
             </p>
-            <div id="styleEditors"></div>
             <div id="categoryEditors"></div>
             <button class="primary" type="submit">保存全部模板与配置</button>
           </section>

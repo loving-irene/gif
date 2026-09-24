@@ -274,7 +274,7 @@ func TestValidateSettingsRejectsBadConfigs(t *testing.T) {
 		{"动作编号非法", func(s *Settings) { s.Categories[0].Actions[0].ID = "bad id" }},
 		{"男生分类缺武器", func(s *Settings) { s.Categories[0].Weapons = nil }},
 		{"下载域名为空", func(s *Settings) { s.AssetHosts = nil }},
-		{"下载域名不完整", func(s *Settings) { s.AssetHosts = []string{"geekai"} }},
+		{"下载域名不完整", func(s *Settings) { s.AssetHosts = []string{"openrouter"} }},
 		{"画风数量错误", func(s *Settings) { s.Styles = s.Styles[:2] }},
 		{"画风编号非法", func(s *Settings) { s.Styles[1].ID = "other" }},
 		{"画风名称为空", func(s *Settings) { s.Styles[0].Name = " " }},

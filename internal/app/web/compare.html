@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>定稿×动画对比 · 拾光 GIF</title>
+    <link rel="stylesheet" href="/assets/style.v32.css" />
+    <link rel="stylesheet" href="/assets/compare.v3.css" />
+    <link rel="icon" href="/assets/icon.v1.svg" />
+    <script type="module" src="/assets/compare.v6.js"></script>
+  </head>
+  <body>
+    <header class="header wrap admin-wrap">
+      <a class="brand" href="/who"
+        ><span class="brand-mark">✳</span>拾光 GIF <small>定稿×动画对比</small></a
+      >
+      <nav>
+        <a href="/who">管理工作台</a>
+        <a href="/">返回创作</a>
+      </nav>
+    </header>
+    <main class="wrap admin-wrap">
+      <section class="admin-section">
+        <span class="eyebrow">PIPELINE COMPARE</span>
+        <h2>自拍 → 定稿图 → 成品动画</h2>
+        <p class="hint">
+          同一自拍与提示词，并行跑多个支持参考图的厂商：先出定稿，再以定稿+自拍生成 5×5 动作序列并合成为 GIF。需管理员登录且已配置 OpenRouter API Key。
+        </p>
+        <p id="authHint" class="hint" hidden>请先到管理工作台登录管理员。</p>
+
+        <div id="apiKeyPanel" class="api-key-panel">
+          <label
+            >OpenRouter API Key
+            <input
+              id="apiKeyInput"
+              type="password"
+              autocomplete="new-password"
+              placeholder="sk-or-…"
+              maxlength="1024"
+            />
+          </label>
+          <div class="compare-toolbar">
+            <button type="button" class="primary" id="saveApiKey">保存密钥</button>
+            <button type="button" class="secondary" id="clearApiKey">清除密钥</button>
+            <small id="apiKeyState" class="hint"></small>
+          </div>
+        </div>
+
+        <form id="compareForm">
+          <div class="compare-hero">
+            <label class="selfie-box" for="selfieInput" title="上传自拍照">
+              <img id="selfiePreview" alt="自拍照" hidden />
+              <span id="selfiePlaceholder">① 自拍照<br />点击上传</span>
+            </label>
+            <input
+              id="selfieInput"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              required
+              hidden
+            />
+          </div>
+
+          <label
+            >定稿提示词<textarea id="draftPrompt" required maxlength="8000"></textarea
+          ></label>
+
+          <label
+            >动作预设
+            <select id="motionSelect"></select>
+          </label>
+          <details class="prompt-block">
+            <summary>动作提示词（可改）</summary>
+            <textarea id="motionPrompt" maxlength="8000"></textarea>
+          </details>
+
+          <label
+            >GPT 系质量（其他厂商自动适配）
+            <select id="quality">
+              <option>high</option>
+              <option>medium</option>
+              <option>xhigh</option>
+              <option>max</option>
+              <option>low</option>
+            </select>
+          </label>
+
+          <div class="toolbar compare-toolbar">
+            <button type="button" class="secondary" id="selectLatest">全选可参考图最新款</button>
+            <button type="button" class="secondary" id="clearModels">清空</button>
+          </div>
+          <div id="modelList" class="model-list"></div>
+          <button class="primary" id="runBtn" type="submit">开始横向对比</button>
+        </form>
+
+        <p id="runHint" class="hint"></p>
+        <div id="resultWrap" class="compare-table-wrap" hidden>
+          <table class="compare-table" id="resultTable">
+            <thead>
+              <tr id="resultHead"></tr>
+            </thead>
+            <tbody>
+              <tr id="draftRow"></tr>
+              <tr id="animRow"></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

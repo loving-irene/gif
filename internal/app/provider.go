@@ -38,7 +38,7 @@ func publicIP(ip net.IP) bool {
 	return true
 }
 func safeClient() *http.Client {
-	return &http.Client{Timeout: 100 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse }, Transport: &http.Transport{Proxy: nil, MaxIdleConns: 4, IdleConnTimeout: 30 * time.Second, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 90 * time.Second, DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+	return &http.Client{Timeout: 5 * time.Minute, CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse }, Transport: &http.Transport{Proxy: nil, MaxIdleConns: 4, IdleConnTimeout: 30 * time.Second, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 5 * time.Minute, DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
 		host, port, err := net.SplitHostPort(address)
 		if err != nil {
 			return nil, err
@@ -67,8 +67,9 @@ type providerResponse struct {
 	Message string          `json:"message"`
 	Error   json.RawMessage `json:"error"`
 	Data    []struct {
-		URL    string `json:"url"`
-		Base64 string `json:"b64_json"`
+		URL       string `json:"url"`
+		Base64    string `json:"b64_json"`
+		MediaType string `json:"media_type"`
 	} `json:"data"`
 }
 
@@ -216,23 +217,21 @@ func (a *App) callProvider(ctx context.Context, cfg Settings, prompt string, ima
 	if imageSize == "" {
 		imageSize = "1024x1024"
 	}
-	payload := map[string]any{"model": cfg.Model, "prompt": prompt, "size": imageSize, "quality": cfg.Quality, "n": 1, "output_format": "png", "response_format": "b64_json", "background": "transparent", "async": true, "retries": 0}
-	if len(images) == 1 {
-		payload["image"] = images[0]
-	} else {
-		payload["images"] = images
-	}
+	payload := buildImagePayload(cfg.Model, prompt, imageSize, cfg.Quality, images)
 	b, err := json.Marshal(payload)
 	if err != nil {
 		return "", err
 	}
-	a.debug(ctx, "provider_request", map[string]any{"model": cfg.Model, "endpoint": "/api/v1/images/generations", "quality": cfg.Quality, "size": imageSize, "output_format": "png", "response_format": "b64_json", "background": "transparent", "async": true, "retries": 0, "key_configured": key != "", "image_count": len(images), "images": imageSummaries(images), "prompt_chars": utf8.RuneCountInString(prompt), "request_bytes": len(b)})
-	req, err := http.NewRequestWithContext(ctx, "POST", cfg.APIBase+"/images/generations", bytes.NewReader(b))
+	endpoint := "/images"
+	a.debug(ctx, "provider_request", map[string]any{"model": cfg.Model, "endpoint": endpoint, "quality": cfg.Quality, "size": imageSize, "family": modelFamily(cfg.Model), "async": false, "key_configured": key != "", "image_count": len(images), "images": imageSummaries(images), "prompt_chars": utf8.RuneCountInString(prompt), "request_bytes": len(b)})
+	req, err := http.NewRequestWithContext(ctx, "POST", strings.TrimRight(cfg.APIBase, "/")+endpoint, bytes.NewReader(b))
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("HTTP-Referer", "https://gif.jcc666.top")
+	req.Header.Set("X-Title", "拾光 GIF")
 	// Never retry a generation POST: one dispatch is one user credit.
 	res, err := a.providerHTTP(ctx, client, req, "submit")
 	if err != nil {
@@ -302,8 +301,12 @@ func (a *App) pollProvider(ctx context.Context, cfg Settings, client *http.Clien
 	}
 	item := p.Data[0]
 	if item.Base64 != "" {
-		a.debug(ctx, "provider_image", map[string]any{"format": "b64_json", "encoded_chars": len(item.Base64)})
-		return "data:image/png;base64," + item.Base64, nil
+		mime := item.MediaType
+		if mime == "" {
+			mime = "image/png"
+		}
+		a.debug(ctx, "provider_image", map[string]any{"format": "b64_json", "media_type": mime, "encoded_chars": len(item.Base64)})
+		return "data:" + mime + ";base64," + item.Base64, nil
 	}
 	u, err := url.Parse(item.URL)
 	assetHost := ""

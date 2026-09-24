@@ -40,7 +40,7 @@ func TestDebugLogsExplainProviderFailureWithoutSecrets(t *testing.T) {
 			t.Fatal("sensitive content leaked")
 		}
 	}
-	for _, expected := range []string{"provider_request", "gpt-image-2.5-sunburst", "provider_response", "validation_error", "upstream-request-123", "job-test", "\"http_status\":400"} {
+	for _, expected := range []string{"provider_request", "openai/gpt-image-2.5-sunburst", "provider_response", "validation_error", "upstream-request-123", "job-test", "\"http_status\":400"} {
 		if !strings.Contains(text, expected) {
 			t.Fatal("missing debug evidence", expected)
 		}

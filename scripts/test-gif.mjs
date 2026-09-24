@@ -2,7 +2,7 @@ import { writeFile } from "node:fs/promises";
 import {
   encodeGIF,
   stabilizeFrames,
-} from "../internal/app/web/gif-worker.v6.js";
+} from "../internal/app/web/gif-worker.v7.js";
 const frames = [];
 for (let frame = 0; frame < 16; frame++) {
   const pixels = new Uint8ClampedArray(256 * 256 * 4);

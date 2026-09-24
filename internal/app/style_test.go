@@ -29,13 +29,17 @@ func TestStyleCatalogHidesPrompts(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	var out struct {
-		Styles []Style `json:"styles"`
+		Styles  []Style  `json:"styles"`
+		Actions []Action `json:"actions"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
 	if len(out.Styles) != 3 {
 		t.Fatal("catalog should expose three styles", w.Body.String())
+	}
+	if len(out.Actions) == 0 {
+		t.Fatal("catalog should expose flattened actions", w.Body.String())
 	}
 	for i, id := range styleIDs {
 		if out.Styles[i].ID != id || out.Styles[i].Name == "" || out.Styles[i].Subtitle == "" || out.Styles[i].Icon == "" {
@@ -53,7 +57,7 @@ func TestStyleCatalogHidesPrompts(t *testing.T) {
 	}
 }
 
-// 画风加入定稿与动作两个阶段的提示词；未指定画风按默认画风处理，未知画风被拒绝。
+// 简化流程后画风提示词不再拼入定稿/动作；空 selection 由服务端补默认，未知画风仍拒绝。
 func TestGenerateAppliesSelectedStyle(t *testing.T) {
 	a := testApp(t)
 	s := loginDevice(t, a, "style-generate")
@@ -64,24 +68,22 @@ func TestGenerateAppliesSelectedStyle(t *testing.T) {
 		return sampleImage(false), nil
 	})
 
-	ink := draftInput()
-	ink.Selection.Style = "ink"
-	id := jobID(t, request(t, a, s, "POST", "/api/generate", ink))
+	empty := draftInput()
+	empty.Selection = Selection{}
+	id := jobID(t, request(t, a, s, "POST", "/api/generate", empty))
 	if j := waitJob(t, a, s, id); j.Status != "succeeded" {
 		t.Fatal(j)
 	}
-	if len(prompts) != 1 || !strings.Contains(prompts[0], cfg.Styles[2].Prompt) {
-		t.Fatal("selected style missing from draft prompt", prompts)
+	if len(prompts) != 1 {
+		t.Fatal("expected one draft prompt", prompts)
 	}
-
-	prompts = nil
-	legacy := draftInput()
-	id = jobID(t, request(t, a, s, "POST", "/api/generate", legacy))
-	if j := waitJob(t, a, s, id); j.Status != "succeeded" {
-		t.Fatal(j)
+	if !strings.Contains(prompts[0], "image1") && len(prompts[0]) < 20 {
+		t.Fatal("draft prompt missing", prompts[0])
 	}
-	if len(prompts) != 1 || !strings.Contains(prompts[0], cfg.Styles[0].Prompt) {
-		t.Fatal("empty style should fall back to the default style", prompts)
+	for _, st := range cfg.Styles {
+		if strings.Contains(prompts[0], st.Prompt) {
+			t.Fatal("style prompt should not be appended after simplify", st.ID)
+		}
 	}
 
 	bad := draftInput()
@@ -91,8 +93,7 @@ func TestGenerateAppliesSelectedStyle(t *testing.T) {
 	}
 }
 
-// 画风包含在定稿凭证中：默认画风与定稿一致时动作通过，换画风必须先重新定稿；
-// 动作提示词同时包含画风与所选动作。
+// 画风仍绑定在定稿凭证中：默认补齐后动作可通过；换画风必须先重新定稿。
 func TestStyleIsBoundToDraftReceipt(t *testing.T) {
 	a := testApp(t)
 	s := loginDevice(t, a, "style-receipt")
@@ -101,7 +102,8 @@ func TestStyleIsBoundToDraftReceipt(t *testing.T) {
 		prompts = append(prompts, prompt)
 		return sampleImage(false), nil
 	})
-	input := draftInput() // 不带画风：服务端按默认画风归一化
+	input := draftInput()
+	input.Selection = Selection{}
 	id := jobID(t, request(t, a, s, "POST", "/api/generate", input))
 	j := waitJob(t, a, s, id)
 	if j.Status != "succeeded" {
@@ -116,7 +118,7 @@ func TestStyleIsBoundToDraftReceipt(t *testing.T) {
 	motion.Action = "attack"
 	motion.Draft = j.Image
 	motion.Receipt = accepted["receipt"]
-	motion.Selection.Style = "default"
+	motion.Selection = Selection{}
 	motionID := jobID(t, request(t, a, s, "POST", "/api/generate", motion))
 	if j2 := waitJob(t, a, s, motionID); j2.Status != "succeeded" {
 		t.Fatal(j2)
@@ -124,15 +126,13 @@ func TestStyleIsBoundToDraftReceipt(t *testing.T) {
 	if len(prompts) != 2 {
 		t.Fatal("unexpected prompt count", len(prompts))
 	}
-	style := defaultStyles()[0].Prompt
-	if !strings.Contains(prompts[0], style) || !strings.Contains(prompts[1], style) {
-		t.Fatal("default style missing from generated prompts")
-	}
 	cfg, _ := a.settings()
 	attack := ""
-	for _, ac := range cfg.Categories[0].Actions {
-		if ac.ID == "attack" {
-			attack = ac.Prompt
+	for _, c := range cfg.Categories {
+		for _, ac := range c.Actions {
+			if ac.ID == "attack" {
+				attack = ac.Prompt
+			}
 		}
 	}
 	if attack == "" || !strings.Contains(prompts[1], attack) {
@@ -183,16 +183,16 @@ func TestStyleBackfillAndAdminSave(t *testing.T) {
 	short := cloneSettings(t, stored)
 	short.Styles[2].Prompt = "太短"
 	if w := request(t, a, admin, "POST", "/api/admin/settings", map[string]any{"settings": short}); w.Code != 400 {
-		t.Fatal("short style prompt accepted")
+		t.Fatal("short style prompt accepted", w.Code, w.Body.String())
 	}
 	missing := cloneSettings(t, stored)
 	missing.Styles = missing.Styles[:2]
 	if w := request(t, a, admin, "POST", "/api/admin/settings", map[string]any{"settings": missing}); w.Code != 400 {
-		t.Fatal("two styles accepted")
+		t.Fatal("incomplete styles accepted", w.Code, w.Body.String())
 	}
 	unknown := cloneSettings(t, stored)
 	unknown.Styles[0].ID = "other"
 	if w := request(t, a, admin, "POST", "/api/admin/settings", map[string]any{"settings": unknown}); w.Code != 400 {
-		t.Fatal("unknown style id accepted")
+		t.Fatal("unknown style id accepted", w.Code, w.Body.String())
 	}
 }

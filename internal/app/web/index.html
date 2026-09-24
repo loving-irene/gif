@@ -21,9 +21,9 @@
       {{.StructuredData}}
     </script>
     <link rel="icon" href="/assets/icon.v1.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/assets/style.v29.css" />
+    <link rel="stylesheet" href="/assets/style.v36.css" />
     <link rel="stylesheet" href="/assets/image-display.v1.css" />
-    <script src="/assets/app.v36.js" type="module"></script>
+    <script src="/assets/app.v45.js" type="module"></script>
     <script src="/assets/share.v3.js" type="module"></script>
     <script src="/assets/contact.v1.js" type="module"></script>
     <script src="/assets/showcase.v2.js" type="module"></script>
@@ -59,92 +59,68 @@
       </nav>
     </header>
     <main class="wrap">
-      <section class="hero">
-        <div>
-          <span class="eyebrow"><i></i> 你的专属动态小分身</span>
-          <h1>让小小的你，<br /><em>可爱地动起来。</em></h1>
-          <p>
-            一张自拍，一点想象。<br />把英雄时刻、日常心情和童真瞬间，变成专属于你的
-            GIF。
-          </p>
-          <div class="hero-notes">
-            <span>✧ 保留你的模样</span><span>♡ 三种专属风格</span
-            ><span>↗ 随时下载收藏</span>
-          </div>
-        </div>
-        <div class="hero-art" aria-hidden="true">
-          <span class="doodle d1">✦</span><span class="doodle d2">♡</span
-          ><span class="doodle d3">✧</span>
-          <div class="art-card art-back">
-            <span>HELLO, LITTLE ME</span>
-            <div class="face mint"><i></i><b>⌣</b></div>
-            <small>今天也要开心呀</small>
-          </div>
-          <div class="art-card art-front">
-            <span class="art-label">YOUR LITTLE MOMENT</span>
-            <div class="face peach">
-              <i></i><b>⌣</b><span class="cheek left"></span
-              ><span class="cheek right"></span>
-            </div>
-            <div class="art-bottom">
-              <span>Hi, 很高兴遇见你</span><b>GIF ↗</b>
-            </div>
-          </div>
-          <div class="floating-note">✌ 把心情变成表情</div>
-        </div>
-      </section>
       <div id="notice" class="notice" role="status" hidden></div>
       <section class="showcase" aria-labelledby="showcaseTitle">
         <div class="showcase-intro">
-          <span class="eyebrow">REAL LITTLE MOMENTS</span>
-          <h2 id="showcaseTitle">先看看，一张自拍能变成什么</h2>
+          <span class="eyebrow">FROM SELFIE TO GIF</span>
+          <h2 id="showcaseTitle">一张自拍，三步变成动图</h2>
           <p>
-            两张动图都由一张自拍生成：先做出像你的专属角色，再让它动起来。约 1.4
-            秒的无限循环，微信、QQ 表情都能直接用。
+            上传自拍后选动作，系统自动生成定稿再做成循环 GIF。约 1.4
+            秒无限循环，微信、QQ 表情都能直接用。
           </p>
+        </div>
+        <ol class="showcase-flow" aria-label="从自拍到动图">
+          <li class="showcase-stage">
+            <div class="showcase-media">
+              <img
+                src="/assets/example-flow-selfie.v1.webp"
+                alt="示例自拍照"
+                width="384"
+                height="384"
+                decoding="async"
+              />
+            </div>
+            <b>自拍照</b>
+          </li>
+          <li class="showcase-arrow" aria-hidden="true">
+            <span class="showcase-arrow-line"></span>
+          </li>
+          <li class="showcase-stage showcase-stage-draft">
+            <div class="showcase-media">
+              <img
+                src="/assets/example-flow-draft.v2.webp"
+                alt="示例角色定稿图"
+                width="1024"
+                height="1024"
+                decoding="async"
+              />
+            </div>
+            <b>定稿图</b>
+          </li>
+          <li class="showcase-arrow" aria-hidden="true">
+            <span class="showcase-arrow-line"></span>
+          </li>
+          <li class="showcase-stage">
+            <div class="showcase-media">
+              <img
+                src="/assets/example-flow-gif.v1.gif"
+                alt="示例 GIF 动画：干饭动作"
+                width="256"
+                height="256"
+                decoding="async"
+              />
+            </div>
+            <b>GIF动画</b>
+          </li>
+        </ol>
+        <div class="showcase-actions">
           <a class="text-button showcase-more" href="#studioTitle"
             >我也要做一支 →</a
           >
+          <p class="showcase-note">
+            ✧ 示例为真实生成效果：自拍 → 定稿 → GIF 动画；定稿与动图使用原始文件。
+          </p>
         </div>
-        <ul class="showcase-list">
-          <li class="showcase-card">
-            <div class="showcase-media">
-              <img
-                class="showcase-poster"
-                src="/assets/example-heart-poster.webp"
-                data-anim-src="/assets/example-heart.v2.webp"
-                alt="示例作品：比心动作，角色双手在胸前比出爱心"
-                width="256"
-                height="256"
-                decoding="async"
-              />
-            </div>
-            <div class="showcase-meta">
-              <b>给你比心</b>
-              <span>可爱日常 · 比心动作</span>
-            </div>
-          </li>
-          <li class="showcase-card">
-            <div class="showcase-media">
-              <img
-                class="showcase-poster"
-                src="/assets/example-success-poster.webp"
-                data-anim-src="/assets/example-success.v2.webp"
-                alt="示例作品：成功啦动作，角色抱着小熊开心庆祝"
-                width="256"
-                height="256"
-                decoding="async"
-              />
-            </div>
-            <div class="showcase-meta">
-              <b>耶！成功啦</b>
-              <span>童趣庆祝 · 抱熊欢呼</span>
-            </div>
-          </li>
-        </ul>
-        <p class="showcase-note">
-          ✧ 示例为真实生成效果，人物形象来自用户上传的自拍。
-        </p>
       </section>
       <section class="studio" aria-labelledby="studioTitle">
         <div class="studio-header">
@@ -156,10 +132,9 @@
         </div>
         <ol class="steps" aria-label="制作步骤">
           <li class="active" id="step1">
-            <button type="button"><b>1</b> 选择照片与造型</button>
+            <button type="button"><b>1</b> 上传自拍</button>
           </li>
-          <li id="step2"><button type="button"><b>2</b> 确认专属角色</button></li>
-          <li id="step3"><button type="button"><b>3</b> 让角色动起来</button></li>
+          <li id="step2"><button type="button"><b>2</b> 选择动作</button></li>
         </ol>
         <section
           id="draftStrip"
@@ -204,14 +179,6 @@
             <p id="photoInfo" class="hint">
               正脸清晰、光线均匀，会更像你哦。保留发型和眼镜，避免重度美颜。
             </p>
-            <div class="field-title">
-              02 <b>选一个喜欢的画风</b><span>必选</span>
-            </div>
-            <div id="styles" class="styles" role="group" aria-label="画风"></div>
-            <p id="styleHint" class="hint">
-              默认画风是轻度Q版，会尽量保留你的脸型、发型与个人特点。画风同时作用于角色定稿和动作
-              GIF。
-            </p>
             <div class="privacy-card">
               <span>♡</span>
               <p>
@@ -222,102 +189,49 @@
               </p>
             </div>
           </div>
-          <div>
-            <div class="field-title">
-              03 <b>选一个你喜欢的角色世界</b><span>必选</span>
-            </div>
-            <div
-              id="categories"
-              class="categories"
-              role="group"
-              aria-label="人物分类"
-            ></div>
-            <div class="options">
-              <label
-                >服装 <span>必选</span
-                ><select id="clothes" required>
-                  <option value="">先选择人物分类</option>
-                </select></label
-              ><label id="weaponField" hidden
-                >随身武器 <span>必选</span
-                ><select id="weapon">
-                  <option value="">请选择武器</option>
-                </select></label
-              >
-            </div>
-            <div class="field-title small">
-              <b>角色配色</b><span>必选</span>
-            </div>
-            <div id="colors" class="colors">
-              <p class="hint">选择角色分类后，挑一个心仪的配色。</p>
-            </div>
-            <div class="creation-summary">
-              <p>先看一眼，专属于你的新模样。</p>
-              <small>生成定稿消耗 1 次 · 确认满意后再选择动作</small>
-              <p id="draftEstimate" class="hint">正在获取时间预估…</p>
-              <p id="serviceStatus" class="hint" role="status" hidden>
-                图像服务尚未就绪。管理员完成配置后，请重新检查服务。
-              </p>
-              <button
-                id="refreshServiceBtn"
-                type="button"
-                class="text-button"
-                hidden
-              >
-                重新检查服务
-              </button>
-              <button id="draftBtn" class="primary" disabled>
-                ✦ 生成我的专属角色 <span>→</span>
-              </button>
-            </div>
-          </div>
-        </div>
-        <section id="draftSection" class="draft-section" hidden>
-          <div id="draftEmpty" class="step-empty" hidden>
-            <h3>专属角色还没生成</h3>
-            <p>回到第 1 步上传照片、挑选造型，点击「生成我的专属角色」即可。</p>
-            <button id="draftEmptyBtn" class="secondary" type="button">
-              ← 返回第 1 步
+          <div class="creation-summary">
+            <p>上传自拍后直接去选动作；系统会自动生成定稿，再做成动画。</p>
+            <small>已有定稿时换动作只生成动画 · 定稿与每个动作各消耗 1 次</small>
+            <p id="draftEstimate" class="hint">正在获取时间预估…</p>
+            <p id="serviceStatus" class="hint" role="status" hidden>
+              图像服务尚未就绪。管理员完成配置后，请重新检查服务。
+            </p>
+            <button
+              id="refreshServiceBtn"
+              type="button"
+              class="text-button"
+              hidden
+            >
+              重新检查服务
+            </button>
+            <button id="draftBtn" class="primary" disabled hidden>
+              ✦ 生成我的专属角色 <span>→</span>
             </button>
           </div>
-          <div id="draftInfo">
-            <span class="eyebrow">A LITTLE YOU</span>
-            <h3>这个小分身，像你吗？</h3>
-            <p>看看脸型、发型、眼镜和服装。<br />确认喜欢，再让它动起来。</p>
-            <p class="hint">AI 生成可能存在差异，请先核对人物辨识度。</p>
-            <div class="button-row">
-              <button id="acceptBtn" class="primary">很像我，选动作 →</button
-              ><button id="redraftBtn" class="secondary">重新生成 · 1 次</button
-              ><button id="editBtn" class="text-button">修改造型</button>
-            </div>
-          </div>
-          <div id="draftImageWrap" class="draft-image">
-            <img id="draftImage" alt="生成的角色定稿图" /><a
-              id="saveDraft"
-              class="download"
-              download="我的角色定稿.png"
-              >↓ 保存定稿</a
-            >
-          </div>
-        </section>
+        </div>
         <section id="motionSection" hidden>
           <div class="section-heading">
             <div>
               <span class="eyebrow">PICK YOUR LITTLE MOODS</span>
               <h3>今天，想表达什么心情？</h3>
-              <p>可以多选，会按账号并发额度并行制作；有动作在制作时也能继续挑新的动作提交。</p>
+              <p>选好动作后一次生成定稿和动画；已有定稿时换动作即可继续做动画。</p>
             </div>
-            <button id="backDraft" class="text-button">查看角色定稿 ↗</button>
           </div>
           <div id="motionEmpty" class="step-empty" hidden>
-            <h3>先确认你的专属角色</h3>
-            <p>在第 2 步确认角色定稿后，就可以来这里挑选动作，让小分身动起来。</p>
+            <h3>先上传一张自拍</h3>
+            <p>上传自拍后就可以挑选动作，一次完成定稿和动画。</p>
             <button id="motionEmptyBtn" class="secondary" type="button">
-              ← 返回上一步
+              ← 返回上传自拍
             </button>
           </div>
           <div id="motionReady" hidden>
-            <div class="actions" id="actions"></div>
+            <div
+              id="actionCategories"
+              class="categories"
+              role="tablist"
+              aria-label="动作分类"
+            ></div>
+            <div class="actions" id="actions" role="group" aria-label="可选动作"></div>
             <div class="queue-bar">
             <p>
               已选 <b id="selectedCount">0</b> 个动作
@@ -328,7 +242,7 @@
               <button id="stopBtn" class="secondary" hidden>
                 停止提交新动作</button
               ><button id="motionBtn" class="primary" disabled>
-                让我的角色动起来 ✦
+                生成定稿并做成动画 ✦
               </button>
             </div>
           </div>
@@ -373,18 +287,18 @@
       <section class="how-it-works">
         <div>
           <b>01</b>
-          <h3>留下你的模样</h3>
-          <p>默认、Q版或水墨风，都尽量保留你的脸型、发型与个人特点。</p>
+          <h3>上传一张自拍</h3>
+          <p>正脸清晰即可。系统会尽量保留你的脸型、发型与个人特点。</p>
         </div>
         <div>
           <b>02</b>
-          <h3>选一个小小心情</h3>
-          <p>英气、可爱或童趣，每个动作都属于同一个你。</p>
+          <h3>挑选分类与动作</h3>
+          <p>在男生、女生、小朋友或日常里切换，勾选一个或多个想做的动作。</p>
         </div>
         <div>
           <b>03</b>
-          <h3>把快乐带回家</h3>
-          <p>下载 GIF，送给朋友，或留给喜欢生活的自己。</p>
+          <h3>一次做成动图</h3>
+          <p>首次会自动生成定稿再做成 GIF；已有定稿时换动作即可继续生成，记得下载保存。</p>
         </div>
       </section>
       <section class="gif-guide" id="gif-guide" aria-labelledby="guideTitle">
@@ -392,8 +306,8 @@
         <h2 id="guideTitle">从一张自拍，到专属于你的 GIF 动图</h2>
         <p>
           拾光 GIF
-          是一款在浏览器中使用的自拍动图生成工具。先把照片制作成可辨识的专属角色，再把挥手、比心、战斗或童趣动作做成循环
-          GIF 表情包。你可以逐个检查生成效果，下载喜欢的作品。
+          是一款在浏览器中使用的自拍动图生成工具。上传自拍后选择分类与动作，系统会自动生成像你的角色定稿，再做成循环
+          GIF；已有定稿时，换动作就能继续出新动图。你可以随时下载喜欢的作品。
         </p>
         <a class="text-button" href="#studioTitle">开始制作我的 GIF →</a>
         <div class="faq-grid" id="faq">
@@ -655,7 +569,7 @@
       <span class="eyebrow">TELL ME WHAT YOU THINK</span>
       <h2 id="feedbackTitle">说说你的想法</h2>
       <p>
-        遇到问题、想要的动作或画风，都可以写在这里，最多 200
+        遇到问题、想要的动作或建议，都可以写在这里，最多 200
         字。提交后会直接发到我的邮箱，并附带你的账号信息，方便必要时回复。
       </p>
       <form id="feedbackForm">

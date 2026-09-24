@@ -166,10 +166,13 @@ func imageData(raw string, max int) ([]byte, error) {
 func selectionCategory(cfg Settings, s Selection) (Category, error) {
 	for _, c := range cfg.Categories {
 		if c.ID == s.Category {
-			if !contains(c.Clothes, s.Clothes) || !contains(c.Colors, s.Color) {
-				return c, errors.New("请选择有效的服装和配色")
+			if s.Clothes != "" && !contains(c.Clothes, s.Clothes) {
+				return c, errors.New("请选择有效的服装")
 			}
-			if c.ID == "male" && !contains(c.Weapons, s.Weapon) {
+			if s.Color != "" && !contains(c.Colors, s.Color) {
+				return c, errors.New("请选择有效的配色")
+			}
+			if c.ID == "male" && s.Weapon != "" && !contains(c.Weapons, s.Weapon) {
 				return c, errors.New("请选择武器")
 			}
 			if c.ID != "male" && s.Weapon != "" {
@@ -179,6 +182,57 @@ func selectionCategory(cfg Settings, s Selection) (Category, error) {
 		}
 	}
 	return Category{}, errors.New("请选择人物分类")
+}
+
+// normalizeSelection 补齐已省略的分类/服装/配色/画风：前台简化为自拍+动作后，这些字段可空。
+func normalizeSelection(cfg Settings, sel *Selection) (Category, error) {
+	if strings.TrimSpace(sel.Category) == "" {
+		sel.Category = "daily"
+	}
+	cat, err := selectionCategory(cfg, *sel)
+	if err != nil {
+		return cat, err
+	}
+	if sel.Clothes == "" && len(cat.Clothes) > 0 {
+		sel.Clothes = cat.Clothes[0]
+	}
+	if sel.Color == "" && len(cat.Colors) > 0 {
+		sel.Color = cat.Colors[0]
+	}
+	if cat.ID == "male" && sel.Weapon == "" && len(cat.Weapons) > 0 {
+		sel.Weapon = cat.Weapons[0]
+	}
+	if cat.ID != "male" {
+		sel.Weapon = ""
+	}
+	if strings.TrimSpace(sel.Style) == "" {
+		sel.Style = defaultStyleID
+	}
+	return selectionCategory(cfg, *sel)
+}
+
+// findActionPrompt 在全部分类中查找动作说明文案。
+func findActionPrompt(cfg Settings, actionID string) (string, error) {
+	if actionID == "" {
+		return "", errors.New("请选择有效动作")
+	}
+	for _, c := range cfg.Categories {
+		for _, a := range c.Actions {
+			if a.ID == actionID {
+				return a.Prompt, nil
+			}
+		}
+	}
+	return "", errors.New("请选择有效动作")
+}
+
+// builtInMotionPrefix 动作阶段固定前缀（不再由后台「动作序列图」提示词配置）。
+const builtInMotionPrefix = "图1是已确认角色定稿，图2是本人自拍。图1固定画风、服装、极致Q版比例（头:身体=5:1），只使用定稿右侧全身造型，不输出定稿的脸部近景；图2只核对人物身份，不恢复真人身体比例。动作全程保持同一5:1头身比，禁止把身体画大或拉长四肢。动作："
+
+// buildMotionPrompt 用内置约束 + 动作过程 + 网格规格拼出动作阶段提示词。
+func buildMotionPrompt(action, grid string) string {
+	body := normalizeMotionPrompt(builtInMotionPrefix + strings.TrimSpace(action))
+	return strings.TrimSpace(body + "\n" + motionSpecPrompt(grid))
 }
 
 // styleOrDefault 解析画风编号：留空时使用默认画风（保持原有轻度Q版效果），
@@ -225,7 +279,7 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 		fail(w, 503, "创作服务尚未配置，请联系管理员；本次不会扣次")
 		return
 	}
-	cat, err := selectionCategory(cfg, in.Selection)
+	cat, err := normalizeSelection(cfg, &in.Selection)
 	if err != nil {
 		fail(w, 400, err.Error())
 		return
@@ -245,7 +299,12 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 	}
 	photoHash := hash(string(photo))
 	var rec Receipt
-	prompt := cfg.IdentityPrompt + "\n" + style.Prompt + "\n" + cat.Prompt + "\n" + renderPrompt(cfg.DraftPrompt, in.Selection, cat, "")
+	// 定稿用后台可编辑提示词；未配置时回落到内置默认文案。
+	draftPrompt := strings.TrimSpace(cfg.DraftPrompt)
+	if draftPrompt == "" {
+		draftPrompt = compareDraftPrompt
+	}
+	prompt := strings.TrimSpace(renderPrompt(draftPrompt, in.Selection, cat, ""))
 	images := []string{in.Selfie}
 	if in.Kind == "motion" {
 		rec, err = a.readReceipt(in.Receipt, uid)
@@ -262,23 +321,14 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, "请先确认当前自拍与造型的定稿")
 			return
 		}
-		action := ""
-		for _, v := range cat.Actions {
-			if v.ID == in.Action {
-				action = v.Prompt
-			}
-		}
-		if action == "" {
-			fail(w, 400, "请选择有效动作")
+		action, err := findActionPrompt(cfg, in.Action)
+		if err != nil {
+			fail(w, 400, err.Error())
 			return
 		}
-		// 动作阶段只包含造型参数，避免将静态定稿的双视图要求带入帧图；画风在两个阶段保持一致。
-		appearance := "分类：{{category}}。服装：{{clothes}}。配色：{{color}}。武器：{{weapon}}。"
-		// 末尾附加以后台配置为准的网格规格说明：模板里写死的格数与所选规格不一致时以此覆盖，
-		// 生成侧（格数）与合成侧（切格方式）始终使用同一配置。
-		motionPrompt := normalizeMotionPrompt(renderPrompt(cfg.MotionPrompt, in.Selection, cat, action))
-		prompt = cfg.IdentityPrompt + "\n" + style.Prompt + "\n" + cat.Prompt + "\n" + renderPrompt(appearance, in.Selection, cat, "") + "\n" + motionPrompt + "\n" + motionSpecPrompt(cfg.MotionGrid)
-		images = append(images, in.Draft)
+		prompt = buildMotionPrompt(action, cfg.MotionGrid)
+		// 图1定稿锁比例服装，图2自拍核身份。
+		images = []string{in.Draft, in.Selfie}
 	}
 	raw, _ := json.Marshal(in)
 	digest := hash(string(raw))

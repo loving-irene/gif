@@ -12,6 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -438,11 +439,17 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /api/admin/dashboard", a.auth(a.adminDashboard, true))
 	mux.HandleFunc("POST /api/admin/dashboard/email", a.auth(a.adminDashboardEmail, true))
 	mux.HandleFunc("GET /api/admin/deployment-version", a.auth(a.adminDeploymentVersion, true))
+	mux.HandleFunc("GET /api/admin/compare/models", a.auth(a.compareModels, true))
+	mux.HandleFunc("POST /api/admin/compare/api-key", a.auth(a.compareSaveAPIKey, true))
+	mux.HandleFunc("POST /api/admin/compare/run", a.auth(a.compareRun, true))
+	mux.HandleFunc("GET /api/admin/compare/batches/{id}", a.auth(a.compareBatchGet, true))
+	mux.HandleFunc("GET /api/admin/compare/batches/{id}/jobs/{job}/{kind}", a.auth(a.compareJobBlob, true))
 	mux.HandleFunc("GET /robots.txt", a.robots)
 	mux.HandleFunc("GET /sitemap.xml", a.sitemap)
 	mux.HandleFunc("GET /llms.txt", a.llms)
 	// 社区页是用户生成内容的公开浏览页，不进 sitemap，并带 noindex 避免收录。
 	mux.HandleFunc("GET /community", a.communityPage)
+	mux.HandleFunc("GET /compare", a.comparePage)
 	assets, _ := fs.Sub(web, "web")
 	files := http.FileServer(http.FS(assets))
 	mux.Handle("GET /assets/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -468,16 +475,19 @@ func (a *App) Handler() http.Handler {
 		w.Write(b)
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if a.env.Debug && (r.URL.Path == "/api/generate" || strings.HasPrefix(r.URL.Path, "/api/jobs/")) {
+		debugHTTP := a.env.Debug && (r.URL.Path == "/api/generate" || strings.HasPrefix(r.URL.Path, "/api/jobs/") || strings.HasPrefix(r.URL.Path, "/api/admin/compare/") || r.URL.Path == "/compare")
+		var statusWriter *debugStatusWriter
+		if debugHTTP {
 			started := time.Now()
-			status := &debugStatusWriter{ResponseWriter: w, status: 200}
-			w = status
-			route := "/api/generate"
-			if strings.HasPrefix(r.URL.Path, "/api/jobs/") {
-				route = "/api/jobs/{id}"
-			}
+			statusWriter = &debugStatusWriter{ResponseWriter: w, status: 200}
+			w = statusWriter
 			defer func() {
-				a.debug(r.Context(), "local_http", map[string]any{"route": route, "method": r.Method, "http_status": status.status, "elapsed_ms": time.Since(started).Milliseconds()})
+				a.debug(r.Context(), "local_http", map[string]any{
+					"route": r.URL.Path, "method": r.Method, "http_status": statusWriter.status,
+					"elapsed_ms": time.Since(started).Milliseconds(),
+					"origin": r.Header.Get("Origin"), "sec_fetch_site": r.Header.Get("Sec-Fetch-Site"),
+					"content_length": r.ContentLength,
+				})
 			}()
 		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -500,11 +510,18 @@ func (a *App) Handler() http.Handler {
 			w.Header().Set("Strict-Transport-Security", "max-age=31536000")
 		}
 		if r.Method != "GET" && r.Method != "HEAD" {
-			if r.Header.Get("Origin") != a.env.BaseURL || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+			origin := r.Header.Get("Origin")
+			site := r.Header.Get("Sec-Fetch-Site")
+			if !originAllowed(origin, a.env.BaseURL) || site == "cross-site" {
+				a.debug(r.Context(), "origin_rejected", map[string]any{
+					"origin": origin, "base_url": a.env.BaseURL, "sec_fetch_site": site, "path": r.URL.Path,
+				})
+				drainRequestBody(r)
 				fail(w, 403, "请求来源无效，请刷新页面")
 				return
 			}
 			if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+				drainRequestBody(r)
 				fail(w, 415, "仅支持 JSON 请求")
 				return
 			}
@@ -567,6 +584,45 @@ func fail(w http.ResponseWriter, status int, message string) {
 	}
 	respond(w, status, map[string]string{"error": message})
 }
+
+// drainRequestBody 在提前拒绝写请求时读完 body，避免客户端仍在上传时被 RST，表现为 Failed to fetch。
+func drainRequestBody(r *http.Request) {
+	if r.Body == nil {
+		return
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(r.Body, 32<<20))
+	_ = r.Body.Close()
+}
+
+// originAllowed 校验写请求 Origin：与 BaseURL 完全一致，或本地开发时允许 localhost / 127.0.0.1 / ::1 互换。
+func originAllowed(origin, baseURL string) bool {
+	if origin == baseURL {
+		return true
+	}
+	if origin == "" || baseURL == "" {
+		return false
+	}
+	o, err1 := url.Parse(origin)
+	b, err2 := url.Parse(baseURL)
+	if err1 != nil || err2 != nil || o.Scheme != b.Scheme {
+		return false
+	}
+	port := func(u *url.URL) string {
+		if p := u.Port(); p != "" {
+			return p
+		}
+		if u.Scheme == "https" {
+			return "443"
+		}
+		return "80"
+	}
+	if port(o) != port(b) {
+		return false
+	}
+	local := map[string]bool{"127.0.0.1": true, "localhost": true, "::1": true}
+	return local[strings.ToLower(o.Hostname())] && local[strings.ToLower(b.Hostname())]
+}
+
 func current(r *http.Request) session { return r.Context().Value(sessionKey{}).(session) }
 func (a *App) readUser(id string) (User, error) {
 	u := User{}
@@ -587,10 +643,13 @@ func (a *App) auth(next http.HandlerFunc, admin bool) http.HandlerFunc {
 			return
 		}
 		if admin && !s.Admin {
+			drainRequestBody(r)
 			fail(w, 403, "请先登录管理后台")
 			return
 		}
 		if r.Method != "GET" && !hmacEqual(r.Header.Get("X-CSRF-Token"), a.mac("csrf:"+c.Value)) {
+			a.debug(r.Context(), "csrf_rejected", map[string]any{"path": r.URL.Path, "method": r.Method, "has_token": r.Header.Get("X-CSRF-Token") != ""})
+			drainRequestBody(r)
 			fail(w, 403, "会话校验失败，请刷新页面")
 			return
 		}
@@ -630,7 +689,26 @@ func (a *App) catalog(w http.ResponseWriter, r *http.Request) {
 	for i := range s.Styles {
 		s.Styles[i].Prompt = ""
 	}
-	respond(w, 200, map[string]any{"categories": s.Categories, "styles": s.Styles, "chargeOnFailure": s.ChargeOnFailure, "configured": a.secret("api_key") != "", "emailConfigured": a.mailConfigured(s), "feedbackConfigured": a.feedbackConfigured(s), "estimates": a.estimates(s), "redeemHelp": s.RedeemHelp, "userConcurrency": s.UserConcurrency, "generationSlots": cap(a.slots), "motionGrid": s.MotionGrid})
+	respond(w, 200, map[string]any{
+		"categories": s.Categories, "styles": s.Styles, "actions": catalogActions(s),
+		"chargeOnFailure": s.ChargeOnFailure, "configured": a.secret("api_key") != "", "emailConfigured": a.mailConfigured(s), "feedbackConfigured": a.feedbackConfigured(s), "estimates": a.estimates(s), "redeemHelp": s.RedeemHelp, "userConcurrency": s.UserConcurrency, "generationSlots": cap(a.slots), "motionGrid": s.MotionGrid,
+	})
+}
+
+// catalogActions 展平全部分类动作，供简化前台只选动作使用（同 ID 保留首次出现）。
+func catalogActions(s Settings) []Action {
+	seen := map[string]bool{}
+	out := make([]Action, 0)
+	for _, c := range s.Categories {
+		for _, a := range c.Actions {
+			if seen[a.ID] {
+				continue
+			}
+			seen[a.ID] = true
+			out = append(out, a)
+		}
+	}
+	return out
 }
 func (a *App) logout(w http.ResponseWriter, r *http.Request) {
 	s := current(r)

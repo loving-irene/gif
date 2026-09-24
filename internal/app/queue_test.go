@@ -82,7 +82,7 @@ func TestServerGIFSynthesisMatchesBrowserEncoder(t *testing.T) {
 }
 
 // 5×5 规格与上游约定仍产出 1024×1024 序列图：1024 不能被 5 整除，
-// 验证按比例取整切格后得到 25 帧、每帧 128×128，并使用统一 80ms 帧间隔。
+// 验证按比例取整切格后得到 25 帧、每帧 128×128，并使用 70ms 帧间隔。
 func TestServerGIFSynthesis5x5Grid(t *testing.T) {
 	sheet, err := imageData(sampleSheetGrid(5), 20*1024*1024)
 	if err != nil {
@@ -103,7 +103,7 @@ func TestServerGIFSynthesis5x5Grid(t *testing.T) {
 		if g.Disposal[i] != gif.DisposalBackground {
 			t.Fatal("transparent frame disposal invalid")
 		}
-		if g.Delay[i] != gifFrameDelay {
+		if g.Delay[i] != smoothishGifFrameDelay {
 			t.Fatal("frame timing invalid")
 		}
 		if _, _, _, alpha := frame.At(64, 90).RGBA(); alpha == 0 {
@@ -603,7 +603,10 @@ func TestMotionJobDeliversServerGIF(t *testing.T) {
 	a := testApp(t)
 	s := loginDevice(t, a, "motion")
 	a.providerCall = asProviderCall(func(ctx context.Context, cfg Settings, prompt string, images []string) (string, error) {
-		return sampleImage(len(images) == 2), nil
+		if len(images) == 2 {
+			return sampleSheetGrid(5), nil
+		}
+		return sampleImage(false), nil
 	})
 	input := draftInput()
 	id := jobID(t, request(t, a, s, "POST", "/api/generate", input))
@@ -622,8 +625,8 @@ func TestMotionJobDeliversServerGIF(t *testing.T) {
 		t.Fatal(err)
 	}
 	g, err := gif.DecodeAll(bytes.NewReader(raw))
-	if err != nil || len(g.Image) != 16 {
-		t.Fatal("server GIF invalid", err)
+	if err != nil || len(g.Image) != 25 {
+		t.Fatal("server GIF invalid", err, len(g.Image))
 	}
 	a.jobsMu.Lock()
 	a.jobs = map[string]*Job{}

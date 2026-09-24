@@ -51,7 +51,7 @@ func TestBrowserGIFEncoderDecodes(t *testing.T) {
 			t.Fatal("transparent background lost")
 		}
 	}
-	// v4 编码器的 5×5 规格：25 帧每帧 128×128、统一 80ms 帧间隔。
+	// v7 编码器的 5×5 规格：25 帧每帧 128×128、70ms 帧间隔。
 	f25, err := os.Open(output25)
 	if err != nil {
 		t.Fatal(err)
@@ -68,7 +68,7 @@ func TestBrowserGIFEncoderDecodes(t *testing.T) {
 		if g25.Disposal[i] != gif.DisposalBackground {
 			t.Fatal("5x5 transparent frame disposal invalid")
 		}
-		if g25.Delay[i] != gifFrameDelay {
+		if g25.Delay[i] != smoothishGifFrameDelay {
 			t.Fatal("5x5 frame timing invalid")
 		}
 		if !hasOpaquePixel(frame) {

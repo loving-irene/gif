@@ -155,7 +155,7 @@ func (a *App) collectDashboard(now time.Time) (dashboardData, error) {
 		{ID: "draft", Name: "定稿图", Count: kindCounts["draft"]},
 		{ID: "motion", Name: "GIF 动图", Count: kindCounts["motion"]},
 	}
-	for _, id := range []string{"male", "female", "child"} {
+	for _, id := range []string{"male", "female", "child", "daily"} {
 		counts := categoryCounts[id]
 		out.Today.Categories = append(out.Today.Categories, dashboardCategory{
 			ID:     id,

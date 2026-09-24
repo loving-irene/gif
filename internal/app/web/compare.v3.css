@@ -1,0 +1,159 @@
+.compare-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+.selfie-box {
+  width: min(200px, 42vw);
+  aspect-ratio: 1;
+  border: 1px dashed color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: color-mix(in srgb, Canvas 94%, CanvasText 6%);
+  cursor: pointer;
+}
+.selfie-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.selfie-box span {
+  font-size: 0.9rem;
+  opacity: 0.7;
+  text-align: center;
+  padding: 0.5rem;
+}
+#draftPrompt,
+#motionPrompt {
+  min-height: 5.5rem;
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+.model-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.5rem;
+  margin: 0.75rem 0 1rem;
+}
+.model-list label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  font-size: 0.9rem;
+}
+.compare-toolbar {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 0.5rem 0;
+}
+.compare-table-wrap {
+  overflow-x: auto;
+  margin-top: 1.25rem;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-radius: 12px;
+}
+.compare-table {
+  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+}
+.compare-table th,
+.compare-table td {
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  border-right: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+  padding: 0.75rem;
+  vertical-align: top;
+  text-align: center;
+}
+.compare-table th:last-child,
+.compare-table td:last-child {
+  border-right: none;
+}
+.compare-table tr:last-child td {
+  border-bottom: none;
+}
+.compare-table .row-label {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: Canvas;
+  text-align: left;
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 5.5rem;
+}
+.compare-table .col-head {
+  min-width: 200px;
+  max-width: 240px;
+}
+.compare-table .col-head small {
+  display: block;
+  font-weight: 400;
+  opacity: 0.7;
+  margin-top: 0.2rem;
+}
+.cell-media {
+  width: 180px;
+  aspect-ratio: 1;
+  margin: 0 auto;
+  background: #fff;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.cell-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.cell-status {
+  font-size: 0.78rem;
+  opacity: 0.75;
+  margin-top: 0.4rem;
+  max-width: 180px;
+  word-break: break-word;
+}
+.cell-download {
+  margin-top: 0.45rem;
+  font-size: 0.8rem;
+  padding: 0.25rem 0.6rem;
+}
+.arrow-hint {
+  opacity: 0.45;
+  font-size: 1.1rem;
+  line-height: 1;
+  margin: 0.15rem 0;
+}
+details.prompt-block {
+  margin: 0.75rem 0;
+}
+details.prompt-block summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.api-key-panel {
+  margin: 0 0 1.25rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, Canvas 94%, CanvasText 6%);
+}
+.api-key-panel label {
+  display: block;
+}
+.api-key-panel input[type="password"] {
+  width: 100%;
+  margin-top: 0.35rem;
+}
+.api-key-panel .compare-toolbar {
+  margin-top: 0.65rem;
+  align-items: center;
+}

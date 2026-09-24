@@ -367,13 +367,36 @@ func TestCommunityPageRendering(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `id="communityGrid"`) {
 		t.Fatal("community page missing", w.Code)
 	}
-	for _, asset := range []string{"/assets/community.v2.js", "/assets/style.v24.css"} {
+	for _, asset := range []string{"/assets/community.v5.js", "/assets/style.v36.css"} {
 		if !strings.Contains(w.Body.String(), asset) {
 			t.Fatal("community page missing asset", asset)
 		}
 		if _, err := web.ReadFile("web/" + strings.TrimPrefix(asset, "/assets/")); err != nil {
 			t.Fatal("community asset not embedded", asset, err)
 		}
+	}
+	cssRaw, err := web.ReadFile("web/style.v36.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	css := string(cssRaw)
+	grid := cssRuleBlock(t, css, ".community-grid")
+	// 手机默认两列；卡片过大说明网格样式又丢了（曾在 v25+ 丢失）。
+	if !strings.Contains(grid, "grid-template-columns: repeat(2, minmax(0, 1fr))") {
+		t.Fatal("community grid should show two cards per row on mobile", grid)
+	}
+	jsRaw, err := web.ReadFile("web/community.v5.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(jsRaw)
+	for _, want := range []string{"community-card", "community-title", "community-line", "item.name", "item.category", "sharerName", "timeText(item.created)"} {
+		if !strings.Contains(js, want) {
+			t.Fatal("community card should pack action/user/type/time with gif", want)
+		}
+	}
+	if strings.Contains(js, `.join(" · ")`) {
+		t.Fatal("username/type/time should each be their own line, not joined")
 	}
 	if w.Header().Get("X-Robots-Tag") != "noindex, follow" {
 		t.Fatal("community page should not be indexed", w.Header().Get("X-Robots-Tag"))
@@ -394,7 +417,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 	if !strings.Contains(body, `href="/community"`) || !strings.Contains(body, `class="community-link"`) {
 		t.Fatal("homepage missing community entry")
 	}
-	for _, asset := range []string{"/assets/app.v36.js", "/assets/style.v29.css"} {
+	for _, asset := range []string{"/assets/app.v45.js", "/assets/style.v36.css"} {
 		if !strings.Contains(body, asset) {
 			t.Fatal("homepage missing updated asset", asset)
 		}
@@ -402,12 +425,12 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 			t.Fatal("updated asset not embedded", asset, err)
 		}
 	}
-	raw, err := web.ReadFile("web/app.v36.js")
+	raw, err := web.ReadFile("web/app.v45.js")
 	if err != nil {
 		t.Fatal(err)
 	}
 	source := string(raw)
-	for _, want := range []string{`"10x10": { cols: 10, frames: 100, size: 256 }`, `/assets/gif-worker.v6.js`, "shareUploadLimit = 8 * 1024 * 1024"} {
+	for _, want := range []string{`"10x10": { cols: 10, frames: 100, size: 256 }`, `/assets/gif-worker.v7.js`, "shareUploadLimit = 8 * 1024 * 1024"} {
 		if !strings.Contains(source, want) {
 			t.Fatal("homepage motion quality contract missing", want)
 		}
@@ -427,7 +450,7 @@ func TestHomepageAccountEntryStaysClickable(t *testing.T) {
 	if !strings.Contains(body, `id="accountLockedHint"`) {
 		t.Fatal("account dialog missing locked hint")
 	}
-	raw, err := web.ReadFile("web/app.v36.js")
+	raw, err := web.ReadFile("web/app.v45.js")
 	if err != nil {
 		t.Fatal("homepage script not embedded", err)
 	}
@@ -437,6 +460,40 @@ func TestHomepageAccountEntryStaysClickable(t *testing.T) {
 	}
 	if !strings.Contains(source, "function syncAccountActions()") || !strings.Contains(source, `$("logoutBtn").disabled = busy`) {
 		t.Fatal("account switching is no longer guarded inside the dialog")
+	}
+	// 「我的定稿」只在列表内切换与保存，不再弹出单独大图预览。
+	if !strings.Contains(source, "function hasUsableDraft()") || !strings.Contains(source, "function isCurrentCandidate(c)") {
+		t.Fatal("draft reuse helpers missing")
+	}
+	if !strings.Contains(source, "已有选定定稿：只确认凭证，绝不重新生成") {
+		t.Fatal("ensureAcceptedDraft must reuse selected draft without regenerating")
+	}
+	if strings.Contains(source, "function showDraft(") || strings.Contains(source, "id=\"draftImage\"") {
+		t.Fatal("draft large preview should be removed")
+	}
+	at := strings.Index(source, "async function switchCandidate(c)")
+	if at < 0 {
+		t.Fatal("switchCandidate missing")
+	}
+	fn := source[at:]
+	if end := strings.Index(fn, "\nfunction syncActionSelection"); end > 0 {
+		fn = fn[:end]
+	}
+	if !strings.Contains(fn, "renderCandidates()") {
+		t.Fatal("switchCandidate must refresh the draft list")
+	}
+	if strings.Contains(fn, "showDraft()") {
+		t.Fatal("switchCandidate must not open a separate draft preview")
+	}
+	if !strings.Contains(source, "candidate-save") {
+		t.Fatal("each draft card should provide a save control")
+	}
+	if !strings.Contains(source, `className: "candidate-save"`) || !strings.Contains(source, `type: "button"`) {
+		t.Fatal("draft save control should be a button")
+	}
+	if strings.Contains(source, `element("a", {
+      className: "candidate-save"`) {
+		t.Fatal("draft save should not be an anchor link")
 	}
 	if !strings.Contains(source, "syncAccountActions();") {
 		t.Fatal("account dialog does not refresh its action state")

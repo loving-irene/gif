@@ -1,4 +1,4 @@
-/* 拾光 GIF styles · v31.0.0 · 管理后台移动端紧凑表格 */
+/* 拾光 GIF styles · v16.0.0 */
 /* 作品集卡片与页头新增的分享/社区入口。 */
 /* 已分享的作品用浅绿描边标记，与「取消分享」按钮呼应；未分享时是普通文字按钮。 */
 .gallery-card .share-state {
@@ -42,11 +42,10 @@
     display: none;
   }
 }
-/* 首页示例作品：两张真实生成的动图卡片。
-   移动端优先——手机上是可横向滑动的吸附卡片（第二张露出边缘，暗示可滑动），
-   宽屏才并排成两列；动图在手机上的解码与动画开销大，样式上不做任何额外滤镜或动画。 */
+/* 首页流程展示：自拍照 → 定稿图 → 成品动画，始终单行不换行（含手机）。 */
 .showcase {
-  margin: 34px 0 40px;
+  margin: 22px 0 36px;
+  padding-top: 8px;
 }
 .showcase-intro {
   max-width: 640px;
@@ -61,31 +60,48 @@
   color: var(--muted);
   margin: 0;
 }
-.showcase-more {
-  display: inline-block;
-  margin: 6px 0 0 -8px;
-}
-.showcase-list {
+.showcase-flow {
   list-style: none;
-  display: grid;
-  gap: 13px;
-  margin: 20px 0 0;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 0;
+  width: 100%;
+  margin: 18px 0 0;
   padding: 0;
+  box-sizing: border-box;
 }
-.showcase-card {
+.showcase-stage {
+  flex: 1 1 0;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
   background: var(--paper);
   border: 1px solid var(--line);
-  border-radius: 18px;
-  padding: 13px;
+  border-radius: 16px;
+  padding: 8px;
   box-shadow: 0 8px 26px #ad93700a;
+  box-sizing: border-box;
 }
-/* 动图本身是 256×256 的方形作品：容器锁 1:1，避免图片加载完成时页面跳动。 */
+.showcase-stage > b {
+  display: block;
+  text-align: center;
+  font-size: clamp(11px, 2.9vw, 13px);
+  font-weight: 650;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 方形画幅：图片加载前后高度稳定；成品动画层挂在此定位容器上。 */
 .showcase-media {
   display: block;
   position: relative;
   aspect-ratio: 1;
-  border-radius: 13px;
+  width: 100%;
+  border-radius: 11px;
   overflow: hidden;
   background: #fff;
 }
@@ -95,7 +111,6 @@
   height: 100%;
   object-fit: contain;
 }
-/* 静态首帧撑开容器；动画版由 showcase.v2.js 覆盖在它上面。 */
 .showcase-poster {
   z-index: 0;
 }
@@ -104,80 +119,84 @@
   inset: 0;
   z-index: 1;
 }
-.showcase-meta {
+/* 虚线箭头：固定窄宽，不参与换行，手机上仍夹在三格之间。 */
+.showcase-arrow {
+  flex: 0 0 clamp(14px, 4.2vw, 36px);
   display: flex;
-  flex-direction: column;
-  gap: 3px;
-  margin-top: 12px;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  min-width: 14px;
+  padding-bottom: 22px;
 }
-.showcase-meta b {
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.5;
+.showcase-arrow-line {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: 28px;
+  height: 0;
+  border-top: 1.5px dashed #c4b09a;
 }
-.showcase-meta span {
-  font-size: 10px;
-  color: var(--muted);
-  line-height: 1.6;
+.showcase-arrow-line::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  top: -4px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 3.5px 0 3.5px 6px;
+  border-color: transparent transparent transparent #c4b09a;
+}
+.showcase-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 16px;
+  margin-top: 14px;
+}
+.showcase-more {
+  display: inline-block;
+  margin: 0 0 0 -8px;
 }
 .showcase-note {
   font-size: 11px;
   color: var(--muted);
-  margin: 14px 0 0;
-}
-@media (max-width: 800px) {
-  .showcase {
-    margin: 26px 0 32px;
-  }
-  /* 横向滑动 + 吸附：手机上一屏能看见约一张半卡片，滑动成本最低。 */
-  .showcase-list {
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(0, 74%);
-    overflow-x: auto;
-    gap: 11px;
-    padding-bottom: 4px;
-    scroll-snap-type: x mandatory;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
-  }
-  .showcase-card {
-    scroll-snap-align: start;
-  }
-}
-@media (min-width: 801px) {
-  /* 卡片跟着 256×256 的原始画幅走，不随宽屏拉伸：既不糊，也不会把首屏撑得过高。
-     宽屏下与同栏的标题、正文一起左对齐；居中会让卡片比左侧文字右移一大截（1180px
-     视口里约 222px），看起来像是浮在页面中间。 */
-  .showcase-list {
-    grid-template-columns: repeat(2, minmax(0, 348px));
-    gap: 22px;
-  }
-  .showcase-card {
-    padding: 16px;
-  }
+  margin: 0;
 }
 @media (max-width: 600px) {
+  .showcase {
+    margin: 14px 0 28px;
+  }
   .showcase-intro h2 {
     font-size: 19px;
   }
   .showcase-intro p {
     font-size: 12px;
   }
-  .showcase-card {
-    padding: 11px;
-    border-radius: 16px;
+  .showcase-flow {
+    margin-top: 14px;
   }
-  .showcase-meta {
-    margin-top: 10px;
+  .showcase-stage {
+    padding: 5px;
+    border-radius: 12px;
+    gap: 5px;
   }
-  .showcase-meta b {
-    font-size: 12px;
+  .showcase-media {
+    border-radius: 8px;
+  }
+  .showcase-stage > b {
+    font-size: clamp(10px, 3.1vw, 12px);
+  }
+  .showcase-arrow {
+    flex-basis: 12px;
+    min-width: 12px;
+    padding-bottom: 16px;
   }
   .showcase-note {
     font-size: 10px;
   }
 }
-/* 用户偏好减少动态效果时，展示区停在静态首帧（由 showcase.v2.js 保证不加载动画）。 */
 @media (prefers-reduced-motion: reduce) {
   .showcase-live {
     display: none !important;
@@ -225,7 +244,7 @@
 .code-operation-buttons {
   display: flex;
   gap: 7px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
 }
 .code-operation-buttons button {
   white-space: nowrap;
@@ -994,26 +1013,27 @@ p {
 }
 .categories {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 9px;
-  margin-bottom: 22px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 14px;
 }
 .category {
   background: #fcfaf6;
   border: 1px solid var(--line);
-  border-radius: 13px;
-  padding: 17px 5px 13px;
+  border-radius: 10px;
+  padding: 8px 3px 7px;
   color: #8e8377;
   position: relative;
+  min-width: 0;
 }
 .category > span {
   display: grid;
   place-items: center;
-  margin: 0 auto 10px;
-  width: 43px;
-  height: 43px;
-  border-radius: 15px;
-  font-size: 25px;
+  margin: 0 auto 5px;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  font-size: 15px;
   background: #ebe7dc;
   color: #968564;
 }
@@ -1025,10 +1045,18 @@ p {
   background: #e9ecdb;
   color: #9b9f6f;
 }
+.category:nth-child(4) > span {
+  background: #e7eef5;
+  color: #7f96ad;
+}
 .category b {
   display: block;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .category.selected {
   border: 1.5px solid #c78d6a;
@@ -1038,9 +1066,9 @@ p {
 .category.selected:after {
   content: "✓";
   position: absolute;
-  top: 6px;
-  right: 9px;
-  font-size: 10px;
+  top: 3px;
+  right: 4px;
+  font-size: 9px;
 }
 .options {
   display: grid;
@@ -1356,22 +1384,24 @@ select {
 }
 .actions {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
-  margin-top: 23px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
 }
 .action {
   border: 1px solid var(--line);
   background: #fcf9f3;
-  padding: 23px 10px;
-  border-radius: 13px;
+  padding: 12px 6px;
+  border-radius: 10px;
   color: #867663;
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 1.3;
+  min-width: 0;
 }
 .action span {
-  font-size: 26px;
+  font-size: 18px;
   display: block;
-  margin-bottom: 13px;
+  margin-bottom: 6px;
 }
 .action.selected {
   border-color: var(--accent);
@@ -1385,9 +1415,9 @@ select {
 }
 .action .action-state {
   display: block;
-  margin-top: 9px;
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  margin-top: 4px;
+  font-size: 9px;
+  letter-spacing: 0.06em;
   color: var(--accent);
 }
 .queue-bar {
@@ -1556,7 +1586,7 @@ dialog label {
   line-height: 1.8;
 }
 .admin-wrap {
-  max-width: 1240px;
+  max-width: 1000px;
 }
 .admin-section {
   margin: 25px 0;
@@ -1567,7 +1597,6 @@ dialog label {
 }
 .admin-section h2 {
   font-size: 20px;
-  margin: 0 0 12px;
 }
 .admin-grid {
   display: grid;
@@ -1593,159 +1622,23 @@ dialog label {
 }
 .admin-table-wrap {
   overflow: auto;
-  margin-top: 16px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
 }
 .admin-table {
   width: 100%;
-  min-width: 1040px;
-  table-layout: fixed;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 11px;
 }
 .admin-table th,
 .admin-table td {
-  padding: 12px 10px;
+  padding: 10px 8px;
   border-bottom: 1px solid var(--line);
   text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  vertical-align: middle;
-}
-.admin-table th {
-  background: #f5eee3;
-  color: var(--muted);
-  font-weight: 600;
-}
-.admin-table tbody tr:last-child td {
-  border-bottom: 0;
-}
-.admin-table tbody tr:hover td {
-  background: #f7f1e7;
-}
-/* 固定时间、状态与操作列的宽度，长文本只占用本列并显示省略号。 */
-#jobSection th:nth-child(1),
-#jobSection th:nth-child(2),
-#historySection th:nth-child(1),
-#historySection th:nth-child(2) {
-  width: 100px;
-}
-#jobSection th:nth-child(6),
-#historySection th:nth-child(6),
-#codeSection th:nth-child(7),
-#creditSection th:first-child,
-#userSection th:nth-child(8),
-#auditSection th:first-child {
-  width: 170px;
-}
-#jobSection th:last-child,
-#historySection th:last-child {
-  width: 220px;
-}
-#historySection th:nth-child(7),
-#codeSection th:nth-child(3),
-#creditSection th:nth-child(5),
-#userSection th:nth-child(5),
-#userSection th:nth-child(7) {
-  width: 64px;
-}
-#codeSection th:last-child {
-  width: 220px;
-}
-#userSection th:nth-child(6) {
-  width: 110px;
-}
-#userSection th:last-child {
-  width: 80px;
-}
-.admin-table .operation .hint {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.admin-table button {
-  white-space: nowrap;
+  max-width: 250px;
+  overflow-wrap: anywhere;
 }
 .admin-table input {
   min-width: 70px;
   width: 85px;
-}
-.admin-table input[type="checkbox"] {
-  min-width: 0;
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: #977453;
-}
-.admin-table .admin-cell-value {
-  display: block;
-  width: 100%;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 3px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.admin-table .admin-cell-value:focus-visible {
-  outline-offset: -2px;
-}
-.admin-table-hint {
-  display: none;
-}
-.admin-value-dialog {
-  width: min(560px, calc(100vw - 24px));
-  max-height: calc(100dvh - 24px);
-  overflow: auto;
-}
-.admin-value-dialog pre {
-  max-height: 50dvh;
-  overflow: auto;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: var(--bg);
-  font: inherit;
-  font-size: 14px;
-  line-height: 1.8;
-  white-space: pre;
-  user-select: text;
-}
-.admin-badge {
-  display: inline-block;
-  max-width: 100%;
-  padding: 3px 8px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: #f3ede4;
-  color: #81766b;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.6;
-  vertical-align: middle;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.admin-badge.accent {
-  background: #f5e8d9;
-  border-color: #e5cdb3;
-  color: #97663f;
-}
-.admin-badge.success {
-  background: #edf3e8;
-  border-color: #cfddc5;
-  color: #557348;
-}
-.admin-badge.warning {
-  background: #faeae4;
-  border-color: #ebccbe;
-  color: #a36451;
 }
 .inline-check {
   display: flex;
@@ -1762,55 +1655,14 @@ dialog label {
 .admin-tabs {
   display: flex;
   gap: 7px;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  padding: 6px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: #f1e9dc;
+  flex-wrap: wrap;
   margin: 25px 0;
 }
-.admin-tabs button {
-  flex: 0 0 auto;
-  padding: 10px 14px;
-  border: 1px solid transparent;
+.admin-tabs a {
+  padding: 9px 13px;
   border-radius: 8px;
-  background: transparent;
-  color: #81766b;
+  background: #efe6d8;
   font-size: 12px;
-  font-weight: 600;
-  line-height: 1.5;
-  white-space: nowrap;
-}
-.admin-tabs button:hover {
-  background: #faf4eb;
-  color: #977453;
-}
-.admin-tabs button.active {
-  background: var(--paper);
-  border-color: #e5d9c8;
-  color: #8c603d;
-  box-shadow: 0 2px 5px #ad937014;
-}
-.admin-tabs button:focus-visible {
-  outline-offset: -3px;
-}
-.admin-panel .pager {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 16px;
-  white-space: nowrap;
-}
-.admin-panel .pager .hint {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.admin-panel .pager button {
-  flex-shrink: 0;
-  white-space: nowrap;
 }
 .secret-note {
   font-size: 10px;
@@ -1975,10 +1827,46 @@ dialog label {
     font-size: 12px;
   }
   .categories {
-    gap: 10px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+    margin-bottom: 12px;
   }
   .category {
-    padding: 14px 8px;
+    padding: 6px 2px 5px;
+    border-radius: 8px;
+  }
+  .category > span {
+    width: 22px;
+    height: 22px;
+    font-size: 12px;
+    margin-bottom: 3px;
+    border-radius: 7px;
+  }
+  .category b {
+    font-size: 10px;
+  }
+  .category.selected:after {
+    top: 2px;
+    right: 3px;
+    font-size: 8px;
+  }
+  .actions {
+    gap: 6px;
+    margin-top: 10px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .action {
+    padding: 10px 4px;
+    border-radius: 8px;
+    font-size: 10px;
+  }
+  .action span {
+    font-size: 15px;
+    margin-bottom: 4px;
+  }
+  .action .action-state {
+    margin-top: 3px;
+    font-size: 8px;
   }
   .options {
     gap: 12px;
@@ -2027,8 +1915,8 @@ dialog label {
     grid-row: 1;
   }
   .actions {
-    gap: 9px;
-    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .queue-bar {
     align-items: stretch;
@@ -2371,291 +2259,24 @@ dialog label {
   color: #a96844;
   opacity: 0.85;
 }
-/* 数据看板 */
-.dash-cards {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin: 18px 0;
-}
-.dash-split {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-  margin-bottom: 18px;
-}
-.dash-card {
-  min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: #fcf8f2;
-  padding: 16px 18px;
-}
-.dash-card h3 {
-  font-size: 12px;
-  font-weight: 600;
-  color: #81766b;
-  margin: 0 0 12px;
-}
-.dash-mini {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  padding: 9px 0;
-  border-bottom: 1px solid var(--line);
-  font-size: 12px;
-  color: #81766b;
-}
-.dash-mini:last-child {
-  border-bottom: 0;
-}
-.dash-mini .dash-label {
-  white-space: nowrap;
-}
-.dash-mini .dash-value {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-  white-space: nowrap;
-}
-.dash-mini .dash-value > * {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.dash-mini b {
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--ink);
-}
-.dash-mini small {
-  font-size: 10px;
-  color: var(--muted);
-}
-.dash-card .admin-table {
-  margin: 0;
-  min-width: 0;
-}
-.dash-card .admin-table th:first-child,
-.dash-card .admin-table td:first-child {
-  padding-left: 10px;
-}
-.dash-card .admin-table th:last-child,
-.dash-card .admin-table td:last-child {
-  padding-right: 10px;
-}
+/* 窄屏页头改双行：≤800px（手机与竖屏平板）第一行只放品牌标识，第二行从「社区」起排列全部入口。
+   原先品牌与入口挤在同一条 flex 行里：手机（≤600px）只能靠隐藏入口（我的作品、增加次数）腾地方，
+   601–800px 则把「分享」「反馈」「我的作品」「增加次数」「次创作」的文字都挤成两行；
+   改双行后品牌独占一行，入口在整行内按两端分布，宽屏（>800px）不变。
+   这里只调纵向内边距，左右内边距继续由 .wrap 提供，保持与下方正文左右对齐。 */
 @media (max-width: 800px) {
-  .dash-cards,
-  .dash-split {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* 手机优先：保留多列对照，首列固定，其余字段在表格内部横向滑动。 */
-@media (max-width: 600px) {
-  .admin-wrap {
-    padding-left: 12px;
-    padding-right: 12px;
-  }
-  .header.admin-wrap {
+  .header {
     height: auto;
-    min-height: 72px;
+    flex-direction: column;
+    align-items: flex-start;
+    row-gap: 10px;
     padding-top: 12px;
-    padding-bottom: 12px;
-    gap: 12px;
-    flex-wrap: wrap;
+    padding-bottom: 10px;
   }
-  .header.admin-wrap .brand small {
-    display: none;
-  }
-  .header.admin-wrap nav > a {
-    display: inline-flex;
-    align-items: center;
-    min-height: 44px;
-    font-size: 12px;
-  }
-  .admin-wrap button,
-  .admin-value-dialog button {
-    min-height: 44px;
-  }
-  .admin-tabs {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 4px;
-    margin: 12px 0;
-    padding: 4px;
-    overflow: visible;
-  }
-  .admin-tabs button {
-    min-width: 0;
-    padding: 8px 4px;
-    font-size: 13px;
-  }
-  .admin-section {
-    margin: 12px 0;
-    padding: 14px 12px;
-    border-radius: 12px;
-  }
-  .admin-section h2 {
-    font-size: 18px;
-  }
-  .admin-section .hint {
-    font-size: 12px;
-    line-height: 1.7;
-  }
-  .admin-section label,
-  .admin-section summary {
-    font-size: 14px;
-  }
-  .admin-section input,
-  .admin-section select,
-  .admin-section textarea {
-    font-size: 16px;
-  }
-  .admin-section input:not([type="checkbox"]),
-  .admin-section select {
-    min-height: 44px;
-  }
-  .admin-section .admin-grid {
-    gap: 8px;
-  }
-  .admin-section .code-row {
-    align-items: flex-end;
-    gap: 8px;
-  }
-  .admin-section .code-row label {
-    min-width: 0;
-    margin-bottom: 0;
-  }
-  .admin-section .code-row button {
-    flex-shrink: 0;
-    font-size: 13px;
-  }
-  .admin-section .code-row + .hint {
-    margin-top: 12px;
-  }
-  .admin-panel > .text-button {
-    padding: 8px 12px;
-    border: 1px solid #e5d8c6;
-    border-radius: 9px;
-    background: #f7f0e6;
-    font-size: 13px;
-  }
-  .admin-table-hint {
-    display: block;
-    margin: 14px 0 6px;
-    color: var(--muted);
-    font-size: 11px;
-  }
-  .admin-table-hint + .admin-table-wrap {
-    margin-top: 0;
-  }
-  .admin-panel > .admin-table-wrap {
-    overscroll-behavior-x: contain;
-    scrollbar-width: thin;
-  }
-  .admin-panel > .admin-table-wrap .admin-table {
-    min-width: 900px;
-  }
-  #creditSection .admin-table,
-  #auditSection .admin-table {
-    min-width: 740px;
-  }
-  #userSection .admin-table {
-    min-width: 940px;
-  }
-  .admin-panel .admin-table th {
-    padding: 10px 8px;
-  }
-  .admin-panel .admin-table td {
-    padding: 0 8px;
-    height: 44px;
-  }
-  #jobSection th:nth-child(1),
-  #jobSection th:nth-child(2),
-  #historySection th:nth-child(1),
-  #historySection th:nth-child(2) {
-    width: 88px;
-  }
-  #jobSection th:nth-child(6),
-  #historySection th:nth-child(6),
-  #codeSection th:nth-child(7),
-  #creditSection th:first-child,
-  #userSection th:nth-child(8),
-  #auditSection th:first-child {
-    width: 150px;
-  }
-  #jobSection th:last-child,
-  #historySection th:last-child {
-    width: 180px;
-  }
-  #codeSection th:first-child,
-  #userSection th:first-child {
-    width: 112px;
-  }
-  #codeSection th:last-child {
-    width: 204px;
-  }
-  .admin-panel > .admin-table-wrap th:first-child,
-  .admin-panel > .admin-table-wrap td:first-child {
-    position: sticky;
-    left: 0;
-    z-index: 1;
-    box-shadow: 1px 0 var(--line);
-    background: var(--paper);
-  }
-  .admin-panel > .admin-table-wrap th:first-child {
-    background: #f5eee3;
-  }
-  .admin-panel > .admin-table-wrap .code-row-marked td:first-child {
-    background: #f1f7ed;
-  }
-  .admin-panel .admin-table input {
-    margin: 0;
-    padding: 8px;
-  }
-  .admin-panel .admin-table input[type="checkbox"] {
-    width: 24px;
-    height: 24px;
-  }
-  .admin-panel .admin-table .operation {
-    padding-top: 4px;
-    padding-bottom: 4px;
-  }
-  .admin-panel .admin-table .secondary {
-    padding: 8px 12px;
-  }
-  .admin-panel .pager {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    gap: 8px;
-    margin-top: 12px;
-  }
-  .admin-panel .pager .hint {
-    text-align: center;
-    font-size: 11px;
-  }
-  .admin-panel .pager button {
-    padding: 8px 12px;
-  }
-  .dash-cards,
-  .dash-split {
-    gap: 10px;
-    margin-bottom: 12px;
-  }
-  .dash-card {
-    padding: 12px;
-    border-radius: 10px;
-  }
-  .dash-mini {
-    padding: 7px 0;
-  }
-  .admin-value-dialog {
-    padding: 18px;
-  }
-  .admin-value-dialog button {
+  .header nav {
     width: 100%;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px;
   }
 }
