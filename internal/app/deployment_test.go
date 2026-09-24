@@ -150,17 +150,17 @@ func TestAdminDeploymentVersionPageAndAuthorization(t *testing.T) {
 	}
 
 	body := request(t, a, nil, "GET", "/who", nil).Body.String()
-	for _, want := range []string{"/assets/admin.v48.js", "/assets/style.v42.css", "10×10 · 源2048×2048 · GIF 256×256", `data-tab="gallerySection"`, `id="gallerySection"`, `data-tab="deploymentSection"`, `id="deploymentSection"`, `id="refreshDeployment"`, `id="deploymentOutput"`, `id="galleryPreviewDialog"`} {
+	for _, want := range []string{"/assets/admin.v49.js", "/assets/style.v42.css", "10×10 · 源2048×2048 · GIF 256×256", `data-tab="gallerySection"`, `id="gallerySection"`, `data-tab="deploymentSection"`, `id="deploymentSection"`, `id="refreshDeployment"`, `id="deploymentOutput"`, `id="galleryPreviewDialog"`, `id="galleryPreviewGrid"`} {
 		if !strings.Contains(body, want) {
 			t.Fatal("admin deployment page missing", want)
 		}
 	}
-	raw, err := web.ReadFile("web/admin.v48.js")
+	raw, err := web.ReadFile("web/admin.v49.js")
 	if err != nil {
 		t.Fatal(err)
 	}
 	source := string(raw)
-	for _, want := range []string{"/api/admin/gallery", "loadGallery", "gallerySection: loadGallery", "/api/admin/deployment-version", "loadDeploymentVersion", "deploymentSection: loadDeploymentVersion", `$("deploymentOutput").value = result.output`, "admin-gallery-meta", "admin-gallery-media", "openGalleryPreview", "GIF（点击查看原尺寸）", "if (!b.dataset.tab) continue"} {
+	for _, want := range []string{"/api/admin/gallery", "loadGallery", "gallerySection: loadGallery", "/api/admin/deployment-version", "loadDeploymentVersion", "deploymentSection: loadDeploymentVersion", `$("deploymentOutput").value = result.output`, "admin-gallery-meta", "admin-gallery-media", "openGalleryPreview", "paintGalleryPreviewGrid", "GIF（点击查看原尺寸）", "if (!b.dataset.tab) continue"} {
 		if !strings.Contains(source, want) {
 			t.Fatal("admin deployment script missing", want)
 		}
@@ -182,7 +182,7 @@ func TestAdminDeploymentVersionPageAndAuthorization(t *testing.T) {
 	if !strings.Contains(style, ".dash-card {") || !strings.Contains(style, ".dash-cards {") {
 		t.Fatal("admin dashboard card styles missing")
 	}
-	cssRaw, err := web.ReadFile("web/image-display.v6.css")
+	cssRaw, err := web.ReadFile("web/image-display.v7.css")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,5 +198,13 @@ func TestAdminDeploymentVersionPageAndAuthorization(t *testing.T) {
 	preview := cssRuleBlock(t, css, ".gallery-preview-dialog[open]")
 	if !strings.Contains(preview, "place-items: center") {
 		t.Fatal("gallery preview should center the image on screen", preview)
+	}
+	stage := cssRuleBlock(t, css, ".gallery-preview-stage")
+	if !strings.Contains(stage, "position: relative") {
+		t.Fatal("gallery preview stage should host the sheet grid overlay", stage)
+	}
+	overlay := cssRuleBlock(t, css, ".gallery-preview-grid")
+	if !strings.Contains(overlay, "position: absolute") || !strings.Contains(overlay, "pointer-events: none") {
+		t.Fatal("gallery preview grid overlay should sit above the sheet image", overlay)
 	}
 }

@@ -6,9 +6,9 @@
     <meta name="robots" content="noindex,nofollow" />
     <title>管理工作台 · 拾光 GIF</title>
     <link rel="stylesheet" href="/assets/style.v42.css" />
-    <link rel="stylesheet" href="/assets/image-display.v6.css" />
+    <link rel="stylesheet" href="/assets/image-display.v7.css" />
     <link rel="icon" href="/assets/icon.v1.svg" />
-    <script type="module" src="/assets/admin.v48.js"></script>
+    <script type="module" src="/assets/admin.v49.js"></script>
   </head>
   <body>
     <header class="header wrap admin-wrap">
@@ -509,7 +509,11 @@
     </dialog>
     <dialog id="galleryPreviewDialog" class="gallery-preview-dialog" aria-label="图片预览">
       <button type="button" id="galleryPreviewClose" class="gallery-preview-close" aria-label="关闭预览">×</button>
-      <img id="galleryPreviewImage" alt="" />
+      <div class="gallery-preview-stage" id="galleryPreviewStage">
+        <img id="galleryPreviewImage" alt="" />
+        <canvas id="galleryPreviewGrid" class="gallery-preview-grid" hidden></canvas>
+      </div>
+      <p id="galleryPreviewHint" class="gallery-preview-hint" hidden></p>
     </dialog>
     <dialog id="restoreCodeDialog" aria-labelledby="restoreCodeTitle">
       <h2 id="restoreCodeTitle">补录旧兑换码</h2>

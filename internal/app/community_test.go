@@ -417,7 +417,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 	if !strings.Contains(body, `href="/community"`) || !strings.Contains(body, `class="community-link"`) {
 		t.Fatal("homepage missing community entry")
 	}
-	for _, asset := range []string{"/assets/app.v49.js", "/assets/style.v40.css"} {
+	for _, asset := range []string{"/assets/app.v50.js", "/assets/style.v40.css"} {
 		if !strings.Contains(body, asset) {
 			t.Fatal("homepage missing updated asset", asset)
 		}
@@ -425,7 +425,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 			t.Fatal("updated asset not embedded", asset, err)
 		}
 	}
-	raw, err := web.ReadFile("web/app.v49.js")
+	raw, err := web.ReadFile("web/app.v50.js")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -473,7 +473,7 @@ func TestHomepageAccountEntryStaysClickable(t *testing.T) {
 	if !strings.Contains(body, `id="accountLockedHint"`) {
 		t.Fatal("account dialog missing locked hint")
 	}
-	raw, err := web.ReadFile("web/app.v49.js")
+	raw, err := web.ReadFile("web/app.v50.js")
 	if err != nil {
 		t.Fatal("homepage script not embedded", err)
 	}

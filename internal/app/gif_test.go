@@ -24,6 +24,68 @@ func TestInsetCellTrimsBleedMargin(t *testing.T) {
 	}
 }
 
+func TestFitCellFrameClearsBottomBleedAndAnchorsFeet(t *testing.T) {
+	const cell = 204
+	sheet := image.NewNRGBA(image.Rect(0, 0, cell, cell))
+	draw.Draw(sheet, sheet.Rect, &image.Uniform{C: color.NRGBA{R: 255, G: 255, B: 255, A: 255}}, image.Point{}, draw.Src)
+	body := image.Rect(60, 40, 140, 160)
+	draw.Draw(sheet, body, &image.Uniform{C: color.NRGBA{R: 180, G: 90, B: 60, A: 255}}, image.Point{}, draw.Src)
+	bleed := image.Rect(80, 178, 120, 200)
+	draw.Draw(sheet, bleed, &image.Uniform{C: color.NRGBA{R: 20, G: 20, B: 20, A: 255}}, image.Point{}, draw.Src)
+
+	frame := fitCellFrame(sheet, sheet.Bounds(), 128)
+	for x := 0; x < 128; x++ {
+		if isSubjectPixel(frame, x, 127) {
+			t.Fatal("bottom bleed leaked into output frame")
+		}
+	}
+	m := measureSubject(frame)
+	if !m.valid {
+		t.Fatal("fitted subject missing")
+	}
+	if m.foot < 114 || m.foot > 127 {
+		t.Fatalf("feet not anchored near bottom: foot=%v", m.foot)
+	}
+	top := 128
+	for y := 0; y < 128; y++ {
+		for x := 0; x < 128; x++ {
+			if isSubjectPixel(frame, x, y) {
+				top = y
+				y = 128
+				break
+			}
+		}
+	}
+	if top < 4 {
+		t.Fatalf("head still clipped at top: top=%d", top)
+	}
+}
+
+func TestFitCellFrameClearsValleyBleed(t *testing.T) {
+	// 脚下与邻格头顶仅隔极细「谷底」行，无完整空白行。
+	const cell = 204
+	sheet := image.NewNRGBA(image.Rect(0, 0, cell, cell))
+	draw.Draw(sheet, sheet.Rect, &image.Uniform{C: color.NRGBA{R: 255, G: 255, B: 255, A: 255}}, image.Point{}, draw.Src)
+	draw.Draw(sheet, image.Rect(50, 20, 150, 165), &image.Uniform{C: color.NRGBA{R: 180, G: 90, B: 60, A: 255}}, image.Point{}, draw.Src)
+	// 谷底：1 像素宽的连接噪声
+	draw.Draw(sheet, image.Rect(100, 166, 101, 172), &image.Uniform{C: color.NRGBA{R: 100, G: 80, B: 60, A: 255}}, image.Point{}, draw.Src)
+	draw.Draw(sheet, image.Rect(70, 173, 130, 203), &image.Uniform{C: color.NRGBA{R: 20, G: 20, B: 20, A: 255}}, image.Point{}, draw.Src)
+
+	frame := fitCellFrame(sheet, sheet.Bounds(), 128)
+	dark := 0
+	for y := 110; y < 128; y++ {
+		for x := 0; x < 128; x++ {
+			i := frame.PixOffset(x, y)
+			if frame.Pix[i+3] >= 128 && frame.Pix[i] < 40 && frame.Pix[i+1] < 40 && frame.Pix[i+2] < 40 {
+				dark++
+			}
+		}
+	}
+	if dark > 30 {
+		t.Fatalf("valley bleed still present: darkPixels=%d", dark)
+	}
+}
+
 func TestBrowserGIFEncoderDecodes(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {

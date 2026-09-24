@@ -153,20 +153,13 @@ func synthesizeGIF(sheet []byte, spec motionSpec) ([]byte, error) {
 	size := spec.size
 	frames := make([]*image.NRGBA, spec.frames)
 	for n := 0; n < spec.frames; n++ {
-		frame := image.NewNRGBA(image.Rect(0, 0, size, size))
 		// 按比例取整划分格边界：可整除时与原逐格切分完全一致，
 		// 不可整除时每格相差不超过 1 像素，随后统一缩放到输出尺寸。
 		x0, y0 := (n%spec.cols)*width/spec.cols, (n/spec.cols)*height/spec.cols
 		x1, y1 := ((n%spec.cols)+1)*width/spec.cols, ((n/spec.cols)+1)*height/spec.cols
 		cell := image.Rect(x0, y0, x1, y1)
-		// 内缩约 5%：裁掉邻格渗边（常见为下一格头顶出现在脚底），再放大回输出尺寸。
-		src := insetCell(cell)
-		if src.Dx() == size && src.Dy() == size {
-			draw.Draw(frame, frame.Rect, img, src.Min, draw.Src)
-		} else {
-			xdraw.CatmullRom.Scale(frame, frame.Rect, img, src, xdraw.Src, nil)
-		}
-		frames[n] = frame
+		// 清掉脚下邻格渗边后，按主体包围盒适配到输出帧：头顶与脚底都留边，脚略靠下。
+		frames[n] = fitCellFrame(img, cell, size)
 	}
 	frames = stabilizeFrames(frames, size)
 	histogram := make([]uint32, 32768)
@@ -203,6 +196,7 @@ func synthesizeGIF(sheet []byte, spec motionSpec) ([]byte, error) {
 }
 
 // insetCell 从格四周内缩约 5%，裁掉邻格渗边；至少保留半格可用区域。
+// 保留给测试与无法识别主体时的回退路径。
 func insetCell(cell image.Rectangle) image.Rectangle {
 	dx, dy := cell.Dx(), cell.Dy()
 	ix, iy := dx/20, dy/20
@@ -222,6 +216,198 @@ func insetCell(cell image.Rectangle) image.Rectangle {
 		return cell
 	}
 	return image.Rect(cell.Min.X+ix, cell.Min.Y+iy, cell.Max.X-ix, cell.Max.Y-iy)
+}
+
+// fitCellFrame 从动作序列的一格提取主体并适配到 size×size 输出帧。
+// 先清除脚下与主体分离的邻格头顶渗边，再按包围盒缩放：水平居中、脚底略靠下，头顶与鞋底都留边。
+func fitCellFrame(src image.Image, cell image.Rectangle, size int) *image.NRGBA {
+	cw, ch := cell.Dx(), cell.Dy()
+	if cw < 1 || ch < 1 || size < 1 {
+		return image.NewNRGBA(image.Rect(0, 0, size, size))
+	}
+	raw := image.NewNRGBA(image.Rect(0, 0, cw, ch))
+	draw.Draw(raw, raw.Rect, src, cell.Min, draw.Src)
+	clearBottomBleed(raw)
+	bbox, ok := subjectBounds(raw)
+	if !ok {
+		return scaleCell(src, insetCell(cell), size)
+	}
+	pad := max(2, min(cw, ch)/16)
+	bbox = image.Rect(bbox.Min.X-pad, bbox.Min.Y-pad, bbox.Max.X+pad, bbox.Max.Y+pad).Intersect(raw.Bounds())
+	if bbox.Empty() {
+		return scaleCell(src, insetCell(cell), size)
+	}
+	margin := float64(size) * 0.04
+	avail := float64(size) - 2*margin
+	if avail < 8 {
+		avail = float64(size)
+		margin = 0
+	}
+	// 脚略靠下：可用高度略多于等边距，让鞋底更贴近底边。
+	bw, bh := float64(bbox.Dx()), float64(bbox.Dy())
+	footBias := float64(size) * 0.02
+	availH := avail + footBias
+	scale := math.Min(avail/bw, availH/bh)
+	if scale > 1.12 {
+		scale = 1.12
+	}
+	if scale < 0.2 {
+		scale = 0.2
+	}
+	tw := max(1, int(math.Round(bw*scale)))
+	th := max(1, int(math.Round(bh*scale)))
+	tmp := image.NewNRGBA(image.Rect(0, 0, tw, th))
+	xdraw.CatmullRom.Scale(tmp, tmp.Rect, raw, bbox, xdraw.Src, nil)
+	out := image.NewNRGBA(image.Rect(0, 0, size, size))
+	x0 := (size - tw) / 2
+	y0 := size - int(math.Round(margin)) - th
+	if y0 < int(math.Round(margin)) {
+		y0 = int(math.Round(margin))
+	}
+	if y0+th > size {
+		y0 = size - th
+	}
+	if y0 < 0 {
+		y0 = 0
+	}
+	draw.Draw(out, image.Rect(x0, y0, x0+tw, y0+th), tmp, image.Point{}, draw.Src)
+	return out
+}
+
+func scaleCell(src image.Image, rect image.Rectangle, size int) *image.NRGBA {
+	out := image.NewNRGBA(image.Rect(0, 0, size, size))
+	if rect.Empty() {
+		return out
+	}
+	if rect.Dx() == size && rect.Dy() == size {
+		draw.Draw(out, out.Rect, src, rect.Min, draw.Src)
+		return out
+	}
+	xdraw.CatmullRom.Scale(out, out.Rect, src, rect, xdraw.Src, nil)
+	return out
+}
+
+// clearBottomBleed 清除格底邻格头顶渗边。
+// 优先：底部分离色块（上方有空白行）；否则：在底部 30% 内找行密度谷底切开。
+func clearBottomBleed(frame *image.NRGBA) {
+	w, h := frame.Rect.Dx(), frame.Rect.Dy()
+	if h < 8 {
+		return
+	}
+	rowCount := make([]int, h)
+	for y := 0; y < h; y++ {
+		n := 0
+		for x := 0; x < w; x++ {
+			if isSubjectPixel(frame, x, y) {
+				n++
+			}
+		}
+		rowCount[y] = n
+	}
+	cutFrom := -1
+	// 路径 1：底带与主体之间有 ≥2 行空白。
+	bottom := -1
+	for y := h - 1; y >= 0; y-- {
+		if rowCount[y] > 0 {
+			bottom = y
+			break
+		}
+	}
+	if bottom >= 0 {
+		bleedTop := bottom
+		for y := bottom; y >= 0 && rowCount[y] > 0; y-- {
+			bleedTop = y
+		}
+		gapEnd := bleedTop - 1
+		for gapEnd >= 0 && rowCount[gapEnd] == 0 {
+			gapEnd--
+		}
+		gapRows := bleedTop - 1 - gapEnd
+		bleedH := bottom - bleedTop + 1
+		if gapRows >= 2 && bleedH <= h*28/100 && gapEnd >= 0 {
+			cutFrom = bleedTop
+		}
+	}
+	// 路径 2：脚下与邻格头顶几乎贴住时，在底部 30% 找行密度谷底。
+	if cutFrom < 0 {
+		lo := h * 70 / 100
+		bestY, bestCnt := -1, w+1
+		for y := lo; y < h-1; y++ {
+			if rowCount[y] < bestCnt {
+				bestCnt = rowCount[y]
+				bestY = y
+			}
+		}
+		if bestY > lo {
+			peakAbove, peakBelow := 0, 0
+			for y := lo; y < bestY; y++ {
+				if rowCount[y] > peakAbove {
+					peakAbove = rowCount[y]
+				}
+			}
+			for y := bestY + 1; y < h; y++ {
+				if rowCount[y] > peakBelow {
+					peakBelow = rowCount[y]
+				}
+			}
+			// 谷底明显低于两侧高峰，且下方仍有一团内容 → 视为邻格头顶。
+			thresh := max(3, max(peakAbove, peakBelow)*15/100)
+			if peakAbove >= 12 && peakBelow >= 12 && bestCnt <= thresh && (h-1-bestY) <= h*28/100 {
+				cutFrom = bestY + 1
+			}
+		}
+	}
+	if cutFrom < 0 || cutFrom >= h {
+		return
+	}
+	for y := cutFrom; y < h; y++ {
+		for x := 0; x < w; x++ {
+			i := frame.PixOffset(x, y)
+			frame.Pix[i+3] = 0
+		}
+	}
+}
+
+func subjectBounds(frame *image.NRGBA) (image.Rectangle, bool) {
+	w, h := frame.Rect.Dx(), frame.Rect.Dy()
+	minX, minY, maxX, maxY := w, h, -1, -1
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			if !isSubjectPixel(frame, x, y) {
+				continue
+			}
+			if x < minX {
+				minX = x
+			}
+			if y < minY {
+				minY = y
+			}
+			if x > maxX {
+				maxX = x
+			}
+			if y > maxY {
+				maxY = y
+			}
+		}
+	}
+	if maxX < minX || maxY < minY {
+		return image.Rectangle{}, false
+	}
+	return image.Rect(minX, minY, maxX+1, maxY+1), true
+}
+
+func isSubjectPixel(frame *image.NRGBA, x, y int) bool {
+	i := frame.PixOffset(x, y)
+	a := frame.Pix[i+3]
+	if a < 128 {
+		return false
+	}
+	r, g, b := frame.Pix[i], frame.Pix[i+1], frame.Pix[i+2]
+	// 近似纯白当作背景（上游常输出不透明白底）。
+	if r > 245 && g > 245 && b > 245 {
+		return false
+	}
+	return true
 }
 
 type subjectMetrics struct {
@@ -281,7 +467,7 @@ func measureSubject(frame *image.NRGBA) subjectMetrics {
 	minX, maxX, maxY, area := frame.Rect.Dx(), -1, -1, 0
 	for y := 0; y < frame.Rect.Dy(); y++ {
 		for x := 0; x < frame.Rect.Dx(); x++ {
-			if frame.Pix[frame.PixOffset(x, y)+3] < 128 {
+			if !isSubjectPixel(frame, x, y) {
 				continue
 			}
 			area++
