@@ -422,6 +422,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("POST /api/admin/login", a.auth(a.adminLogin, false))
 	mux.HandleFunc("GET /api/admin/settings", a.auth(a.adminSettingsGet, true))
 	mux.HandleFunc("POST /api/admin/settings", a.auth(a.adminSettingsSave, true))
+	mux.HandleFunc("POST /api/admin/action-prompts", a.auth(a.adminActionPrompts, true))
 	mux.HandleFunc("GET /api/admin/users", a.auth(a.adminUsers, true))
 	mux.HandleFunc("POST /api/admin/users", a.auth(a.adminUserUpdate, true))
 	mux.HandleFunc("GET /api/admin/codes", a.auth(a.adminCodes, true))
@@ -691,8 +692,19 @@ func (a *App) catalog(w http.ResponseWriter, r *http.Request) {
 	}
 	respond(w, 200, map[string]any{
 		"categories": s.Categories, "styles": s.Styles, "actions": catalogActions(s),
+		"outfits": catalogOutfits(),
 		"chargeOnFailure": s.ChargeOnFailure, "configured": a.secret("api_key") != "", "emailConfigured": a.mailConfigured(s), "feedbackConfigured": a.feedbackConfigured(s), "estimates": a.estimates(s), "redeemHelp": s.RedeemHelp, "userConcurrency": s.UserConcurrency, "generationSlots": cap(a.slots), "motionGrid": s.MotionGrid,
 	})
+}
+
+// catalogOutfits 下发服装套装编号与名称，提示词正文只留在服务端填入定稿模板。
+func catalogOutfits() []Outfit {
+	src := defaultOutfits()
+	out := make([]Outfit, len(src))
+	for i, o := range src {
+		out[i] = Outfit{ID: o.ID, Name: o.Name}
+	}
+	return out
 }
 
 // catalogActions 展平全部分类动作，供简化前台只选动作使用（同 ID 保留首次出现）。

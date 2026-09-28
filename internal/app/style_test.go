@@ -115,7 +115,7 @@ func TestStyleIsBoundToDraftReceipt(t *testing.T) {
 	motion := input
 	motion.RequestID = token(16)
 	motion.Kind = "motion"
-	motion.Action = "attack"
+	motion.Action = "bike"
 	motion.Draft = j.Image
 	motion.Receipt = accepted["receipt"]
 	motion.Selection = Selection{}
@@ -127,15 +127,15 @@ func TestStyleIsBoundToDraftReceipt(t *testing.T) {
 		t.Fatal("unexpected prompt count", len(prompts))
 	}
 	cfg, _ := a.settings()
-	attack := ""
+	actionPrompt := ""
 	for _, c := range cfg.Categories {
 		for _, ac := range c.Actions {
-			if ac.ID == "attack" {
-				attack = ac.Prompt
+			if ac.ID == "bike" {
+				actionPrompt = ac.Prompt
 			}
 		}
 	}
-	if attack == "" || !strings.Contains(prompts[1], attack) {
+	if actionPrompt == "" || !strings.Contains(prompts[1], actionPrompt) {
 		t.Fatal("action text missing from motion prompt")
 	}
 	motion.RequestID = token(16)

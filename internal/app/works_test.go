@@ -1,8 +1,8 @@
 package app
 
-// 云端“我的作品集”同步测试：动作成功后写入云端、跨设备按账号读取、
-// GIF 优先保存（合成失败时保留原图）、删除云端副本、每账号最多保留 30 张、
-// 越权与未登录访问被拒绝。
+// ?????????????????????????????????
+// GIF ?????????????????????????????? 30 ??
+// ????????????
 import (
 	"bytes"
 	"context"
@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-// acceptedDraft 生成并确认一份定稿，返回动作请求所需的自拍、定稿图与已确认凭证。
+// acceptedDraft ????????????????????????????????
 func acceptedDraft(t *testing.T, a *App, s *testSession) (selfie, draft, receipt string) {
 	t.Helper()
 	instantProvider(a)
@@ -52,8 +52,8 @@ func TestWorksSyncAcrossDevices(t *testing.T) {
 	one := loginDevice(t, a, "works-one")
 	two := loginDevice(t, a, "works-two")
 	selfie, draft, receipt := acceptedDraft(t, a, one)
-	// 设备一生成动作 GIF：成功后云端作品集应出现该作品。
-	id := jobID(t, request(t, a, one, "POST", "/api/generate", motionInput(selfie, draft, receipt, "attack")))
+	// ??????? GIF????????????????
+	id := jobID(t, request(t, a, one, "POST", "/api/generate", motionInput(selfie, draft, receipt, "bike")))
 	if j := waitJob(t, a, one, id); j.Status != "succeeded" || len(j.Gif) == 0 {
 		t.Fatal(j)
 	}
@@ -63,14 +63,20 @@ func TestWorksSyncAcrossDevices(t *testing.T) {
 		t.Fatal("works list wrong:", w.Body.String())
 	}
 	item := list.Items[0]
-	if item.ID != id || !item.HasGif || !item.HasSheet || item.Name != "蓄力攻击" || item.Category != "male" || item.Action != "attack" {
+	wantName := ""
+	for _, a := range defaults(Env{}).Categories[0].Actions {
+		if a.ID == "bike" {
+			wantName = a.Name
+		}
+	}
+	if item.ID != id || !item.HasGif || !item.HasSheet || item.Name != wantName || item.Category != "male" || item.Action != "bike" {
 		t.Fatal("work item wrong:", item)
 	}
-	// 列表同时下发保留窗口（3天），供前端区分用户删除与到期清理。
+	// ???????????3??????????????????
 	if list.RetentionSeconds != int64(worksRetention.Seconds()) {
 		t.Fatal("retention window wrong:", list.RetentionSeconds)
 	}
-	// 本人可取回 GIF 与动作序列原图。
+	// ????? GIF ????????
 	w = request(t, a, one, "GET", "/api/works/"+id+"/gif", nil)
 	if w.Code != 200 || w.Header().Get("Content-Type") != "image/gif" || !strings.HasPrefix(w.Body.String(), "GIF") {
 		t.Fatal("work gif wrong:", w.Code, w.Header().Get("Content-Type"))
@@ -79,7 +85,7 @@ func TestWorksSyncAcrossDevices(t *testing.T) {
 	if w.Code != 200 || w.Header().Get("Content-Type") != "image/png" {
 		t.Fatal("work sheet wrong:", w.Code, w.Header().Get("Content-Type"))
 	}
-	// 其他账号看不到也取不到。
+	// ????????????
 	if w = request(t, a, two, "GET", "/api/works", nil); w.Code != 200 {
 		t.Fatal(w.Body.String())
 	}
@@ -91,7 +97,7 @@ func TestWorksSyncAcrossDevices(t *testing.T) {
 	if w = request(t, a, two, "GET", "/api/works/"+id+"/gif", nil); w.Code != 404 {
 		t.Fatal("work gif should stay private:", w.Code)
 	}
-	// 删除云端作品后本人列表与 GIF 均不可再取；重复删除与删除他人作品同样返回成功。
+	// ???????????? GIF ????????????????????????
 	if w = request(t, a, one, "POST", "/api/works/remove", map[string]string{"id": id}); w.Code != 200 {
 		t.Fatal("work remove failed:", w.Code, w.Body.String())
 	}
@@ -109,7 +115,7 @@ func TestWorksSyncAcrossDevices(t *testing.T) {
 	if w = request(t, a, one, "GET", "/api/works/"+id+"/gif", nil); w.Code != 404 {
 		t.Fatal("work gif should be gone:", w.Code)
 	}
-	// 无效编号与未登录请求被拒绝。
+	// ??????????????
 	if w = request(t, a, one, "POST", "/api/works/remove", map[string]string{"id": "../bad"}); w.Code != 400 {
 		t.Fatal("invalid work id should be rejected:", w.Code)
 	}
@@ -118,19 +124,19 @@ func TestWorksSyncAcrossDevices(t *testing.T) {
 	}
 }
 
-// GIF 合成失败（上游返回非网格图）时云端保存动作原图，供其他设备拉取后本机重新合成。
+// GIF ???????????????????????????????????????
 func TestWorkStoresSheetWhenGIFMissing(t *testing.T) {
 	a := testApp(t)
 	s := loginDevice(t, a, "works-sheet")
 	selfie, draft, receipt := acceptedDraft(t, a, s)
-	// 非方形小图：服务器按网格规格切格失败，GIF 不落盘。
+	// ???????????????????GIF ????
 	var buf bytes.Buffer
 	png.Encode(&buf, image.NewNRGBA(image.Rect(0, 0, 64, 32)))
 	flat := "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes())
 	a.providerCall = asProviderCall(func(context.Context, Settings, string, []string) (string, error) {
 		return flat, nil
 	})
-	id := jobID(t, request(t, a, s, "POST", "/api/generate", motionInput(selfie, draft, receipt, "attack")))
+	id := jobID(t, request(t, a, s, "POST", "/api/generate", motionInput(selfie, draft, receipt, "bike")))
 	if j := waitJob(t, a, s, id); j.Status != "succeeded" || len(j.Gif) != 0 {
 		t.Fatal(j)
 	}
@@ -147,7 +153,7 @@ func TestWorkStoresSheetWhenGIFMissing(t *testing.T) {
 	}
 }
 
-// 云端作品集最多保留 3 天：超期副本由周期清理删除，保留期内的作品不受影响。
+// ????????? 3 ??????????????????????????
 func TestWorksExpireAfterRetention(t *testing.T) {
 	a := testApp(t)
 	s := loginDevice(t, a, "works-retention")
@@ -168,7 +174,7 @@ func TestWorksExpireAfterRetention(t *testing.T) {
 		}
 		a.saveWork(context.Background(), item.id, uid, cfg, Selection{Category: "male"})
 		if item.age > 0 {
-			// 模拟超过保留期（3天）的云端副本。
+			// ????????3????????
 			a.db.Exec("UPDATE works SET created=? WHERE id=?", time.Now().Add(-item.age).Unix(), item.id)
 		}
 	}
@@ -193,7 +199,7 @@ func TestWorksKeepLatestPerUser(t *testing.T) {
 	one := loginDevice(t, a, "works-cap")
 	uid := one.User.ID
 	cfg, _ := a.settings()
-	// 连续保存超上限一张：只保留最新 30 张，最早的被淘汰。
+	// ??????????????? 30 ?????????
 	for i := 0; i < worksPerUser+1; i++ {
 		id := fmt.Sprintf("work%02d", i)
 		if err := a.saveFile(id, "gif", []byte("GIF89a")); err != nil {
@@ -217,10 +223,10 @@ func TestWorksKeepLatestPerUser(t *testing.T) {
 	if exists != 0 {
 		t.Fatal("oldest work should be evicted")
 	}
-	// 云端按账号隔离：上限淘汰不会影响其他账号。
+	// ?????????????????????
 	two := loginDevice(t, a, "works-cap-other")
 	selfie, draft, receipt := acceptedDraft(t, a, two)
-	id := jobID(t, request(t, a, two, "POST", "/api/generate", motionInput(selfie, draft, receipt, "attack")))
+	id := jobID(t, request(t, a, two, "POST", "/api/generate", motionInput(selfie, draft, receipt, "bike")))
 	if j := waitJob(t, a, two, id); j.Status != "succeeded" {
 		t.Fatal(j)
 	}

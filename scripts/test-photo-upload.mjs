@@ -16,7 +16,14 @@ let decoded = 0,
   closed = 0;
 const nodes = new Map();
 const $ = (id) => {
-  if (!nodes.has(id)) nodes.set(id, { textContent: "" });
+  if (!nodes.has(id))
+    nodes.set(id, {
+      textContent: "",
+      hidden: false,
+      replaceChildren() {},
+      append() {},
+      children: [],
+    });
   return nodes.get(id);
 };
 const context = vm.createContext({
@@ -54,7 +61,7 @@ const context = vm.createContext({
 });
 vm.runInContext(source, context);
 vm.runInContext(
-  "showPhoto = blob => { shown=blob }; step=()=>{}; updateControls=()=>{};",
+  "showPhoto = blob => { shown=blob }; step=()=>{}; updateControls=()=>{}; renderCandidates=()=>{}; showActions=()=>{};",
   context,
 );
 for (const type of ["image/jpeg", "image/png", "image/webp"]) {

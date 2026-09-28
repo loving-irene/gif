@@ -264,6 +264,26 @@ func TestParallelJobsUpToUserConcurrency(t *testing.T) {
 	}
 }
 
+// 生成接口不再按小时限流：有剩余次数且未触达并发上限时，连续提交超过旧的 12 次/小时也应成功。
+func TestGenerateHasNoHourlyRateLimit(t *testing.T) {
+	a := testApp(t)
+	s := loginDevice(t, a, "no-hourly-limit")
+	a.db.Exec("UPDATE users SET gift=30 WHERE id=?", s.User.ID)
+	a.providerCall = asProviderCall(func(context.Context, Settings, string, []string) (string, error) {
+		return sampleImage(false), nil
+	})
+	for i := 0; i < 13; i++ {
+		w := request(t, a, s, "POST", "/api/generate", draftInput())
+		if w.Code == 429 {
+			t.Fatalf("generate still rate-limited at request %d: %s", i+1, w.Body.String())
+		}
+		id := jobID(t, w)
+		if j := waitJob(t, a, s, id); j.Status != "succeeded" {
+			t.Fatal("job failed", id, j.Status, j.Error)
+		}
+	}
+}
+
 // 同账号已有配置完全相同的任务在排队或执行时，服务端先返回 409 让页面二次确认；
 // 用户确认后（allowDuplicate）才创建第二个任务，并照常计次。
 // 同一请求编号重传仍走幂等分支，不会误报重复。
@@ -614,7 +634,7 @@ func TestMotionJobDeliversServerGIF(t *testing.T) {
 	w := request(t, a, s, "POST", "/api/accept", map[string]string{"receipt": j.Receipt})
 	var accepted map[string]string
 	json.Unmarshal(w.Body.Bytes(), &accepted)
-	motion := GenerateInput{RequestID: token(16), Kind: "motion", Selection: input.Selection, Action: "attack", Selfie: input.Selfie, Draft: j.Image, Receipt: accepted["receipt"]}
+	motion := GenerateInput{RequestID: token(16), Kind: "motion", Selection: input.Selection, Action: "bike", Selfie: input.Selfie, Draft: j.Image, Receipt: accepted["receipt"]}
 	id = jobID(t, request(t, a, s, "POST", "/api/generate", motion))
 	j = waitJob(t, a, s, id)
 	if j.Status != "succeeded" || len(j.Gif) == 0 {
@@ -662,7 +682,7 @@ func TestMotionJobDeliversServerGIF5x5(t *testing.T) {
 	w := request(t, a, s, "POST", "/api/accept", map[string]string{"receipt": j.Receipt})
 	var accepted map[string]string
 	json.Unmarshal(w.Body.Bytes(), &accepted)
-	motion := GenerateInput{RequestID: token(16), Kind: "motion", Selection: input.Selection, Action: "attack", Selfie: input.Selfie, Draft: j.Image, Receipt: accepted["receipt"]}
+	motion := GenerateInput{RequestID: token(16), Kind: "motion", Selection: input.Selection, Action: "bike", Selfie: input.Selfie, Draft: j.Image, Receipt: accepted["receipt"]}
 	id = jobID(t, request(t, a, s, "POST", "/api/generate", motion))
 	j = waitJob(t, a, s, id)
 	if j.Status != "succeeded" || len(j.Gif) == 0 {
@@ -705,7 +725,7 @@ func TestMotionJobRequests2048For10x10(t *testing.T) {
 	w := request(t, a, s, "POST", "/api/accept", map[string]string{"receipt": draft.Receipt})
 	var accepted map[string]string
 	json.Unmarshal(w.Body.Bytes(), &accepted)
-	motion := GenerateInput{RequestID: token(16), Kind: "motion", Selection: input.Selection, Action: "attack", Selfie: input.Selfie, Draft: draft.Image, Receipt: accepted["receipt"]}
+	motion := GenerateInput{RequestID: token(16), Kind: "motion", Selection: input.Selection, Action: "bike", Selfie: input.Selfie, Draft: draft.Image, Receipt: accepted["receipt"]}
 	id = jobID(t, request(t, a, s, "POST", "/api/generate", motion))
 	result := waitJob(t, a, s, id)
 	if result.Status != "succeeded" || len(result.Gif) == 0 {
@@ -749,7 +769,7 @@ func TestParallelMotionActionsRunTogether(t *testing.T) {
 		return sampleImage(true), nil
 	})
 	ids := make([]string, 0, 2)
-	for _, action := range []string{"attack", "guard"} {
+	for _, action := range []string{"bike", "basketball"} {
 		ids = append(ids, jobID(t, request(t, a, s, "POST", "/api/generate", GenerateInput{
 			RequestID: token(16), Kind: "motion", Selection: input.Selection, Action: action,
 			Selfie: input.Selfie, Draft: draft.Image, Receipt: accepted["receipt"],

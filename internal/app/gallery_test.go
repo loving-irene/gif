@@ -19,7 +19,7 @@ func TestAdminGalleryListsExistingAssetsAndProtectsBlobs(t *testing.T) {
 	if _, err := a.db.Exec("INSERT INTO drafts(receipt,user_id,created,selection,image) VALUES(?,?,?,?,?)", "gallery-receipt", user.User.ID, 100, `{"category":"male","clothes":"铠甲","color":"银灰","style":"ink"}`, []byte("draft-image")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.db.Exec("INSERT INTO works(id,user_id,created,name,category,action,gif,sheet) VALUES(?,?,?,?,?,?,?,?)", "gallery-work", user.User.ID, 101, "蓄力攻击", "male", "attack", []byte("GIF89a"), []byte("sheet-image")); err != nil {
+	if _, err := a.db.Exec("INSERT INTO works(id,user_id,created,name,category,action,gif,sheet) VALUES(?,?,?,?,?,?,?,?)", "gallery-work", user.User.ID, 101, "骑自行车", "male", "bike", []byte("GIF89a"), []byte("sheet-image")); err != nil {
 		t.Fatal(err)
 	}
 	w := request(t, a, admin, "GET", "/api/admin/gallery?q=图库用户", nil)

@@ -167,17 +167,17 @@ func TestAdminDashboardEmail(t *testing.T) {
 	}
 
 	page := request(t, a, nil, "GET", "/who", nil).Body.String()
-	if !strings.Contains(page, `id="sendDashEmail"`) || !strings.Contains(page, "/assets/admin.v49.js") {
+	if !strings.Contains(page, `id="sendDashEmail"`) || !strings.Contains(page, "/assets/admin.v50.js") {
 		t.Fatal("dashboard email button or versioned script missing")
 	}
-	raw, err := web.ReadFile("web/admin.v49.js")
+	raw, err := web.ReadFile("web/admin.v50.js")
 	if err != nil || !strings.Contains(string(raw), "/api/admin/dashboard/email") {
 		t.Fatal("dashboard email frontend action missing", err)
 	}
 	if !strings.Contains(string(raw), "dash-row dash-cards") || !strings.Contains(string(raw), "dash-row dash-split") {
 		t.Fatal("dashboard should render metric/today/top rows as cards")
 	}
-	styleRaw, err := web.ReadFile("web/style.v42.css")
+	styleRaw, err := web.ReadFile("web/style.v43.css")
 	if err != nil {
 		t.Fatal(err)
 	}

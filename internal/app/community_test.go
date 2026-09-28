@@ -417,7 +417,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 	if !strings.Contains(body, `href="/community"`) || !strings.Contains(body, `class="community-link"`) {
 		t.Fatal("homepage missing community entry")
 	}
-	for _, asset := range []string{"/assets/app.v50.js", "/assets/style.v40.css"} {
+	for _, asset := range []string{"/assets/app.v56.js", "/assets/style.v42.css"} {
 		if !strings.Contains(body, asset) {
 			t.Fatal("homepage missing updated asset", asset)
 		}
@@ -425,7 +425,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 			t.Fatal("updated asset not embedded", asset, err)
 		}
 	}
-	raw, err := web.ReadFile("web/app.v50.js")
+	raw, err := web.ReadFile("web/app.v56.js")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,6 +437,13 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 		"gallery-meta",
 		"gallery-gif",
 		"work.hasSheet",
+		"invalidateDraftsForNewSelfie",
+		"showConcurrencyLimitDialog",
+		"showSelectionOverLimitDialog",
+		"chooseClothes",
+		"catalogOutfits",
+		"clothesSelect",
+		"clothesChangedFromDraft",
 	} {
 		if !strings.Contains(source, want) {
 			t.Fatal("homepage motion quality contract missing", want)
@@ -445,7 +452,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 	if strings.Contains(source, "gallery-sheet") || strings.Contains(source, "保存原图") {
 		t.Fatal("frontend gallery must not show motion sheet; admin gallery only")
 	}
-	cssRaw, err := web.ReadFile("web/style.v40.css")
+	cssRaw, err := web.ReadFile("web/style.v42.css")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -473,7 +480,7 @@ func TestHomepageAccountEntryStaysClickable(t *testing.T) {
 	if !strings.Contains(body, `id="accountLockedHint"`) {
 		t.Fatal("account dialog missing locked hint")
 	}
-	raw, err := web.ReadFile("web/app.v50.js")
+	raw, err := web.ReadFile("web/app.v56.js")
 	if err != nil {
 		t.Fatal("homepage script not embedded", err)
 	}
@@ -487,6 +494,12 @@ func TestHomepageAccountEntryStaysClickable(t *testing.T) {
 	// 「我的定稿」只在列表内切换与保存，不再弹出单独大图预览。
 	if !strings.Contains(source, "function hasUsableDraft()") || !strings.Contains(source, "function isCurrentCandidate(c)") {
 		t.Fatal("draft reuse helpers missing")
+	}
+	if !strings.Contains(source, "function invalidateDraftsForNewSelfie()") {
+		t.Fatal("replacing selfie must invalidate old drafts")
+	}
+	if !strings.Contains(source, "selfieGeneration") || !strings.Contains(source, "已忽略上一张照片的定稿结果") {
+		t.Fatal("draft results must be tied to the selfie generation that created them")
 	}
 	if !strings.Contains(source, "已有选定定稿：只确认凭证，绝不重新生成") {
 		t.Fatal("ensureAcceptedDraft must reuse selected draft without regenerating")

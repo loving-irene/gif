@@ -436,7 +436,13 @@ func TestUserConcurrencyConfigAndLimit(t *testing.T) {
 	a.db.Exec("UPDATE users SET gift=20 WHERE id=?", s.User.ID)
 	release := blockingProvider(a)
 	// 每次提交都换一个配置：这里验证的是单账号并发上限，不是同款配置的重复提醒。
-	dress := [][2]string{{"古代札甲", "玄黑与暗金"}, {"古代鳞甲", "银灰与藏蓝"}, {"轻甲与短披风", "深红与铁灰"}, {"古代札甲", "银灰与藏蓝"}, {"古代鳞甲", "深红与铁灰"}}
+	dress := [][2]string{
+		{"default", "玄黑与暗金"},
+		{"black_formal", "银灰与藏蓝"},
+		{"white_tee", "深红与铁灰"},
+		{"navy_polo", "玄黑与暗金"},
+		{"black_hoodie", "银灰与藏蓝"},
+	}
 	ids := make([]string, len(dress))
 	for i, c := range dress {
 		ids[i] = jobID(t, request(t, a, s, "POST", "/api/generate", draftInputWith(c[0], c[1], "")))

@@ -96,14 +96,19 @@ func sampleImage(sheet bool) string {
 	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(b.Bytes())
 }
 func draftInput() GenerateInput {
-	return GenerateInput{RequestID: token(16), Kind: "draft", Selection: Selection{Category: "male", Clothes: "古代札甲", Color: "玄黑与暗金", Weapon: "长剑"}, Selfie: sampleImage(false)}
+	return GenerateInput{RequestID: token(16), Kind: "draft", Selection: Selection{Category: "male", Clothes: defaultOutfitID, Color: "玄黑与暗金", Weapon: "长剑"}, Selfie: sampleImage(false)}
 }
 
 // draftInputWith 返回指定服装/配色/画风的定稿请求，用于在并发等测试中构造不同配置，
 // 避免命中“同款配置重复提交”的二次确认（该行为由 TestDuplicateSelection* 覆盖）。
+// clothes 可为套装编号；若传入旧分类短名（非套装编号），则回落默认套装，靠配色/画风区分摘要。
 func draftInputWith(clothes, color, style string) GenerateInput {
 	in := draftInput()
-	in.Selection.Clothes = clothes
+	if outfitKnown(clothes) {
+		in.Selection.Clothes = clothes
+	} else {
+		in.Selection.Clothes = defaultOutfitID
+	}
 	in.Selection.Color = color
 	in.Selection.Style = style
 	return in
@@ -215,7 +220,7 @@ func TestQuotaIdempotencyAndReceipt(t *testing.T) {
 	motion := input
 	motion.RequestID = token(16)
 	motion.Kind = "motion"
-	motion.Action = "attack"
+	motion.Action = "bike"
 	motion.Draft = j.Image
 	motion.Receipt = j.Receipt
 	if w := request(t, a, s, "POST", "/api/generate", motion); w.Code != 400 {

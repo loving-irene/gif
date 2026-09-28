@@ -166,7 +166,7 @@ func imageData(raw string, max int) ([]byte, error) {
 func selectionCategory(cfg Settings, s Selection) (Category, error) {
 	for _, c := range cfg.Categories {
 		if c.ID == s.Category {
-			if s.Clothes != "" && !contains(c.Clothes, s.Clothes) {
+			if s.Clothes != "" && !outfitKnown(s.Clothes) {
 				return c, errors.New("请选择有效的服装")
 			}
 			if s.Color != "" && !contains(c.Colors, s.Color) {
@@ -184,7 +184,7 @@ func selectionCategory(cfg Settings, s Selection) (Category, error) {
 	return Category{}, errors.New("请选择人物分类")
 }
 
-// normalizeSelection 补齐已省略的分类/服装/配色/画风：前台简化为自拍+动作后，这些字段可空。
+// normalizeSelection 补齐已省略的分类/服装/配色/画风：前台可只传服装编号，其余由服务端补默认值。
 func normalizeSelection(cfg Settings, sel *Selection) (Category, error) {
 	if strings.TrimSpace(sel.Category) == "" {
 		sel.Category = "daily"
@@ -193,8 +193,8 @@ func normalizeSelection(cfg Settings, sel *Selection) (Category, error) {
 	if err != nil {
 		return cat, err
 	}
-	if sel.Clothes == "" && len(cat.Clothes) > 0 {
-		sel.Clothes = cat.Clothes[0]
+	if sel.Clothes == "" {
+		sel.Clothes = defaultOutfitID
 	}
 	if sel.Color == "" && len(cat.Colors) > 0 {
 		sel.Color = cat.Colors[0]
@@ -227,12 +227,49 @@ func findActionPrompt(cfg Settings, actionID string) (string, error) {
 }
 
 // builtInMotionPrefix 动作阶段固定前缀（不再由后台「动作序列图」提示词配置）。
-const builtInMotionPrefix = "图1是已确认角色定稿，图2是本人自拍。图1固定画风、服装、极致Q版比例（头:身体=5:1），只使用定稿右侧全身造型，不输出定稿的脸部近景；图2只核对人物身份，不恢复真人身体比例。动作全程保持同一5:1头身比，禁止把身体画大或拉长四肢。动作："
+const builtInMotionPrefix = "图1是已确认角色定稿，图2是本人自拍。图1固定画风、服装、极致Q版比例（头:身体=5:1），只使用定稿右侧全身造型，不输出定稿的脸部近景；图2只核对人物身份，不恢复真人身体比例。【比例锁定——全程强制】头顶到下巴:下巴到脚底＝5:1，每一格都必须一致；禁止为配合动作拉长四肢、画大躯干或增加肩宽。动作："
 
 // buildMotionPrompt 用内置约束 + 动作过程 + 网格规格拼出动作阶段提示词。
 func buildMotionPrompt(action, grid string) string {
 	body := normalizeMotionPrompt(builtInMotionPrefix + strings.TrimSpace(action))
 	return strings.TrimSpace(body + "\n" + motionSpecPrompt(grid))
+}
+
+// buildDraftPrompt 拼出定稿阶段实际上传给上游的完整提示词（与 generate 一致）。
+func buildDraftPrompt(cfg Settings, sel Selection, cat Category) string {
+	draftPrompt := strings.TrimSpace(cfg.DraftPrompt)
+	if draftPrompt == "" {
+		draftPrompt = compareDraftPrompt
+	}
+	return strings.TrimSpace(renderPrompt(draftPrompt, sel, cat, ""))
+}
+
+// formatActionPromptExport 把定稿与动作两次请求的完整提示词整理成可复制文本。
+func formatActionPromptExport(categoryName, actionName, draftPrompt, motionPrompt string) string {
+	title := strings.TrimSpace(categoryName)
+	if name := strings.TrimSpace(actionName); name != "" {
+		if title != "" {
+			title += " · " + name
+		} else {
+			title = name
+		}
+	}
+	var b strings.Builder
+	if title != "" {
+		b.WriteString("拾光 GIF 完整提示词导出")
+		b.WriteString("（")
+		b.WriteString(title)
+		b.WriteString("）\n\n")
+	}
+	b.WriteString("【定稿图请求】\n")
+	b.WriteString("参考图：自拍（image1）\n\n")
+	b.WriteString(strings.TrimSpace(draftPrompt))
+	b.WriteString("\n\n")
+	b.WriteString("【动作序列图请求】\n")
+	b.WriteString("参考图：定稿（image1）、自拍（image2）\n\n")
+	b.WriteString(strings.TrimSpace(motionPrompt))
+	b.WriteString("\n")
+	return b.String()
 }
 
 // styleOrDefault 解析画风编号：留空时使用默认画风（保持原有轻度Q版效果），
@@ -249,7 +286,13 @@ func styleOrDefault(cfg Settings, id string) (Style, error) {
 	return Style{}, errors.New("请选择有效的画风")
 }
 func renderPrompt(t string, s Selection, c Category, action string) string {
-	return strings.NewReplacer("{{category}}", c.Name, "{{clothes}}", s.Clothes, "{{color}}", s.Color, "{{weapon}}", s.Weapon, "{{action}}", action).Replace(t)
+	return strings.NewReplacer(
+		"{{category}}", c.Name,
+		"{{clothes}}", outfitPromptText(s.Clothes),
+		"{{color}}", s.Color,
+		"{{weapon}}", s.Weapon,
+		"{{action}}", action,
+	).Replace(t)
 }
 func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 	// 在读取大请求体之前限制并发，避免大量上传同时占用内存。
@@ -300,11 +343,7 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 	photoHash := hash(string(photo))
 	var rec Receipt
 	// 定稿用后台可编辑提示词；未配置时回落到内置默认文案。
-	draftPrompt := strings.TrimSpace(cfg.DraftPrompt)
-	if draftPrompt == "" {
-		draftPrompt = compareDraftPrompt
-	}
-	prompt := strings.TrimSpace(renderPrompt(draftPrompt, in.Selection, cat, ""))
+	prompt := buildDraftPrompt(cfg, in.Selection, cat)
 	images := []string{in.Selfie}
 	if in.Kind == "motion" {
 		rec, err = a.readReceipt(in.Receipt, uid)
@@ -351,7 +390,6 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 	}
 	// 同账号已有完全相同的任务在排队或执行时先提醒用户，确认后再创建：
 	// 避免重复点击、改完又改回原样或换页面重复提交造成同款任务和次数浪费。
-	// 置于限流之前，被拦下的重复请求不计入每小时的生成次数。
 	// 已经确认过（in.AllowDuplicate）时不再拦截，由下方的并发与次数校验兜底。
 	if !in.AllowDuplicate {
 		// 用排除请求编号的配置摘要判断“另一条相同配置的提交”。
@@ -371,10 +409,6 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-	}
-	if !a.limit("generate:"+uid, 12, time.Hour) {
-		fail(w, 429, "生成请求过于频繁，请稍后再试")
-		return
 	}
 	// 尝试直接占用生成槽位；占不到时任务进入服务器队列，由调度器稍后启动，
 	// 用户关闭页面不影响任务执行。

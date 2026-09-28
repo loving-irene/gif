@@ -75,3 +75,21 @@ func TestAdminJobHistoryShowsFailureReason(t *testing.T) {
 		t.Fatal("non-admin should be rejected", w.Code)
 	}
 }
+
+func TestFailReasonTextOpenRouterCredits(t *testing.T) {
+	got := failReasonText(&providerFailure{
+		Phase:   "submit",
+		Status:  402,
+		Code:    "402",
+		Message: "Insufficient credits. Add more using https://openrouter.ai/settings/credits",
+	})
+	if !strings.Contains(got, "图像服务额度不足") || !strings.Contains(got, "OpenRouter") {
+		t.Fatal("402 credits reason not mapped", got)
+	}
+	if strings.Contains(got, "https://") {
+		t.Fatal("raw upstream URL must stay sanitized out of fail reason", got)
+	}
+	if failReasonText(errors.New("job input unavailable")) != "任务输入缺失（服务重启后无法恢复）" {
+		t.Fatal("known internal reason mapping broken")
+	}
+}

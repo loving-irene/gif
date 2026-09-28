@@ -77,9 +77,22 @@ func TestActionPairsCanBeAddedAndDeleted(t *testing.T) {
 	a := testApp(t)
 	admin := codeAdmin(t, a, loginDevice(t, a, "admin"))
 	cfg, _ := a.settings()
-	oldID := cfg.Categories[0].Actions[0].ID
+	// 用自定义动作验证增删：手册动作会被 normalize 自动补回，不能用来测删除。
+	custom := Action{ID: "action-old", Name: "临时动作", Icon: "✦", Prompt: "临时过程说明。"}
+	cfg.Categories[0].Actions = append(cfg.Categories[0].Actions, custom)
+	if w := request(t, a, admin, "POST", "/api/admin/settings", map[string]any{"settings": cfg}); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	cfg, _ = a.settings()
 	added := Action{ID: "action-new", Name: "新的挥手", Icon: "✦", Prompt: "举起右手挥动两次，然后放回原位。"}
-	cfg.Categories[0].Actions = append(cfg.Categories[0].Actions[1:], added)
+	next := make([]Action, 0, len(cfg.Categories[0].Actions))
+	for _, v := range cfg.Categories[0].Actions {
+		if v.ID == custom.ID {
+			continue
+		}
+		next = append(next, v)
+	}
+	cfg.Categories[0].Actions = append(next, added)
 	w := request(t, a, admin, "POST", "/api/admin/settings", map[string]any{"settings": cfg})
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
@@ -87,7 +100,7 @@ func TestActionPairsCanBeAddedAndDeleted(t *testing.T) {
 	saved, _ := a.settings()
 	found := false
 	for _, v := range saved.Categories[0].Actions {
-		if v.ID == oldID {
+		if v.ID == custom.ID {
 			t.Fatal("deleted action remained")
 		}
 		if v.ID == added.ID {

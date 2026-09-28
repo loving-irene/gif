@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -332,6 +333,15 @@ func failReasonText(err error) string {
 		return "任务输入缺失（服务重启后无法恢复）"
 	case "upstream result window exhausted":
 		return "等待上游结果超时，已按失败收口"
+	}
+	// OpenRouter 等上游返回 402 Insufficient credits 时，管理后台需要一眼能看出是服务商余额问题，
+	// 而不是用户创作次数不足（用户侧 402 是另一套「创作次数」语义）。
+	var pf *providerFailure
+	if errors.As(err, &pf) {
+		lower := strings.ToLower(pf.Message + " " + pf.Code)
+		if pf.Status == 402 || strings.Contains(lower, "insufficient credits") {
+			return "图像服务额度不足（上游 HTTP 402），请到 OpenRouter 账户充值后再试"
+		}
 	}
 	text := safeDebugText(err.Error(), nil)
 	runes := []rune(text)
