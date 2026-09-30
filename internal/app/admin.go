@@ -77,6 +77,10 @@ func (a *App) adminSettingsSave(w http.ResponseWriter, r *http.Request) {
 	if in.Settings.MotionGrid == "" {
 		in.Settings.MotionGrid = "4x4"
 	}
+	// 兼容不带服务端并行生成数的旧后台页面：保存前补入默认值。
+	if in.Settings.ServerSlots < 1 {
+		in.Settings.ServerSlots = defaultServerSlots
+	}
 	if len(in.APIKey) > 1024 || len(in.MailPassword) > 1024 || strings.ContainsAny(in.APIKey+in.MailPassword, "\r\n") {
 		fail(w, 400, "密钥格式无效")
 		return
@@ -110,6 +114,8 @@ func (a *App) adminSettingsSave(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "保存失败")
 		return
 	}
+	// 保存成功后让新的「服务端并行生成数」立即生效：扩容马上补位，缩容等在跑的任务自然结束。
+	a.applyServerSlots(in.Settings.ServerSlots)
 	a.audit(current(r).User.ID, "settings_updated", "")
 	respond(w, 200, map[string]bool{"ok": true})
 }

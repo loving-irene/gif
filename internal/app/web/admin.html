@@ -6,9 +6,9 @@
     <meta name="robots" content="noindex,nofollow" />
     <title>管理工作台 · 拾光 GIF</title>
     <link rel="stylesheet" href="/assets/style.v43.css" />
-    <link rel="stylesheet" href="/assets/image-display.v7.css" />
+    <link rel="stylesheet" href="/assets/image-display.v8.css" />
     <link rel="icon" href="/assets/icon.v1.svg" />
-    <script type="module" src="/assets/admin.v50.js"></script>
+    <script type="module" src="/assets/admin.v52.js"></script>
   </head>
   <body>
     <header class="header wrap admin-wrap">
@@ -202,7 +202,20 @@
                   type="number"
                   min="1"
                   max="20"
-                  required /></label
+                  required />
+                <small class="hint"
+                  >单账号最多可挂的任务数，超出会被拒绝。</small
+                ></label
+              ><label
+                >服务端并行生成数<input
+                  id="serverSlots"
+                  type="number"
+                  min="1"
+                  max="8"
+                  required />
+                <small class="hint"
+                  >服务器同时执行的生成任务数，默认 2；多出的任务按提交顺序排队，改完保存立即生效。</small
+                ></label
               ><label
                 >扣次规则<select id="chargeOnFailure">
                   <option value="true">请求发出即扣次，失败也计次</option>
@@ -511,8 +524,19 @@
     <dialog id="galleryPreviewDialog" class="gallery-preview-dialog" aria-label="图片预览">
       <button type="button" id="galleryPreviewClose" class="gallery-preview-close" aria-label="关闭预览">×</button>
       <div class="gallery-preview-stage" id="galleryPreviewStage">
-        <img id="galleryPreviewImage" alt="" />
-        <canvas id="galleryPreviewGrid" class="gallery-preview-grid" hidden></canvas>
+        <figure class="gallery-preview-panel" id="galleryPreviewPanel1">
+          <div class="gallery-preview-frame">
+            <img id="galleryPreviewImage" alt="" />
+            <canvas id="galleryPreviewGrid" class="gallery-preview-grid" hidden></canvas>
+          </div>
+          <figcaption class="gallery-preview-caption" id="galleryPreviewCaption1" hidden></figcaption>
+        </figure>
+        <figure class="gallery-preview-panel" id="galleryPreviewPanel2" hidden>
+          <div class="gallery-preview-frame">
+            <img id="galleryPreviewImage2x" alt="" />
+          </div>
+          <figcaption class="gallery-preview-caption" id="galleryPreviewCaption2" hidden></figcaption>
+        </figure>
       </div>
       <p id="galleryPreviewHint" class="gallery-preview-hint" hidden></p>
     </dialog>

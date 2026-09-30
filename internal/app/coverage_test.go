@@ -430,7 +430,7 @@ func TestUserConcurrencyConfigAndLimit(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"userConcurrency":5`) {
 		t.Fatal("catalog missing userConcurrency", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), fmt.Sprintf(`"generationSlots":%d`, generationSlots)) {
+	if !strings.Contains(w.Body.String(), fmt.Sprintf(`"generationSlots":%d`, defaultServerSlots)) {
 		t.Fatal("catalog missing generationSlots", w.Code, w.Body.String())
 	}
 	a.db.Exec("UPDATE users SET gift=20 WHERE id=?", s.User.ID)
@@ -482,6 +482,110 @@ func TestUserConcurrencyConfigAndLimit(t *testing.T) {
 		t.Fatal("configured limit not enforced:", w.Code, w.Body.String())
 	}
 	close(release2)
+}
+
+// TestServerSlotsConfigurable 验证「服务端并行生成数」是后台配置项：
+// 默认 2、超范围拒绝、保存后立即作用于调度器（扩容马上补位、缩容不打断在跑的任务）。
+func TestServerSlotsConfigurable(t *testing.T) {
+	a := testApp(t)
+	cfg, _ := a.settings()
+	if cfg.ServerSlots != defaultServerSlots {
+		t.Fatalf("default server slots should be %d, got %d", defaultServerSlots, cfg.ServerSlots)
+	}
+	if a.slots.limitValue() != defaultServerSlots {
+		t.Fatalf("pool should start at default server slots, got %d", a.slots.limitValue())
+	}
+	admin := codeAdmin(t, a, loginDevice(t, a, "admin-slots"))
+	for _, bad := range []int{-1, maxServerSlots + 1} {
+		badCfg := cfg
+		badCfg.ServerSlots = bad
+		if w := request(t, a, admin, "POST", "/api/admin/settings", map[string]any{"settings": badCfg}); w.Code != 400 {
+			t.Fatal("invalid server slots accepted:", bad, w.Code, w.Body.String())
+		}
+	}
+	// 旧后台页面不带该字段（0）：按默认值保存，不报错。
+	oldCfg := cfg
+	oldCfg.ServerSlots = 0
+	if w := request(t, a, admin, "POST", "/api/admin/settings", map[string]any{"settings": oldCfg}); w.Code != 200 {
+		t.Fatal("legacy settings without serverSlots rejected:", w.Code, w.Body.String())
+	}
+	if got, _ := a.settings(); got.ServerSlots != defaultServerSlots || a.slots.limitValue() != defaultServerSlots {
+		t.Fatalf("legacy save should fall back to default slots, got cfg=%d pool=%d", got.ServerSlots, a.slots.limitValue())
+	}
+	// 扩容到 4：容量与前台下发的 generationSlots 一起变化，且不需要重启服务。
+	wide := cfg
+	wide.ServerSlots = 4
+	if w := request(t, a, admin, "POST", "/api/admin/settings", map[string]any{"settings": wide}); w.Code != 200 {
+		t.Fatal("valid server slots rejected:", w.Code, w.Body.String())
+	}
+	if a.slots.limitValue() != 4 {
+		t.Fatalf("server slots should apply immediately, got %d", a.slots.limitValue())
+	}
+	s := loginDevice(t, a, "slots-user")
+	w := request(t, a, s, "GET", "/api/catalog", nil)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"generationSlots":4`) {
+		t.Fatal("catalog should report configured generationSlots", w.Code, w.Body.String())
+	}
+	// 占满 4 个槽位后提交第 5 个任务：只排队，不失败也不拒绝。
+	a.db.Exec("UPDATE users SET gift=20 WHERE id=?", s.User.ID)
+	release := blockingProvider(a)
+	for i := 0; i < 4; i++ {
+		a.slots.tryAcquire()
+	}
+	id := jobID(t, request(t, a, s, "POST", "/api/generate", draftInput()))
+	var queued string
+	if err := a.db.QueryRow("SELECT status FROM jobs WHERE id=?", id).Scan(&queued); err != nil || queued != statusQueued {
+		t.Fatalf("job beyond slots should be queued, got %q err=%v", queued, err)
+	}
+	// 缩容到 1：在跑的任务不受影响，排队任务要等占用降到新容量以下才启动。
+	for i := 0; i < 4; i++ {
+		a.slots.release()
+	}
+	narrow := cfg
+	narrow.ServerSlots = 1
+	if w := request(t, a, admin, "POST", "/api/admin/settings", map[string]any{"settings": narrow}); w.Code != 200 {
+		t.Fatal("narrowing server slots rejected:", w.Code, w.Body.String())
+	}
+	if a.slots.limitValue() != 1 {
+		t.Fatalf("pool should shrink to 1, got %d", a.slots.limitValue())
+	}
+	close(release)
+	if j := waitJob(t, a, s, id); j.Status != "succeeded" {
+		t.Fatal("queued job should run after slots free up", j.Status)
+	}
+	// 结束时释放槽位的 defer 恰好排在状态落库之后，稍等它归还再判断是否泄漏。
+	deadline := time.Now().Add(time.Second)
+	for a.slots.used() != 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if a.slots.used() != 0 {
+		t.Fatalf("slots leaked after job finished: %d", a.slots.used())
+	}
+}
+
+// TestServerSlotsRestoredOnRestart 验证服务重启后按已保存的「服务端并行生成数」恢复槽位容量。
+func TestServerSlotsRestoredOnRestart(t *testing.T) {
+	env := Env{Database: filepath.Join(t.TempDir(), "restart.db"), BaseURL: "http://127.0.0.1:8096", Secret: strings.Repeat("a", 64), AdminPassword: "test-admin-password-123", APIKey: "fake-only-test-key"}
+	first, err := New(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, _ := first.settings()
+	cfg.ServerSlots = 3
+	raw, _ := json.Marshal(cfg)
+	if _, err := first.db.Exec("UPDATE settings SET value=? WHERE key='config'", string(raw)); err != nil {
+		t.Fatal(err)
+	}
+	first.Close()
+
+	second, err := New(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	if second.slots.limitValue() != 3 {
+		t.Fatalf("restart should restore configured slots, got %d", second.slots.limitValue())
+	}
 }
 
 func TestAccountNameSaveAndValidation(t *testing.T) {

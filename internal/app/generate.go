@@ -411,18 +411,13 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	// 尝试直接占用生成槽位；占不到时任务进入服务器队列，由调度器稍后启动，
-	// 用户关闭页面不影响任务执行。
-	haveSlot := false
-	select {
-	case a.slots <- struct{}{}:
-		haveSlot = true
-	default:
-	}
+	// 用户关闭页面不影响任务执行。槽位容量来自后台的「服务端并行生成数」。
+	haveSlot := a.slots.tryAcquire()
 	// 从占用槽位起就登记释放，覆盖输入写盘失败等提前返回路径。
 	release := haveSlot
 	defer func() {
 		if release {
-			<-a.slots
+			a.slots.release()
 			a.signalDispatch()
 		}
 	}()

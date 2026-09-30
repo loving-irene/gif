@@ -180,6 +180,38 @@ func TestDefaultsAndNormalizeFemaleHandbookActions(t *testing.T) {
 	}
 }
 
+func TestDefaultsAndNormalizeChildHandbookActions(t *testing.T) {
+	wantIDs := []string{"bubbles", "lollipop", "peekaboo", "blocks", "airplane", "carry_me"}
+	child := defaults(Env{}).Categories[2]
+	if child.ID != "child" || len(child.Actions) != len(wantIDs) {
+		t.Fatalf("child should ship %d handbook actions, got id=%s n=%d", len(wantIDs), child.ID, len(child.Actions))
+	}
+	for i, a := range child.Actions {
+		if a.ID != wantIDs[i] || !strings.Contains(a.Prompt, "【动作：") || !strings.Contains(a.Prompt, "25格等间距连续递进") {
+			t.Fatal("child handbook action malformed", a.ID)
+		}
+	}
+
+	legacy := defaultCategories()
+	legacy[2].Actions = []Action{
+		{ID: "wave", Name: "你好呀", Icon: "👋", Prompt: "挥手"},
+		{ID: "clap", Name: "好棒好棒", Icon: "👏", Prompt: "拍手"},
+		{ID: "jump", Name: "耶！成功啦", Icon: "🎉", Prompt: "跳"},
+		{ID: "hug", Name: "抱抱玩偶", Icon: "🧸", Prompt: "抱"},
+		{ID: "curious", Name: "好奇看看", Icon: "🔍", Prompt: "看"},
+		{ID: "sleep", Name: "困了晚安", Icon: "☾", Prompt: "睡"},
+	}
+	got := normalizeCategories(legacy)[2].Actions
+	if len(got) != len(wantIDs) {
+		t.Fatalf("child legacy actions should be replaced, got %+v", got)
+	}
+	for i, a := range got {
+		if a.ID != wantIDs[i] {
+			t.Fatal("unexpected child action after normalize", a.ID)
+		}
+	}
+}
+
 func TestNormalizeCategoriesAddsMaleSportActions(t *testing.T) {
 	legacy := defaultCategories()
 	male := legacy[0]

@@ -112,15 +112,15 @@ func TestInputWriteFailureReleasesGenerationSlot(t *testing.T) {
 	if err := os.WriteFile(a.files, []byte("blocked"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < generationSlots+1; i++ {
+	for i := 0; i < defaultServerSlots+1; i++ {
 		w := request(t, a, s, "POST", "/api/generate", draftInput())
 		// 释放通知可能让调度器短暂借用槽位检查队列，等待它归还后再判断泄漏。
 		deadline := time.Now().Add(time.Second)
-		for len(a.slots) != 0 && time.Now().Before(deadline) {
+		for a.slots.used() != 0 && time.Now().Before(deadline) {
 			time.Sleep(time.Millisecond)
 		}
-		if w.Code != 500 || len(a.slots) != 0 {
-			t.Fatalf("写盘失败后槽位未释放：status=%d slots=%d", w.Code, len(a.slots))
+		if w.Code != 500 || a.slots.used() != 0 {
+			t.Fatalf("写盘失败后槽位未释放：status=%d slots=%d", w.Code, a.slots.used())
 		}
 	}
 	if u, _ := a.readUser(s.User.ID); u.Credits != s.User.Credits {
@@ -146,8 +146,8 @@ func TestRejectedGenerationRemovesInput(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	entries, err := os.ReadDir(a.files)
-	if err != nil || len(entries) != 0 || len(a.slots) != 0 {
-		t.Fatalf("拒绝创建后有残留：files=%d slots=%d err=%v", len(entries), len(a.slots), err)
+	if err != nil || len(entries) != 0 || a.slots.used() != 0 {
+		t.Fatalf("拒绝创建后有残留：files=%d slots=%d err=%v", len(entries), a.slots.used(), err)
 	}
 }
 
@@ -158,16 +158,16 @@ func TestFailureUsesSubmissionRefundPolicy(t *testing.T) {
 			setChargeOnFailure(t, a, charge)
 			s := loginDevice(t, a, "refund-policy")
 			// 占满槽位，让管理员在真正执行之前修改失败扣次策略。
-			for i := 0; i < cap(a.slots); i++ {
-				a.slots <- struct{}{}
+			for i := 0; i < a.slots.limitValue(); i++ {
+				a.slots.tryAcquire()
 			}
 			a.providerCall = asProviderCall(func(context.Context, Settings, string, []string) (string, error) {
 				return "", errors.New("test provider failure")
 			})
 			id := jobID(t, request(t, a, s, "POST", "/api/generate", draftInput()))
 			setChargeOnFailure(t, a, !charge)
-			for i := 0; i < cap(a.slots); i++ {
-				<-a.slots
+			for i := 0; i < a.slots.limitValue(); i++ {
+				a.slots.release()
 			}
 			a.signalDispatch()
 			j := waitForStatus(t, a, s, id, "failed")

@@ -166,9 +166,7 @@ func (a *App) drainQueue() {
 		if a.ctx.Err() != nil {
 			return
 		}
-		select {
-		case a.slots <- struct{}{}:
-		default:
+		if !a.slots.tryAcquire() {
 			return
 		}
 		var id, uid, kind string
@@ -178,11 +176,11 @@ func (a *App) drainQueue() {
 			err = a.db.QueryRow("SELECT id,user_id,kind FROM jobs WHERE status=? ORDER BY created,rowid LIMIT 1", statusQueued).Scan(&id, &uid, &kind)
 		}
 		if err != nil {
-			<-a.slots
+			a.slots.release()
 			return
 		}
 		if !a.markRunning(id) {
-			<-a.slots
+			a.slots.release()
 			continue
 		}
 		a.startJob(id, nil)
@@ -194,7 +192,7 @@ func (a *App) startJob(id string, input *jobInput) {
 	a.workersMu.Lock()
 	defer a.workersMu.Unlock()
 	if a.ctx.Err() != nil {
-		<-a.slots
+		a.slots.release()
 		return
 	}
 	a.workers.Add(1)
@@ -355,7 +353,7 @@ func failReasonText(err error) string {
 // 调用方必须已经占用生成槽位；任务结束时在这里释放并触发下一次调度。
 // 上游超过单次等待时间时，任务转为“等待上游结果”，不再重发请求，稍后按同一个上游任务号继续认领。
 func (a *App) runJob(id string, inline *jobInput) {
-	defer func() { <-a.slots; a.signalDispatch() }()
+	defer func() { a.slots.release(); a.signalDispatch() }()
 	state := a.readJobState(id)
 	kind := state.Kind
 	var uid string

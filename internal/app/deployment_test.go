@@ -150,17 +150,17 @@ func TestAdminDeploymentVersionPageAndAuthorization(t *testing.T) {
 	}
 
 	body := request(t, a, nil, "GET", "/who", nil).Body.String()
-	for _, want := range []string{"/assets/admin.v50.js", "/assets/style.v43.css", "10×10 · 源2048×2048 · GIF 256×256", `data-tab="gallerySection"`, `id="gallerySection"`, `data-tab="deploymentSection"`, `id="deploymentSection"`, `id="refreshDeployment"`, `id="deploymentOutput"`, `id="galleryPreviewDialog"`, `id="galleryPreviewGrid"`} {
+	for _, want := range []string{"/assets/admin.v52.js", "/assets/style.v43.css", "10×10 · 源2048×2048 · GIF 256×256", `data-tab="gallerySection"`, `id="gallerySection"`, `data-tab="deploymentSection"`, `id="deploymentSection"`, `id="refreshDeployment"`, `id="deploymentOutput"`, `id="galleryPreviewDialog"`, `id="galleryPreviewGrid"`, `id="galleryPreviewImage2x"`, `id="galleryPreviewPanel2"`, `id="galleryPreviewCaption2"`, `id="serverSlots"`, `id="userConcurrency"`} {
 		if !strings.Contains(body, want) {
 			t.Fatal("admin deployment page missing", want)
 		}
 	}
-	raw, err := web.ReadFile("web/admin.v50.js")
+	raw, err := web.ReadFile("web/admin.v52.js")
 	if err != nil {
 		t.Fatal(err)
 	}
 	source := string(raw)
-	for _, want := range []string{"/api/admin/gallery", "loadGallery", "gallerySection: loadGallery", "/api/admin/deployment-version", "loadDeploymentVersion", "deploymentSection: loadDeploymentVersion", `$("deploymentOutput").value = result.output`, "admin-gallery-meta", "admin-gallery-media", "openGalleryPreview", "paintGalleryPreviewGrid", "GIF（点击查看原尺寸）", "if (!b.dataset.tab) continue", "/api/admin/action-prompts", "复制提示词", "action-copy-prompt"} {
+	for _, want := range []string{"/api/admin/gallery", "loadGallery", "gallerySection: loadGallery", "/api/admin/deployment-version", "loadDeploymentVersion", "deploymentSection: loadDeploymentVersion", `$("deploymentOutput").value = result.output`, "admin-gallery-meta", "admin-gallery-media", "openGalleryPreview", "paintGalleryPreviewGrid", "if (!b.dataset.tab) continue", "/api/admin/action-prompts", "复制提示词", "action-copy-prompt", "duo2x", "galleryPreviewImage2x", "paintGalleryPreviewPair", "loadGalleryPreviewPair", "mediaResponse", "放大 2 倍", "galleryPreviewStage", "disposeGalleryPreview", `"serverSlots"`, "value.serverSlots = Number(value.serverSlots)"} {
 		if !strings.Contains(source, want) {
 			t.Fatal("admin deployment script missing", want)
 		}
@@ -182,7 +182,7 @@ func TestAdminDeploymentVersionPageAndAuthorization(t *testing.T) {
 	if !strings.Contains(style, ".dash-card {") || !strings.Contains(style, ".dash-cards {") {
 		t.Fatal("admin dashboard card styles missing")
 	}
-	cssRaw, err := web.ReadFile("web/image-display.v7.css")
+	cssRaw, err := web.ReadFile("web/image-display.v8.css")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,5 +206,17 @@ func TestAdminDeploymentVersionPageAndAuthorization(t *testing.T) {
 	overlay := cssRuleBlock(t, css, ".gallery-preview-grid")
 	if !strings.Contains(overlay, "position: absolute") || !strings.Contains(overlay, "pointer-events: none") {
 		t.Fatal("gallery preview grid overlay should sit above the sheet image", overlay)
+	}
+	// GIF 对照：原尺寸与放大 2 倍左右并排，且并排时不再被 88vh/960px 上限压缩。
+	stage = cssRuleBlock(t, css, ".gallery-preview-stage")
+	if !strings.Contains(stage, "display: flex") {
+		t.Fatal("gallery preview stage should lay the pair out side by side", stage)
+	}
+	pair := cssRuleBlock(t, css, ".gallery-preview-stage.pair .gallery-preview-panel img")
+	if !strings.Contains(pair, "max-width: none") || !strings.Contains(pair, "max-height: none") {
+		t.Fatal("paired preview must show true pixel sizes", pair)
+	}
+	if !strings.Contains(pair, "image-rendering: pixelated") {
+		t.Fatal("2x preview should use pixelated upscaling", pair)
 	}
 }

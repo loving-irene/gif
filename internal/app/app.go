@@ -32,9 +32,9 @@ var emailPattern = regexp.MustCompile(`^[a-z0-9_%+-]+(?:\.[a-z0-9_%+-]+)*@(?:[a-
 
 const networkErrorMessage = "网络异常，请稍后重试~"
 
-// generationSlots 是服务器同时执行的生成任务数上限，多出的任务按创建顺序排队；
+// 服务器同时执行的生成任务数上限由后台配置 settings.serverSlots 决定（默认 defaultServerSlots），
+// 存在 slotPool 里热调整；多出的任务按创建顺序排队。
 // /api/catalog 会把它下发给前台，用于估算并行动作的整批用时。
-const generationSlots = 2
 
 type App struct {
 	db         *sql.DB
@@ -43,7 +43,7 @@ type App struct {
 	jobsMu     sync.Mutex
 	submitMu   sync.Mutex
 	jobs       map[string]*Job
-	slots      chan struct{}
+	slots      *slotPool
 	uploads    chan struct{}
 	dispatch   chan struct{}
 	ctx        context.Context
@@ -94,7 +94,7 @@ func New(e Env) (*App, error) {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	a := &App{db: db, env: e, files: files, jobs: map[string]*Job{}, slots: make(chan struct{}, generationSlots), uploads: make(chan struct{}, 2), dispatch: make(chan struct{}, 1), ctx: ctx, cancel: cancel}
+	a := &App{db: db, env: e, files: files, jobs: map[string]*Job{}, slots: newSlotPool(defaultServerSlots), uploads: make(chan struct{}, 2), dispatch: make(chan struct{}, 1), ctx: ctx, cancel: cancel}
 	if _, err = db.Exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
  CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,email TEXT UNIQUE,name TEXT,gift INTEGER NOT NULL CHECK(gift>=0),paid INTEGER NOT NULL DEFAULT 0 CHECK(paid>=0),disabled INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL,ip TEXT NOT NULL DEFAULT '');
@@ -150,6 +150,10 @@ func New(e Env) (*App, error) {
 	if _, err = db.Exec("INSERT OR IGNORE INTO settings(key,value) VALUES('config',?)", string(raw)); err != nil {
 		a.Close()
 		return nil, err
+	}
+	// 生成槽位容量以后台配置为准（默认 defaultServerSlots），启动时同步一次。
+	if cfg, cfgErr := a.settings(); cfgErr == nil {
+		a.slots.setLimit(cfg.ServerSlots)
 	}
 	for name, value := range map[string]string{"api_key": e.APIKey, aliyunMailPasswordKey: e.AliyunMailPassword} {
 		if value != "" && a.secret(name) == "" {
@@ -693,7 +697,7 @@ func (a *App) catalog(w http.ResponseWriter, r *http.Request) {
 	respond(w, 200, map[string]any{
 		"categories": s.Categories, "styles": s.Styles, "actions": catalogActions(s),
 		"outfits": catalogOutfits(),
-		"chargeOnFailure": s.ChargeOnFailure, "configured": a.secret("api_key") != "", "emailConfigured": a.mailConfigured(s), "feedbackConfigured": a.feedbackConfigured(s), "estimates": a.estimates(s), "redeemHelp": s.RedeemHelp, "userConcurrency": s.UserConcurrency, "generationSlots": cap(a.slots), "motionGrid": s.MotionGrid,
+		"chargeOnFailure": s.ChargeOnFailure, "configured": a.secret("api_key") != "", "emailConfigured": a.mailConfigured(s), "feedbackConfigured": a.feedbackConfigured(s), "estimates": a.estimates(s), "redeemHelp": s.RedeemHelp, "userConcurrency": s.UserConcurrency, "generationSlots": a.slots.limitValue(), "motionGrid": s.MotionGrid,
 	})
 }
 

@@ -112,8 +112,11 @@ type Style struct {
 	Prompt   string `json:"prompt"`
 }
 type Settings struct {
-	DefaultCredits  int      `json:"defaultCredits"`
-	UserConcurrency int      `json:"userConcurrency"`
+	DefaultCredits  int `json:"defaultCredits"`
+	UserConcurrency int `json:"userConcurrency"`
+	// ServerSlots 是服务器同时执行的生成任务数上限（1..maxServerSlots，默认 defaultServerSlots）；
+	// 与单账号的 UserConcurrency 是两层限制：前者限全局并行，后者限单账号可挂的任务数。
+	ServerSlots     int      `json:"serverSlots"`
 	ChargeOnFailure bool     `json:"chargeOnFailure"`
 	RedeemHelp      string   `json:"redeemHelp"`
 	APIBase         string   `json:"apiBase"`
@@ -138,6 +141,13 @@ type Settings struct {
 
 // defaultStyleID 是未指定画风时使用的编号；界面上对应“默认”选项，效果与原有轻度Q版一致。
 const defaultStyleID = "default"
+
+// defaultServerSlots 是「服务端并行生成数」的默认值与兜底值：服务器同时执行 2 个生成任务。
+// 上限 maxServerSlots 用于约束后台可填范围，避免上游限流或内存占用失控。
+const (
+	defaultServerSlots = 2
+	maxServerSlots     = 8
+)
 
 // styleIDs 固定画风的顺序与编号：默认、Q版、水墨风格。
 var styleIDs = []string{defaultStyleID, "chibi", "ink"}
@@ -204,7 +214,7 @@ func validateStyles(list []Style) error {
 
 func defaults(e Env) Settings {
 	return Settings{
-		DefaultCredits: 5, UserConcurrency: 5, ChargeOnFailure: true,
+		DefaultCredits: 5, UserConcurrency: 5, ServerSlots: defaultServerSlots, ChargeOnFailure: true,
 		APIBase: openRouterAPIBase, Model: "openai/gpt-image-2.5-sunburst", Quality: "high", AssetHosts: []string{"openrouter.ai"}, MailHost: aliyunMailHost, MailPort: aliyunMailPort, MailUser: e.AliyunMailSender, MailFrom: e.AliyunMailSender,
 		IdentityPrompt: "以自拍中的本人为身份参考，人物面部辨识度最高优先。将参考照片头部转绘为精致二维插画，准确保留脸型宽长比例、下颌轮廓、额头比例、眉形、眼型、眼距、鼻形、嘴形、耳朵形状与位置、五官相对位置、发际线、发型、发色、肤色与年龄感，以及清晰可见的眼镜、痣、雀斑。头部作为整体等比例放大，面部内部结构不随Q版夸张。不瘦脸、不尖下巴、不放大眼睛或瞳孔、不缩小鼻子、不美白、不改变年龄，不添加原图没有的身份特征。脸部与身体使用统一二维绘画语言，避免照片脸贴卡通身。",
 		DraftPrompt:    compareDraftPrompt,
@@ -235,7 +245,14 @@ func defaultCategories() []Category {
 			{"milk_tea", "喝奶茶", "🧋", femaleActionMilkTea},
 			{"petal", "花丛中接花瓣", "🌼", femaleActionPetal},
 		}},
-		{ID: "child", Name: "小朋友", Subtitle: "收藏每一个天真可爱的瞬间", Icon: "★", Clothes: []string{"动物图案卫衣与长裤", "彩色背带裤", "休闲上衣与短裤"}, Colors: []string{"天空蓝与奶油黄", "桃粉与米白", "薄荷绿与浅黄"}, Weapons: []string{}, Prompt: "童趣活泼温暖，保留本人实际年龄阶段的脸颊、额头比例、眼型鼻形及清晰可见的乳牙特点。不把不同年龄都画成婴儿脸，无成人妆容成熟五官。简洁衣服图案圆头运动鞋，不戴遮脸动物头套。搭配固定造型的小熊毛绒玩具。全身保持极致Q版5:1头身比。", Actions: []Action{{"wave", "你好呀", "👋", "自然笑容，一只手在肩旁小幅举起挥动两下再放下；手臂短小，举手最高点距格顶至少约格高12%边距。全程同一取景尺度与脚底基准线：头顶完整入格、鞋底完整入格且略靠格底（距格底约6%–10%边距），最后收势数格脚更靠下但仍留安全边；禁止角色放大到贴顶或贴底，禁止邻格头顶渗进本格脚下。"}, {"clap", "好棒好棒", "👏", "开心拍手两次，身体轻轻起伏。"}, {"jump", "耶！成功啦", "🎉", "双手举起，原地轻跳一次，落回起点。"}, {"hug", "抱抱玩偶", "🧸", "抱紧小熊毛绒玩具，轻微左右摇摆，不遮脸。"}, {"curious", "好奇看看", "🔍", "头轻偏一侧，眨眼，再回正。"}, {"sleep", "困了晚安", "☾", "抱玩偶打小哈欠，眼睛慢慢闭合再睁开。"}}},
+		{ID: "child", Name: "小朋友", Subtitle: "收藏每一个天真可爱的瞬间", Icon: "★", Clothes: []string{"动物图案卫衣与长裤", "彩色背带裤", "休闲上衣与短裤"}, Colors: []string{"天空蓝与奶油黄", "桃粉与米白", "薄荷绿与浅黄"}, Weapons: []string{}, Prompt: "童趣活泼温暖，保留本人实际年龄阶段的脸颊、额头比例、眼型鼻形及清晰可见的乳牙特点。不把不同年龄都画成婴儿脸，无成人妆容成熟五官。简洁衣服图案圆头运动鞋，不戴遮脸动物头套。搭配固定造型的小熊毛绒玩具。全身保持极致Q版5:1头身比。", Actions: []Action{
+			{"bubbles", "吹泡泡", "🫧", childActionBubbles},
+			{"lollipop", "舔棒棒糖", "🍭", childActionLollipop},
+			{"peekaboo", "躲猫猫", "🙈", childActionPeekaboo},
+			{"blocks", "搭积木", "🧱", childActionBlocks},
+			{"airplane", "开小飞机", "✈", childActionAirplane},
+			{"carry_me", "要抱抱", "🤗", childActionCarryMe},
+		}},
 		{ID: "daily", Name: "日常", Subtitle: "情侣与年轻人的聊天贴纸", Icon: "☀", Clothes: []string{"白色翻领短袖与短裤", "宽松卫衣与长裤", "休闲T恤与牛仔裤"}, Colors: []string{"白与深蓝", "奶白与灰", "浅彩休闲"}, Weapons: []string{}, Prompt: "年轻人日常单人贴纸角色，服装简洁贴合微型身体，不增大体积。保留本人年龄与面部特征，表情自然可发聊天。全身必须保持极致Q版5:1头身比，单人出镜，不出现第二人。", Actions: []Action{
 			{"morning", "早呀", "☀", "微带困意揉眼一下（手不遮五官），再小幅挥手问好两次，浅笑，放下回站姿。举手幅度小，手臂保持短小，头顶与举手最高点距格顶至少约格高10%透明边距，脚底距格底同样留边；禁止邻格头顶渗进本格脚下。"},
 			{"eat_ask", "吃饭了么", "🍚", "关切表情，胸前端极小白碗向前递一点并点头，再收回回站姿。"},
@@ -288,8 +305,9 @@ func normalizeCategories(list []Category) []Category {
 			c.Actions = dedupeDailyHeart(c.Actions)
 		}
 		if c.ID == "child" {
-			c.Actions = upgradeActionPrompt(c.Actions, d.Actions, "wave",
-				"一只手举起挥动，自然笑容，再放下。")
+			c.Actions = removeActions(c.Actions, childLegacyActionIDs...)
+			c.Actions = ensureActions(c.Actions, d.Actions,
+				"bubbles", "lollipop", "peekaboo", "blocks", "airplane", "carry_me")
 		}
 		if c.ID == "female" {
 			c.Actions = removeActions(c.Actions, femaleLegacyActionIDs...)
@@ -327,6 +345,9 @@ var maleLegacyActionIDs = []string{"idle", "greet", "attack", "guard", "win", "r
 
 // femaleLegacyActionIDs 是已下线的旧短文案女生动作，加载配置时从女生分类移除。
 var femaleLegacyActionIDs = []string{"wave", "heart", "clap", "cheer", "shy", "sleep"}
+
+// childLegacyActionIDs 是已下线的旧短文案小朋友动作，加载配置时从小朋友分类移除。
+var childLegacyActionIDs = []string{"wave", "clap", "jump", "hug", "curious", "sleep"}
 
 // removeActions 按编号删掉指定动作，保留其余自定义动作。
 func removeActions(have []Action, removeIDs ...string) []Action {
@@ -452,6 +473,10 @@ func (a *App) settings() (Settings, error) {
 	if s.UserConcurrency < 1 {
 		s.UserConcurrency = 5
 	}
+	// 兼容较早的配置：未设置服务端并行生成数时使用默认值 2。
+	if s.ServerSlots < 1 {
+		s.ServerSlots = defaultServerSlots
+	}
 	// 兼容较早的配置：未设置动作序列图规格时使用默认 5×5（共25格、每帧128×128）。
 	if s.MotionGrid == "" {
 		s.MotionGrid = "5x5"
@@ -532,6 +557,10 @@ func validateSettings(s Settings) error {
 	}
 	if s.UserConcurrency < 1 || s.UserConcurrency > 20 {
 		return errors.New("单用户并发任务数需在1到20之间")
+	}
+	// 旧后台页面不带服务端并行生成数（0），保存前会补默认值，这里只拦超出范围的值。
+	if s.ServerSlots < 0 || s.ServerSlots > maxServerSlots {
+		return fmt.Errorf("服务端并行生成数需在1到%d之间", maxServerSlots)
 	}
 	if !contains(allowedAPIBases(), strings.TrimRight(s.APIBase, "/")) {
 		return errors.New("请选择已支持的画图供应商地址")
