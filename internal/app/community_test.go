@@ -417,7 +417,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 	if !strings.Contains(body, `href="/community"`) || !strings.Contains(body, `class="community-link"`) {
 		t.Fatal("homepage missing community entry")
 	}
-	for _, asset := range []string{"/assets/app.v56.js", "/assets/style.v42.css"} {
+	for _, asset := range []string{"/assets/app.v59.js", "/assets/style.v44.css"} {
 		if !strings.Contains(body, asset) {
 			t.Fatal("homepage missing updated asset", asset)
 		}
@@ -425,7 +425,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 			t.Fatal("updated asset not embedded", asset, err)
 		}
 	}
-	raw, err := web.ReadFile("web/app.v56.js")
+	raw, err := web.ReadFile("web/app.v59.js")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -438,12 +438,18 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 		"gallery-gif",
 		"work.hasSheet",
 		"invalidateDraftsForNewSelfie",
+		"archiveCurrentSelfie",
+		"selfieForCandidate",
 		"showConcurrencyLimitDialog",
 		"showSelectionOverLimitDialog",
 		"chooseClothes",
 		"catalogOutfits",
 		"clothesSelect",
 		"clothesChangedFromDraft",
+		"startSendCodeCooldown",
+		`btn.classList.add("is-loading")`,
+		"上一张照片的定稿已保留在「我的定稿」中",
+		"已切换定稿，并恢复对应自拍",
 	} {
 		if !strings.Contains(source, want) {
 			t.Fatal("homepage motion quality contract missing", want)
@@ -452,7 +458,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 	if strings.Contains(source, "gallery-sheet") || strings.Contains(source, "保存原图") {
 		t.Fatal("frontend gallery must not show motion sheet; admin gallery only")
 	}
-	cssRaw, err := web.ReadFile("web/style.v42.css")
+	cssRaw, err := web.ReadFile("web/style.v44.css")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -480,7 +486,7 @@ func TestHomepageAccountEntryStaysClickable(t *testing.T) {
 	if !strings.Contains(body, `id="accountLockedHint"`) {
 		t.Fatal("account dialog missing locked hint")
 	}
-	raw, err := web.ReadFile("web/app.v56.js")
+	raw, err := web.ReadFile("web/app.v59.js")
 	if err != nil {
 		t.Fatal("homepage script not embedded", err)
 	}
@@ -496,9 +502,15 @@ func TestHomepageAccountEntryStaysClickable(t *testing.T) {
 		t.Fatal("draft reuse helpers missing")
 	}
 	if !strings.Contains(source, "function invalidateDraftsForNewSelfie()") {
-		t.Fatal("replacing selfie must invalidate old drafts")
+		t.Fatal("replacing selfie must clear current draft binding")
 	}
-	if !strings.Contains(source, "selfieGeneration") || !strings.Contains(source, "已忽略上一张照片的定稿结果") {
+	if !strings.Contains(source, "candidates: profile?.candidates || []") {
+		t.Fatal("replacing selfie must keep already generated draft images")
+	}
+	if !strings.Contains(source, "function archiveCurrentSelfie()") || !strings.Contains(source, "function selfieForCandidate(c)") {
+		t.Fatal("replacing selfie must archive prior selfies for draft reuse")
+	}
+	if !strings.Contains(source, "selfieGeneration") || !strings.Contains(source, "上一张照片的定稿已保留在「我的定稿」中") {
 		t.Fatal("draft results must be tied to the selfie generation that created them")
 	}
 	if !strings.Contains(source, "已有选定定稿：只确认凭证，绝不重新生成") {
