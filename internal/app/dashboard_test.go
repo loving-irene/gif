@@ -167,17 +167,42 @@ func TestAdminDashboardEmail(t *testing.T) {
 	}
 
 	page := request(t, a, nil, "GET", "/who", nil).Body.String()
-	if !strings.Contains(page, `id="sendDashEmail"`) || !strings.Contains(page, "/assets/admin.v52.js") {
+	if !strings.Contains(page, `id="sendDashEmail"`) || !strings.Contains(page, "/assets/admin.v54.js") {
 		t.Fatal("dashboard email button or versioned script missing")
 	}
-	raw, err := web.ReadFile("web/admin.v52.js")
+	// 数据看板用「新增用户」那套卡片；六个列表页签用表格，但都不再有点按弹出的完整内容弹窗。
+	if strings.Contains(page, "adminValueDialog") || strings.Contains(page, "admin-cell-value") || strings.Contains(page, "点按数据查看完整内容") {
+		t.Fatal("admin page should not keep the full-content popup")
+	}
+	for _, id := range []string{"jobsRows", "historyRows", "codesRows", "creditsRows", "usersRows", "auditRows"} {
+		if !strings.Contains(page, `<tbody id="`+id+`"></tbody>`) {
+			t.Fatalf("admin list %s should render as a table body", id)
+		}
+	}
+	for _, head := range []string{"<th>状态</th>", "<th>失败原因</th>", "<th>编号</th>", "<th>备注</th>", "<th>注册IP</th>", "<th>详情</th>"} {
+		if !strings.Contains(page, head) {
+			t.Fatalf("admin table header %s missing", head)
+		}
+	}
+	raw, err := web.ReadFile("web/admin.v54.js")
 	if err != nil || !strings.Contains(string(raw), "/api/admin/dashboard/email") {
 		t.Fatal("dashboard email frontend action missing", err)
 	}
 	if !strings.Contains(string(raw), "dash-row dash-cards") || !strings.Contains(string(raw), "dash-row dash-split") {
 		t.Fatal("dashboard should render metric/today/top rows as cards")
 	}
-	styleRaw, err := web.ReadFile("web/style.v43.css")
+	for _, want := range []string{`renderRows("jobsRows"`, `renderRows("historyRows"`, `renderRows("codesRows"`, `renderRows("creditsRows"`, `renderRows("usersRows"`, `renderRows("auditRows"`} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("admin script missing table renderer %s", want)
+		}
+	}
+	// 弹窗相关实现已彻底移除，列表只用表格行渲染。
+	for _, gone := range []string{"dashTable", "adminValueDialog", "admin-cell-value", "renderRecords", "recordCard"} {
+		if strings.Contains(string(raw), gone) {
+			t.Fatalf("admin script should no longer use %q", gone)
+		}
+	}
+	styleRaw, err := web.ReadFile("web/style.v47.css")
 	if err != nil {
 		t.Fatal(err)
 	}

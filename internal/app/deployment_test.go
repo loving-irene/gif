@@ -150,12 +150,12 @@ func TestAdminDeploymentVersionPageAndAuthorization(t *testing.T) {
 	}
 
 	body := request(t, a, nil, "GET", "/who", nil).Body.String()
-	for _, want := range []string{"/assets/admin.v52.js", "/assets/style.v43.css", "10×10 · 源2048×2048 · GIF 256×256", `data-tab="gallerySection"`, `id="gallerySection"`, `data-tab="deploymentSection"`, `id="deploymentSection"`, `id="refreshDeployment"`, `id="deploymentOutput"`, `id="galleryPreviewDialog"`, `id="galleryPreviewGrid"`, `id="galleryPreviewImage2x"`, `id="galleryPreviewPanel2"`, `id="galleryPreviewCaption2"`, `id="serverSlots"`, `id="userConcurrency"`} {
+	for _, want := range []string{"/assets/admin.v54.js", "/assets/style.v47.css", "10×10 · 源2048×2048 · GIF 256×256", `data-tab="gallerySection"`, `id="gallerySection"`, `data-tab="deploymentSection"`, `id="deploymentSection"`, `id="refreshDeployment"`, `id="deploymentOutput"`, `id="galleryPreviewDialog"`, `id="galleryPreviewGrid"`, `id="galleryPreviewImage2x"`, `id="galleryPreviewPanel2"`, `id="galleryPreviewCaption2"`, `id="serverSlots"`, `id="userConcurrency"`} {
 		if !strings.Contains(body, want) {
 			t.Fatal("admin deployment page missing", want)
 		}
 	}
-	raw, err := web.ReadFile("web/admin.v52.js")
+	raw, err := web.ReadFile("web/admin.v54.js")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestAdminDeploymentVersionPageAndAuthorization(t *testing.T) {
 	if !strings.Contains(body, `href="/compare"`) || !strings.Contains(body, "模型对比") {
 		t.Fatal("admin tabs missing compare entry")
 	}
-	styleRaw, err := web.ReadFile("web/style.v43.css")
+	styleRaw, err := web.ReadFile("web/style.v47.css")
 	if err != nil {
 		t.Fatal(err)
 	}

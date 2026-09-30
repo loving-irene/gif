@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="robots" content="noindex,nofollow" />
     <title>管理工作台 · 拾光 GIF</title>
-    <link rel="stylesheet" href="/assets/style.v43.css" />
+    <link rel="stylesheet" href="/assets/style.v47.css" />
     <link rel="stylesheet" href="/assets/image-display.v8.css" />
     <link rel="icon" href="/assets/icon.v1.svg" />
-    <script type="module" src="/assets/admin.v52.js"></script>
+    <script type="module" src="/assets/admin.v54.js"></script>
   </head>
   <body>
     <header class="header wrap admin-wrap">
@@ -214,7 +214,7 @@
                   max="8"
                   required />
                 <small class="hint"
-                  >服务器同时执行的生成任务数，默认 2；多出的任务按提交顺序排队，改完保存立即生效。</small
+                  >服务器同时执行的生成任务数，默认 5；多出的任务按提交顺序排队，改完保存立即生效。</small
                 ></label
               ><label
                 >扣次规则<select id="chargeOnFailure">
@@ -406,7 +406,7 @@
             ><button class="secondary">搜索</button>
           </form>
           <p class="hint">
-            记录账号获得次数的全部来源：注册赠送、兑换码兑换（备注列为兑换码编号，可与“兑换码”页签对照）、后台手动增加，按时间倒序。升级前创建的注册赠送按估算回溯，备注标注“历史估算”。
+            记录账号获得次数的全部来源：注册赠送、兑换码兑换（备注为兑换码编号，可与“兑换码”页签对照）、后台手动增加，按时间倒序。升级前创建的注册赠送按估算回溯，备注标注“历史估算”。
           </p>
           <button id="refreshCredits" class="text-button" type="button">
             ↻ 立即刷新
@@ -515,12 +515,6 @@
         </section>
       </div>
     </main>
-    <dialog id="adminValueDialog" class="admin-value-dialog" aria-labelledby="adminValueTitle">
-      <h2 id="adminValueTitle">完整内容</h2>
-      <p class="hint">内容较长时可左右滑动查看，也可选中复制。</p>
-      <pre id="adminValueText" tabindex="0"></pre>
-      <form method="dialog"><button class="secondary">关闭</button></form>
-    </dialog>
     <dialog id="galleryPreviewDialog" class="gallery-preview-dialog" aria-label="图片预览">
       <button type="button" id="galleryPreviewClose" class="gallery-preview-close" aria-label="关闭预览">×</button>
       <div class="gallery-preview-stage" id="galleryPreviewStage">

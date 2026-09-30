@@ -142,10 +142,10 @@ type Settings struct {
 // defaultStyleID 是未指定画风时使用的编号；界面上对应“默认”选项，效果与原有轻度Q版一致。
 const defaultStyleID = "default"
 
-// defaultServerSlots 是「服务端并行生成数」的默认值与兜底值：服务器同时执行 2 个生成任务。
+// defaultServerSlots 是「服务端并行生成数」的默认值与兜底值：服务器同时执行 5 个生成任务。
 // 上限 maxServerSlots 用于约束后台可填范围，避免上游限流或内存占用失控。
 const (
-	defaultServerSlots = 2
+	defaultServerSlots = 5
 	maxServerSlots     = 8
 )
 
@@ -473,7 +473,7 @@ func (a *App) settings() (Settings, error) {
 	if s.UserConcurrency < 1 {
 		s.UserConcurrency = 5
 	}
-	// 兼容较早的配置：未设置服务端并行生成数时使用默认值 2。
+	// 兼容较早的配置：未设置服务端并行生成数时使用默认值 5。
 	if s.ServerSlots < 1 {
 		s.ServerSlots = defaultServerSlots
 	}

@@ -21,18 +21,17 @@
       {{.StructuredData}}
     </script>
     <link rel="icon" href="/assets/icon.v1.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/assets/style.v44.css" />
+    <link rel="stylesheet" href="/assets/style.v45.css" />
     <link rel="stylesheet" href="/assets/image-display.v1.css" />
-    <script src="/assets/app.v59.js" type="module"></script>
-    <script src="/assets/share.v3.js" type="module"></script>
+    <script src="/assets/app.v60.js" type="module"></script>
+    <script src="/assets/share.v4.js" type="module"></script>
     <script src="/assets/contact.v1.js" type="module"></script>
     <script src="/assets/showcase.v2.js" type="module"></script>
   </head>
   <body>
     <header class="header wrap">
       <a class="brand" href="/" aria-label="拾光 GIF 首页"
-        ><span class="brand-mark">✳</span
-        ><span>拾光 <b>GIF</b><small>一点灵感，很多可爱</small></span></a
+        ><span class="brand-mark">✳</span><span>拾光 <b>GIF</b></span></a
       >
       <nav>
         <a class="community-link" href="/community" aria-label="浏览社区分享"
@@ -62,12 +61,7 @@
       <div id="notice" class="notice" role="status" hidden></div>
       <section class="showcase" aria-labelledby="showcaseTitle">
         <div class="showcase-intro">
-          <span class="eyebrow">FROM SELFIE TO GIF</span>
           <h2 id="showcaseTitle">一张自拍，三步变成动图</h2>
-          <p>
-            上传自拍后选动作，系统自动生成定稿再做成循环 GIF。约 1.4
-            秒无限循环，微信、QQ 表情都能直接用。
-          </p>
         </div>
         <ol class="showcase-flow" aria-label="从自拍到动图">
           <li class="showcase-stage">
@@ -114,21 +108,16 @@
           </li>
         </ol>
         <div class="showcase-actions">
-          <a class="text-button showcase-more" href="#studioTitle"
-            >我也要做一支 →</a
-          >
-          <p class="showcase-note">
-            ✧ 示例为真实生成效果：自拍 → 定稿 → GIF 动画；定稿与动图使用原始文件。
-          </p>
+          <a class="text-button showcase-more" href="#studioTitle">开始制作 →</a>
+          <p class="showcase-note">✧ 以上为真实生成示例。</p>
         </div>
       </section>
       <section class="studio" aria-labelledby="studioTitle">
         <div class="studio-header">
           <div>
-            <span class="eyebrow">LET'S MAKE SOMETHING YOU</span>
-            <h2 id="studioTitle">开始你的小小创作</h2>
+            <h2 id="studioTitle">开始创作</h2>
           </div>
-          <span class="local-tag">✦ 任务在服务器后台执行，可关闭页面</span>
+          <span class="local-tag">✦ 后台生成，可关闭页面</span>
         </div>
         <ol class="steps" aria-label="制作步骤">
           <li class="active" id="step1">
@@ -155,8 +144,7 @@
         </section>
         <div id="setup" class="setup-grid">
           <div>
-            <label class="field-title" for="photo"
-              >01 <b>上传一张你喜欢的自拍</b></label
+            <label class="field-title" for="photo">01 上传自拍</label
             ><label class="upload" id="dropzone" for="photo"
               ><input
                 id="photo"
@@ -165,36 +153,32 @@
               />
               <div id="uploadEmpty">
                 <span class="upload-icon">＋</span
-                ><strong>把你的照片放在这里</strong>
-                <p>点击选择，或拖入一张自拍</p>
-                <small>JPG / PNG / WebP · 超过 5 MB 自动压缩</small>
+                ><strong>点击或拖入自拍</strong>
+                <small>JPG / PNG / WebP · 超 5 MB 自动压缩</small>
               </div>
               <img id="photoPreview" alt="选中的自拍预览" hidden /><span
                 class="replace"
                 id="replacePhoto"
                 hidden
-                >↻ 换一张照片</span
+                >↻ 换照片</span
               ></label
             >
             <p id="photoInfo" class="hint">
-              正脸清晰、光线均匀，会更像你哦。保留发型和眼镜，避免重度美颜。
+              正脸清晰、光线均匀更像你；避免重度美颜。
             </p>
             <div class="privacy-card">
               <span>♡</span>
               <p>
-                <b>你的照片，值得被好好对待</b
-                ><br />照片会发送给图像服务处理，服务器暂存任务输入以便后台生成，
-                任务结束后删除输入，残留输入最多保留 3 天。云端定稿保留最近 30 张，
-                云端作品最多保留 3 天；主动分享的社区图片独立保存，可取消分享。
+                <b>照片会被如何处理</b
+                ><br />照片会发送给图像服务处理；任务结束后删除输入，残留最多 3
+                天。云端定稿保留最近 30 张，云端作品最多 3 天；社区分享独立保存，可取消。
               </p>
             </div>
           </div>
           <div class="creation-summary">
-            <p>上传自拍后直接去选动作；系统会自动生成定稿，再做成动画。</p>
-            <small>已有定稿时换动作只生成动画 · 定稿与每个动作各消耗 1 次</small>
             <p id="draftEstimate" class="hint">正在获取时间预估…</p>
             <p id="serviceStatus" class="hint" role="status" hidden>
-              图像服务尚未就绪。管理员完成配置后，请重新检查服务。
+              图像服务尚未就绪，管理员完成配置后请重新检查。
             </p>
             <button
               id="refreshServiceBtn"
@@ -212,14 +196,11 @@
         <section id="motionSection" hidden>
           <div class="section-heading">
             <div>
-              <span class="eyebrow">PICK YOUR LITTLE MOODS</span>
               <h3>今天，想表达什么心情？</h3>
-              <p>选好动作后一次生成定稿和动画；已有定稿时换动作即可继续做动画。</p>
             </div>
           </div>
           <div id="motionEmpty" class="step-empty" hidden>
             <h3>先上传一张自拍</h3>
-            <p>上传自拍后就可以挑选动作，一次完成定稿和动画。</p>
             <button id="motionEmptyBtn" class="secondary" type="button">
               ← 返回上传自拍
             </button>
@@ -241,21 +222,23 @@
             <p class="motion-pick-label">选择动作</p>
             <div class="actions" id="actions" role="group" aria-label="可选动作"></div>
             <div class="queue-bar">
-            <p>
-              已选 <b id="selectedCount">0</b> 个动作
-              <span>· 预计使用 <b id="cost">0</b> 次</span>
-              <span>· 剩余 <b id="remainingCost">0</b> 次</span>
-            </p>
-            <div>
-              <button id="stopBtn" class="secondary" hidden>
-                停止提交新动作</button
-              ><button id="motionBtn" class="primary" disabled>
-                生成定稿并做成动画 ✦
-              </button>
+              <p>
+                已选 <b id="selectedCount">0</b> 个动作
+                <span>· 预计使用 <b id="cost">0</b> 次</span>
+                <span>· 剩余 <b id="remainingCost">0</b> 次</span>
+              </p>
+              <div>
+                <button id="stopBtn" class="secondary" hidden>
+                  停止提交新动作</button
+                ><button id="motionBtn" class="primary" disabled>
+                  生成动画 ✦
+                </button>
+              </div>
             </div>
-          </div>
-          <p class="hint" id="chargeHint"></p>
-          <p class="hint" id="motionEstimate">选择动作后显示整组预计用时。</p>
+            <p class="hint" id="chargeHint"></p>
+            <p class="hint" id="motionEstimate">
+              选择动作后显示整组预计用时。
+            </p>
           </div>
         </section>
         <div
@@ -271,53 +254,33 @@
       <section id="collection" class="collection">
         <div class="section-heading">
           <div>
-            <span class="eyebrow">YOUR LITTLE COLLECTION</span>
-            <h2>我的小小作品集 <span id="galleryCount">0</span></h2>
-            <p>留住每一个属于你的生动瞬间。</p>
+            <h2>我的作品集 <span id="galleryCount">0</span></h2>
           </div>
           <button id="refreshGallery" class="text-button"
-            ><span class="refresh-icon" aria-hidden="true">↻</span> 刷新作品</button
+            ><span class="refresh-icon" aria-hidden="true">↻</span>
+            刷新</button
           >
         </div>
         <div class="save-notice">
-          ☁ 同一账号可跨设备同步云端定稿和作品；云端定稿保留最近 30 张，作品最多保留 3
-          天。主动分享到社区的图片不随作品到期删除；本机作品集清理浏览器数据后会丢失。<strong
-            >请及时下载长期保存。</strong
+          ☁ 同一账号可跨设备同步；云端定稿保留最近 30 张，作品最多 3
+          天；社区分享不随作品到期删除；本机作品清理浏览器数据后会丢失，<strong
+            >请及时下载保存。</strong
           >
         </div>
         <div id="gallery" class="gallery"></div>
         <div id="galleryEmpty" class="empty">
           <span>✿</span>
-          <h3>你的第一份可爱，即将出现</h3>
-          <p>完成上面的创作，把专属的小分身带回家。</p>
-        </div>
-      </section>
-      <section class="how-it-works">
-        <div>
-          <b>01</b>
-          <h3>上传一张自拍</h3>
-          <p>正脸清晰即可。系统会尽量保留你的脸型、发型与个人特点。</p>
-        </div>
-        <div>
-          <b>02</b>
-          <h3>挑选分类与动作</h3>
-          <p>在男生、女生、小朋友或日常里切换，勾选一个或多个想做的动作。</p>
-        </div>
-        <div>
-          <b>03</b>
-          <h3>一次做成动图</h3>
-          <p>首次会自动生成定稿再做成 GIF；已有定稿时换动作即可继续生成，记得下载保存。</p>
+          <h3>还没有作品</h3>
         </div>
       </section>
       <section class="gif-guide" id="gif-guide" aria-labelledby="guideTitle">
-        <span class="eyebrow">A SMALL GUIDE TO YOUR GIF</span>
-        <h2 id="guideTitle">从一张自拍，到专属于你的 GIF 动图</h2>
+        <h2 id="guideTitle">从自拍，到专属于你的 GIF</h2>
         <p>
           拾光 GIF
-          是一款在浏览器中使用的自拍动图生成工具。上传自拍后选择分类与动作，系统会自动生成像你的角色定稿，再做成循环
-          GIF；已有定稿时，换动作就能继续出新动图。你可以随时下载喜欢的作品。
+          是一款浏览器自拍动图工具：上传自拍、选择分类与动作，自动生成角色定稿与循环
+          GIF，可随时下载。
         </p>
-        <a class="text-button" href="#studioTitle">开始制作我的 GIF →</a>
+        <a class="text-button" href="#studioTitle">开始制作 →</a>
         <div class="faq-grid" id="faq">
           {{range .FAQ}}
           <article class="faq-card">
@@ -330,7 +293,6 @@
     </main>
     <footer class="wrap footer">
       <a class="brand" href="/"><span class="brand-mark">✳</span>拾光 GIF</a>
-      <p>让普通的一天，多一点可爱。</p>
       <button
         id="contactOpenBtn"
         class="text-button"
@@ -353,9 +315,8 @@
       >
         ×
       </button>
-      <span class="eyebrow">LET'S SAY HELLO</span>
       <h2 id="contactTitle">联系我</h2>
-      <p>打开微信扫一扫，或保存二维码后在微信中识别。</p>
+      <p>微信扫一扫，或保存二维码后识别。</p>
       <p id="contactStatus" class="hint" role="status">正在载入二维码…</p>
       <img id="contactQR" class="contact-qr" alt="联系我的微信二维码" />
       <a
@@ -369,8 +330,7 @@
     </dialog>
     <dialog id="accountDialog">
       <button class="close" data-close aria-label="关闭">×</button
-      ><span class="eyebrow">YOUR ACCOUNT</span>
-      <h2>把创作次数，带到另一台设备</h2>
+      ><h2>跨设备同步创作次数</h2>
       <p id="accountInfo" class="hint"></p>
       <p id="accountLockedHint" class="hint" role="status" hidden></p>
       <form id="nameForm">
@@ -381,17 +341,13 @@
             placeholder="选填，如：小可爱_01"
             autocomplete="nickname"
         /></label>
-        <p class="hint">
-          最长 20
-          个字符，仅支持中文、字母、数字及 _ - ·；空格、特殊符号（如
-          &lt;&gt;&quot;'&amp;/）和表情不可用。
-        </p>
+        <p class="hint">最多 20 字符，仅支持中文、字母、数字及 _ - ·。</p>
         <button id="saveNameBtn" type="submit" class="secondary">
           保存账户名
         </button>
       </form>
       <p class="hint">
-        邮箱验证码登录后，同步账号与剩余次数。作品仍保留在各自设备。已有邮箱账号不会叠加新设备免费次数。
+        登录后同步账号与剩余次数；作品仍在各自设备。已有邮箱账号不叠加新设备免费次数。
       </p>
       <form id="emailForm">
         <label
@@ -422,28 +378,25 @@
         <button class="primary" id="verifyBtn">关联邮箱 / 登录</button>
       </form>
       <button id="callsOpenBtn" class="text-button" type="button">
-        查看调用记录 →
+        调用记录 →
       </button>
-      <button id="logoutBtn" class="text-button">退出当前账号</button>
+      <button id="logoutBtn" class="text-button">退出账号</button>
     </dialog>
     <dialog id="callsDialog">
       <button class="close" data-close aria-label="关闭">×</button
-      ><span class="eyebrow">MY ACTIVITY</span>
-      <h2>最近的调用记录</h2>
-      <p class="hint">仅保留最近 100 条创作调用（角色定稿与动作 GIF）。</p>
+      ><h2>调用记录</h2>
+      <p class="hint">仅保留最近 100 条。</p>
       <ol id="callsList" class="calls"></ol>
       <div id="callsEmpty" class="empty" hidden>
         <span>✿</span>
-        <h3>还没有调用记录</h3>
-        <p>生成角色定稿或动作 GIF 后，这里会留下每一次足迹。</p>
+        <h3>还没有记录</h3>
       </div>
     </dialog>
     <dialog id="redeemDialog">
       <button class="close" data-close aria-label="关闭">×</button
-      ><span class="eyebrow">A LITTLE MORE CREATIVITY</span>
-      <h2>为下一份可爱，添一点次数</h2>
+      ><h2>增加创作次数</h2>
       <p id="redeemReason" class="redeem-reason" role="alert" hidden></p>
-      <p class="redeem-bonus">✦ 添加微信多增加20%</p>
+      <p class="redeem-bonus">✦ 添加微信多增加 20%</p>
       <p id="redeemQRStatus" class="hint" role="status">正在载入二维码…</p>
       <img
         id="redeemQR"
@@ -458,7 +411,7 @@
         hidden
         >↓ 保存二维码</a
       >
-      <p class="hint">打开微信扫一扫，添加好友即可获得更多创作次数。</p>
+      <p class="hint">扫码添加微信，即可获得次数。</p>
       <section
         id="redeemHelpSection"
         class="redeem-help"
@@ -468,7 +421,7 @@
       >
         <h3 id="redeemHelpTitle">获取兑换码</h3>
         <p id="redeemHelpContent"></p>
-        <p class="copy-hint">点击此区域即可复制以上内容</p>
+        <p class="copy-hint">点击复制</p>
       </section>
       <form id="redeemForm">
         <label
@@ -478,15 +431,13 @@
             maxlength="40"
             placeholder="XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX"
             autocomplete="off" /></label
-        ><button class="primary" id="redeemBtn">兑换创作次数 ✦</button>
-        <p class="hint">已有兑换码？输入后立即到账，永久有效、每码限兑换一次。</p>
+        ><button class="primary" id="redeemBtn">兑换 ✦</button>
+        <p class="hint">每码限兑一次，永久有效。</p>
       </form>
     </dialog>
     <dialog id="shareDialog" class="share-dialog" aria-labelledby="shareTitle">
       <button id="shareCloseBtn" class="close" aria-label="关闭分享">×</button>
-      <span class="eyebrow">SHARE A LITTLE JOY</span>
-      <h2 id="shareTitle">把这份可爱，分享出去</h2>
-      <p class="hint">选一段暖暖的文案，或带走一张能扫码的海报。</p>
+      <h2 id="shareTitle">分享</h2>
       <div class="share-tabs" role="tablist" aria-label="分享方式">
         <button
           id="shareTextTab"
@@ -511,7 +462,7 @@
         role="tabpanel"
         aria-labelledby="shareTextTab"
       >
-        <label for="shareText">带上网站链接，分享你发现的可爱</label>
+        <label for="shareText">分享文案</label>
         <textarea
           id="shareText"
           rows="10"
@@ -545,9 +496,7 @@
           hidden
           >↓ 保存海报</a
         >
-        <p class="hint">
-          1080 × 1440 高清 PNG · 可下载后转发，扫码直接打开网站。
-        </p>
+        <p class="hint">1080 × 1440 PNG · 扫码直接打开网站。</p>
       </section>
       <p id="shareFeedback" class="hint" role="status" hidden></p>
       <p id="shareError" class="warning-text" role="alert" hidden></p>
@@ -574,12 +523,8 @@
       >
         ×
       </button>
-      <span class="eyebrow">TELL ME WHAT YOU THINK</span>
-      <h2 id="feedbackTitle">说说你的想法</h2>
-      <p>
-        遇到问题、想要的动作或建议，都可以写在这里，最多 200
-        字。提交后会直接发到我的邮箱，并附带你的账号信息，方便必要时回复。
-      </p>
+      <h2 id="feedbackTitle">反馈</h2>
+      <p>最多 200 字；提交后会附上账号信息发到我的邮箱。</p>
       <form id="feedbackForm">
         <label
           >反馈内容<textarea

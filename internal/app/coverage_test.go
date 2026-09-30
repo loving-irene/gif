@@ -44,6 +44,18 @@ func setChargeOnFailure(t *testing.T, a *App, value bool) {
 	}
 }
 
+// setServerSlots 固定「服务端并行生成数」，让需要「槽位占满后排队」的用例不依赖默认值。
+func setServerSlots(t *testing.T, a *App, slots int) {
+	t.Helper()
+	cfg, _ := a.settings()
+	cfg.ServerSlots = slots
+	raw, _ := json.Marshal(cfg)
+	if _, err := a.db.Exec("UPDATE settings SET value=? WHERE key='config'", string(raw)); err != nil {
+		t.Fatal(err)
+	}
+	a.applyServerSlots(slots)
+}
+
 func TestResultFilesExpireAfterRetention(t *testing.T) {
 	a := testApp(t)
 	instantProvider(a)
@@ -179,6 +191,8 @@ func TestRestartRecoversJobsInsteadOfInterrupting(t *testing.T) {
 func TestQueuedJobWithoutInputFailsAndRefunds(t *testing.T) {
 	a := testApp(t)
 	setChargeOnFailure(t, a, false)
+	// 需要一个真正排队的任务：固定 2 个生成槽位，第三个任务排队后才删除它的输入文件。
+	setServerSlots(t, a, 2)
 	users := []*testSession{loginDevice(t, a, "lost-a"), loginDevice(t, a, "lost-b"), loginDevice(t, a, "lost-c")}
 	release := blockingProvider(a)
 	ids := make([]string, 3)
@@ -485,9 +499,13 @@ func TestUserConcurrencyConfigAndLimit(t *testing.T) {
 }
 
 // TestServerSlotsConfigurable 验证「服务端并行生成数」是后台配置项：
-// 默认 2、超范围拒绝、保存后立即作用于调度器（扩容马上补位、缩容不打断在跑的任务）。
+// 默认 5、超范围拒绝、保存后立即作用于调度器（扩容马上补位、缩容不打断在跑的任务）。
 func TestServerSlotsConfigurable(t *testing.T) {
 	a := testApp(t)
+	// 默认值固定为 5，避免误改回更小的并行度。
+	if defaultServerSlots != 5 {
+		t.Fatalf("「服务端并行生成数」默认值应为 5，实际 %d", defaultServerSlots)
+	}
 	cfg, _ := a.settings()
 	if cfg.ServerSlots != defaultServerSlots {
 		t.Fatalf("default server slots should be %d, got %d", defaultServerSlots, cfg.ServerSlots)

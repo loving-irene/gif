@@ -417,7 +417,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 	if !strings.Contains(body, `href="/community"`) || !strings.Contains(body, `class="community-link"`) {
 		t.Fatal("homepage missing community entry")
 	}
-	for _, asset := range []string{"/assets/app.v59.js", "/assets/style.v44.css"} {
+	for _, asset := range []string{"/assets/app.v60.js", "/assets/style.v45.css"} {
 		if !strings.Contains(body, asset) {
 			t.Fatal("homepage missing updated asset", asset)
 		}
@@ -425,7 +425,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 			t.Fatal("updated asset not embedded", asset, err)
 		}
 	}
-	raw, err := web.ReadFile("web/app.v59.js")
+	raw, err := web.ReadFile("web/app.v60.js")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -449,7 +449,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 		"startSendCodeCooldown",
 		`btn.classList.add("is-loading")`,
 		"上一张照片的定稿已保留在「我的定稿」中",
-		"已切换定稿，并恢复对应自拍",
+		"已切换定稿与对应自拍。",
 	} {
 		if !strings.Contains(source, want) {
 			t.Fatal("homepage motion quality contract missing", want)
@@ -458,7 +458,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 	if strings.Contains(source, "gallery-sheet") || strings.Contains(source, "保存原图") {
 		t.Fatal("frontend gallery must not show motion sheet; admin gallery only")
 	}
-	cssRaw, err := web.ReadFile("web/style.v44.css")
+	cssRaw, err := web.ReadFile("web/style.v45.css")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -486,7 +486,7 @@ func TestHomepageAccountEntryStaysClickable(t *testing.T) {
 	if !strings.Contains(body, `id="accountLockedHint"`) {
 		t.Fatal("account dialog missing locked hint")
 	}
-	raw, err := web.ReadFile("web/app.v59.js")
+	raw, err := web.ReadFile("web/app.v60.js")
 	if err != nil {
 		t.Fatal("homepage script not embedded", err)
 	}

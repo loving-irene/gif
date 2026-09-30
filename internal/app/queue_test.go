@@ -173,6 +173,8 @@ func TestJobsQueueWhenSlotsFullAndAdminListsActive(t *testing.T) {
 	one := loginDevice(t, a, "queue-one")
 	two := loginDevice(t, a, "queue-two")
 	three := loginDevice(t, a, "queue-three")
+	// 本用例验证「槽位占满后排队」，与默认值无关：显式固定为 2 个生成槽位。
+	setServerSlots(t, a, 2)
 	release := make(chan struct{})
 	a.providerCall = asProviderCall(func(context.Context, Settings, string, []string) (string, error) {
 		<-release
