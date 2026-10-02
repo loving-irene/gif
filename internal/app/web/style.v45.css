@@ -1471,7 +1471,10 @@ select {
   align-items: center;
   justify-content: space-between;
   border-top: 1px solid var(--line);
-  height: 100px;
+  min-height: 100px;
+  height: auto;
+  gap: 16px;
+  padding: 18px 0;
 }
 .footer .brand {
   font-size: 16px;
@@ -1487,6 +1490,27 @@ select {
   font-size: 10px;
   color: #a3978a;
   margin: 0;
+}
+.friend-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  font-size: 10px;
+  color: #a3978a;
+}
+.friend-links__label {
+  color: #b5a89a;
+}
+.friend-links a {
+  color: #7a6a58;
+  text-decoration: none;
+}
+.friend-links a:hover {
+  color: #5c4f3f;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
 }
 .notice {
   padding: 15px 20px;
@@ -2199,11 +2223,17 @@ dialog label {
     font-size: 9px;
   }
   .footer {
-    height: 85px;
+    min-height: 85px;
+    height: auto;
     gap: 10px;
   }
   .footer p {
     display: none;
+  }
+  .friend-links {
+    order: 3;
+    width: 100%;
+    justify-content: flex-start;
   }
   .draft-section {
     grid-template-columns: 1fr;
