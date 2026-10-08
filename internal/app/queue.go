@@ -265,17 +265,16 @@ func (a *App) saveDraft(uid, receipt string, selection Selection, image []byte, 
 	a.db.Exec("DELETE FROM drafts WHERE user_id=? AND receipt NOT IN (SELECT receipt FROM drafts WHERE user_id=? ORDER BY created DESC,rowid DESC LIMIT ?)", uid, uid, draftsPerUser)
 }
 
-// worksPerUser 是每个账号云端保留的作品张数上限（保留期窗口内），作品集跨设备同步按此淘汰最旧记录。
+// worksPerUser 是每个账号云端永久保留的作品件数上限，超出时淘汰最旧记录。
 const worksPerUser = 30
 
-// worksRetention 是云端作品集的保留时长，与任务结果文件的保留期一致（3天）：
-// 到期后由周期清理删除云端副本，设备需在窗口内完成同步；本机已保存的作品不受影响。
-const worksRetention = resultRetention
+// worksRetentionSeconds 下发给前端的云端作品保留秒数：0 表示永久保存（仍受 worksPerUser 约束）。
+const worksRetentionSeconds int64 = 0
 
 // saveWork 在动作任务成功后把作品写入 works 表并按账号淘汰最旧记录，实现同一账号
 // 跨设备的“我的作品集”同步。云端同时保存合成好的 GIF 与动作序列原图，供作品集展示、
-// 重新合成与后台图库核对；GIF 合成失败时至少保留动作原图。云端副本最多保留 worksRetention（3天）。
-// 保存失败不影响本次结果返回。
+// 重新合成与后台图库核对；GIF 合成失败时至少保留动作原图。云端副本永久保存，
+// 每账号最多 worksPerUser 件。保存失败不影响本次结果返回。
 func (a *App) saveWork(ctx context.Context, id, uid string, cfg Settings, selection Selection) {
 	var actionID string
 	a.db.QueryRow("SELECT COALESCE(action,'') FROM jobs WHERE id=?", id).Scan(&actionID)

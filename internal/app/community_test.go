@@ -181,14 +181,14 @@ func TestCommunityShareUploadsOwnGifOnly(t *testing.T) {
 	}
 }
 
-// 服务端没有作品副本时（作品是 3 天前生成的，云端副本早已到期清理），页面必须能只靠
+// 服务端没有作品副本时（本机作品从未上云或已被件数淘汰），页面必须能只靠
 // 本机 GIF 完成分享：这正是「点击分享 → 分享内容无效」的原因——客户端以为服务端有副本、
 // 没带图上来，服务端只能回错。这里钉住「带 id 又带 image」这条路必须成功。
 func TestCommunityShareWithoutServerWorkCopy(t *testing.T) {
 	a := testApp(t)
 	s := loginDevice(t, a, "share-nocopy")
 	gif := gifFixture(t)
-	// works 表里没有这条编号：模拟过了 3 天保留期、云端副本已被清理的老作品。
+	// works 表里没有这条编号：模拟服务端没有云端副本的本机作品。
 	w := request(t, a, s, "POST", "/api/community/share", map[string]any{
 		"id": "expired0001", "action": "可爱点头", "image": base64.StdEncoding.EncodeToString(gif),
 	})
@@ -340,7 +340,7 @@ func TestCommunitySharesFollowAccountMerge(t *testing.T) {
 	}
 }
 
-// 作品集到期清理只删私有副本，社区池里的分享不受影响（社区没有过期时间）。
+// 作品集永久保存后周期清理不删私有副本；社区池仍独立存在，取消分享前不受影响。
 func TestCommunitySharesOutliveWorksRetention(t *testing.T) {
 	a := testApp(t)
 	s := loginDevice(t, a, "share-retention")
@@ -352,11 +352,11 @@ func TestCommunitySharesOutliveWorksRetention(t *testing.T) {
 	a.cleanup()
 	var works int
 	a.db.QueryRow("SELECT COUNT(*) FROM works WHERE user_id=?", s.User.ID).Scan(&works)
-	if works != 0 {
-		t.Fatal("expired work was not cleaned", works)
+	if works != 1 {
+		t.Fatal("work should remain permanently after cleanup", works)
 	}
 	if page := readCommunity(t, a, s, ""); len(page.Items) != 1 {
-		t.Fatal("community share should never expire with the work", page.Items)
+		t.Fatal("community share should stay independent of works cleanup", page.Items)
 	}
 }
 
@@ -417,7 +417,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 	if !strings.Contains(body, `href="/community"`) || !strings.Contains(body, `class="community-link"`) {
 		t.Fatal("homepage missing community entry")
 	}
-	for _, asset := range []string{"/assets/app.v60.js", "/assets/style.v45.css"} {
+	for _, asset := range []string{"/assets/app.v61.js", "/assets/style.v45.css"} {
 		if !strings.Contains(body, asset) {
 			t.Fatal("homepage missing updated asset", asset)
 		}
@@ -425,7 +425,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 			t.Fatal("updated asset not embedded", asset, err)
 		}
 	}
-	raw, err := web.ReadFile("web/app.v60.js")
+	raw, err := web.ReadFile("web/app.v61.js")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -486,7 +486,7 @@ func TestHomepageAccountEntryStaysClickable(t *testing.T) {
 	if !strings.Contains(body, `id="accountLockedHint"`) {
 		t.Fatal("account dialog missing locked hint")
 	}
-	raw, err := web.ReadFile("web/app.v60.js")
+	raw, err := web.ReadFile("web/app.v61.js")
 	if err != nil {
 		t.Fatal("homepage script not embedded", err)
 	}

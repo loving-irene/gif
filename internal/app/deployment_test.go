@@ -150,17 +150,17 @@ func TestAdminDeploymentVersionPageAndAuthorization(t *testing.T) {
 	}
 
 	body := request(t, a, nil, "GET", "/who", nil).Body.String()
-	for _, want := range []string{"/assets/admin.v54.js", "/assets/style.v47.css", "10×10 · 源2048×2048 · GIF 256×256", `data-tab="gallerySection"`, `id="gallerySection"`, `data-tab="deploymentSection"`, `id="deploymentSection"`, `id="refreshDeployment"`, `id="deploymentOutput"`, `id="galleryPreviewDialog"`, `id="galleryPreviewGrid"`, `id="galleryPreviewImage2x"`, `id="galleryPreviewPanel2"`, `id="galleryPreviewCaption2"`, `id="serverSlots"`, `id="userConcurrency"`} {
+	for _, want := range []string{"/assets/admin.v55.js", "/assets/style.v47.css", "/assets/image-display.v9.css", "10×10 · 源2048×2048 · GIF 256×256", `data-tab="gallerySection"`, `id="gallerySection"`, `data-tab="deploymentSection"`, `id="deploymentSection"`, `id="refreshDeployment"`, `id="deploymentOutput"`, `id="galleryPreviewDialog"`, `id="galleryPreviewGrid"`, `id="galleryPreviewImage2x"`, `id="galleryPreviewPanel2"`, `id="galleryPreviewCaption2"`, `id="serverSlots"`, `id="userConcurrency"`, "转成 MP4"} {
 		if !strings.Contains(body, want) {
 			t.Fatal("admin deployment page missing", want)
 		}
 	}
-	raw, err := web.ReadFile("web/admin.v54.js")
+	raw, err := web.ReadFile("web/admin.v55.js")
 	if err != nil {
 		t.Fatal(err)
 	}
 	source := string(raw)
-	for _, want := range []string{"/api/admin/gallery", "loadGallery", "gallerySection: loadGallery", "/api/admin/deployment-version", "loadDeploymentVersion", "deploymentSection: loadDeploymentVersion", `$("deploymentOutput").value = result.output`, "admin-gallery-meta", "admin-gallery-media", "openGalleryPreview", "paintGalleryPreviewGrid", "if (!b.dataset.tab) continue", "/api/admin/action-prompts", "复制提示词", "action-copy-prompt", "duo2x", "galleryPreviewImage2x", "paintGalleryPreviewPair", "loadGalleryPreviewPair", "mediaResponse", "放大 2 倍", "galleryPreviewStage", "disposeGalleryPreview", `"serverSlots"`, "value.serverSlots = Number(value.serverSlots)"} {
+	for _, want := range []string{"/api/admin/gallery", "loadGallery", "gallerySection: loadGallery", "/api/admin/deployment-version", "loadDeploymentVersion", "deploymentSection: loadDeploymentVersion", `$("deploymentOutput").value = result.output`, "admin-gallery-meta", "admin-gallery-media", "openGalleryPreview", "paintGalleryPreviewGrid", "if (!b.dataset.tab) continue", "/api/admin/action-prompts", "复制提示词", "action-copy-prompt", "duo2x", "galleryPreviewImage2x", "paintGalleryPreviewPair", "loadGalleryPreviewPair", "mediaResponse", "放大 2 倍", "galleryPreviewStage", "disposeGalleryPreview", `"serverSlots"`, "value.serverSlots = Number(value.serverSlots)", "downloadWorkMP4", "/api/admin/gallery/works/", "/mp4", "转成 MP4"} {
 		if !strings.Contains(source, want) {
 			t.Fatal("admin deployment script missing", want)
 		}
@@ -182,11 +182,14 @@ func TestAdminDeploymentVersionPageAndAuthorization(t *testing.T) {
 	if !strings.Contains(style, ".dash-card {") || !strings.Contains(style, ".dash-cards {") {
 		t.Fatal("admin dashboard card styles missing")
 	}
-	cssRaw, err := web.ReadFile("web/image-display.v8.css")
+	cssRaw, err := web.ReadFile("web/image-display.v9.css")
 	if err != nil {
 		t.Fatal(err)
 	}
 	css := string(cssRaw)
+	if !strings.Contains(css, ".admin-gallery-mp4") {
+		t.Fatal("admin gallery mp4 button style missing")
+	}
 	card := cssRuleBlock(t, css, ".admin-gallery-card")
 	if !strings.Contains(card, "display: flex") {
 		t.Fatal("admin gallery card should be horizontal text+media layout", card)

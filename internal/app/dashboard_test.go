@@ -167,7 +167,7 @@ func TestAdminDashboardEmail(t *testing.T) {
 	}
 
 	page := request(t, a, nil, "GET", "/who", nil).Body.String()
-	if !strings.Contains(page, `id="sendDashEmail"`) || !strings.Contains(page, "/assets/admin.v54.js") {
+	if !strings.Contains(page, `id="sendDashEmail"`) || !strings.Contains(page, "/assets/admin.v55.js") {
 		t.Fatal("dashboard email button or versioned script missing")
 	}
 	// 数据看板用「新增用户」那套卡片；六个列表页签用表格，但都不再有点按弹出的完整内容弹窗。
@@ -184,7 +184,7 @@ func TestAdminDashboardEmail(t *testing.T) {
 			t.Fatalf("admin table header %s missing", head)
 		}
 	}
-	raw, err := web.ReadFile("web/admin.v54.js")
+	raw, err := web.ReadFile("web/admin.v55.js")
 	if err != nil || !strings.Contains(string(raw), "/api/admin/dashboard/email") {
 		t.Fatal("dashboard email frontend action missing", err)
 	}

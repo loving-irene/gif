@@ -6,9 +6,9 @@
     <meta name="robots" content="noindex,nofollow" />
     <title>管理工作台 · 拾光 GIF</title>
     <link rel="stylesheet" href="/assets/style.v47.css" />
-    <link rel="stylesheet" href="/assets/image-display.v8.css" />
+    <link rel="stylesheet" href="/assets/image-display.v9.css" />
     <link rel="icon" href="/assets/icon.v1.svg" />
-    <script type="module" src="/assets/admin.v54.js"></script>
+    <script type="module" src="/assets/admin.v55.js"></script>
   </head>
   <body>
     <header class="header wrap admin-wrap">
@@ -71,7 +71,7 @@
         <section id="gallerySection" class="admin-section admin-panel" hidden>
           <h2>图库</h2>
           <p class="hint">
-            展示全部保留的定稿图和 GIF。GIF 下方展示对应的动作序列原图，点击原图可查看原尺寸；未保存原图的作品会单独标注。图片按需加载。
+            展示全部保留的定稿图和 GIF。GIF 下方展示对应的动作序列原图，点击原图可查看原尺寸；未保存原图的作品会单独标注。有 GIF 的作品可点「转成 MP4」本机转换成视频并下载（完整循环 3 次）。图片按需加载。
           </p>
           <div class="gallery-toolbar">
             <label>搜索<input id="gallerySearch" type="search" maxlength="254" placeholder="账号、用户名、编号、动作" /></label>
@@ -92,8 +92,7 @@
         <section id="jobSection" class="admin-section admin-panel" hidden>
           <h2>任务列表</h2>
           <p class="hint">
-            展示排队等待和正在生成的任务，每 8 秒自动刷新。任务完成后不再显示；定稿与
-            GIF 会在服务器保留最多 3 天。
+            展示排队等待和正在生成的任务，每 8 秒自动刷新。任务完成后不再显示；云端定稿与作品永久保存（每账号各最多 30 份），任务输入/结果临时文件最多保留 3 天。
           </p>
           <button id="refreshJobs" class="text-button" type="button">
             ↻ 立即刷新

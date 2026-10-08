@@ -109,7 +109,7 @@ func New(e Env) (*App, error) {
  CREATE INDEX IF NOT EXISTS drafts_user ON drafts(user_id,created DESC);
  CREATE TABLE IF NOT EXISTS works(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),created INTEGER NOT NULL,name TEXT NOT NULL DEFAULT '',category TEXT NOT NULL DEFAULT '',action TEXT NOT NULL DEFAULT '',gif BLOB,sheet BLOB);
  CREATE INDEX IF NOT EXISTS works_user ON works(user_id,created DESC);
- -- 社区分享池：作品被分享后 GIF 本体复制到这里，与作品集（3天保留）完全独立、永不清理。
+ -- 社区分享池：作品被分享后 GIF 本体复制到这里，与作品集（按账号件数上限永久保存）完全独立、永不清理。
  -- (sharer,work_id) 唯一：同一账号同一张作品只保留一条，重复分享只刷新时间与内容、重新分享不产生重复条目。
  CREATE TABLE IF NOT EXISTS community_shares(id TEXT PRIMARY KEY,sharer TEXT NOT NULL REFERENCES users(id),work_id TEXT NOT NULL,name TEXT NOT NULL DEFAULT '',image BLOB NOT NULL,action TEXT NOT NULL DEFAULT '',category TEXT NOT NULL DEFAULT '',created INTEGER NOT NULL,updated INTEGER NOT NULL,UNIQUE(sharer,work_id));
  CREATE INDEX IF NOT EXISTS community_shares_created ON community_shares(created DESC);
@@ -376,9 +376,8 @@ func (a *App) cleanup() {
 	a.db.Exec("DELETE FROM sessions WHERE expires<?", now)
 	a.db.Exec("DELETE FROM email_codes WHERE expires<?", now)
 	a.db.Exec("DELETE FROM rate_limits WHERE expires<?", now)
-	// 云端作品集按保留期清理：到期删除云端副本，设备需在窗口内同步；本机副本不受影响。
-	a.db.Exec("DELETE FROM works WHERE created<?", now-int64(worksRetention.Seconds()))
-	// 社区分享池是独立且永久的：不参与保留期清理，只在分享人主动取消时删除。
+	// 云端作品集永久保存，仅受每账号件数上限约束（saveWork 时淘汰最旧），不再按天数清理。
+	// 社区分享池是独立且永久的：不参与作品集清理，只在分享人主动取消时删除。
 	// 上游一直没有结果的等待任务超过认领时效后收口为失败，不再占用并发额度与槽位。
 	a.expirePendingJobs(now)
 	a.cleanupFiles()
@@ -440,6 +439,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /api/admin/jobs/history", a.auth(a.adminJobHistory, true))
 	mux.HandleFunc("GET /api/admin/gallery", a.auth(a.adminGallery, true))
 	mux.HandleFunc("GET /api/admin/gallery/drafts/{receipt}/image", a.auth(a.adminDraftImage, true))
+	mux.HandleFunc("GET /api/admin/gallery/works/{id}/mp4", a.auth(a.adminWorkMP4, true))
 	mux.HandleFunc("GET /api/admin/gallery/works/{id}/{blob}", a.auth(a.adminWorkBlob, true))
 	mux.HandleFunc("GET /api/admin/dashboard", a.auth(a.adminDashboard, true))
 	mux.HandleFunc("POST /api/admin/dashboard/email", a.auth(a.adminDashboardEmail, true))

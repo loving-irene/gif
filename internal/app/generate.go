@@ -618,8 +618,8 @@ func (a *App) draftImage(w http.ResponseWriter, r *http.Request) {
 }
 
 // works 返回当前账号云端保存的作品集列表（不含 GIF 本体），供页面与本机作品合并实现跨设备同步。
-// 云端副本最多保留 worksRetention（3天），到期由周期清理删除；retentionSeconds 一并下发，
-// 供前端区分“保留期内消失=被其他设备删除”与“超过保留期消失=服务器到期清理”。
+// 云端副本永久保存，每账号最多 worksPerUser 件；retentionSeconds=0 表示无天数过期，
+// 前端把「云端列表中消失的同步副本」视为其他设备删除或件数淘汰。
 func (a *App) works(w http.ResponseWriter, r *http.Request) {
 	uid := current(r).User.ID
 	rows, err := a.db.Query("SELECT id,created,name,category,COALESCE(action,''),gif IS NOT NULL,sheet IS NOT NULL FROM works WHERE user_id=? ORDER BY created DESC,rowid DESC LIMIT ?", uid, worksPerUser)
@@ -637,7 +637,7 @@ func (a *App) works(w http.ResponseWriter, r *http.Request) {
 			out = append(out, map[string]any{"id": id, "created": created, "name": name, "category": category, "action": action, "hasGif": hasGif, "hasSheet": hasSheet})
 		}
 	}
-	respond(w, 200, map[string]any{"items": out, "retentionSeconds": int64(worksRetention.Seconds())})
+	respond(w, 200, map[string]any{"items": out, "retentionSeconds": worksRetentionSeconds})
 }
 
 // workGif 返回云端作品的 GIF 本体；workSheet 返回动作序列原图（与 GIF 一并保存，便于核对与重新合成）。

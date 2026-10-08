@@ -72,8 +72,7 @@ func TestWorksSyncAcrossDevices(t *testing.T) {
 	if item.ID != id || !item.HasGif || !item.HasSheet || item.Name != wantName || item.Category != "male" || item.Action != "bike" {
 		t.Fatal("work item wrong:", item)
 	}
-	// ???????????3??????????????????
-	if list.RetentionSeconds != int64(worksRetention.Seconds()) {
+	if list.RetentionSeconds != worksRetentionSeconds {
 		t.Fatal("retention window wrong:", list.RetentionSeconds)
 	}
 	// ????? GIF ????????
@@ -153,14 +152,14 @@ func TestWorkStoresSheetWhenGIFMissing(t *testing.T) {
 	}
 }
 
-// ????????? 3 ??????????????????????????
-func TestWorksExpireAfterRetention(t *testing.T) {
+// TestWorksSurviveAgeCleanup 验证云端作品永久保存：超过原先 3 天窗口后周期清理也不删除。
+func TestWorksSurviveAgeCleanup(t *testing.T) {
 	a := testApp(t)
 	s := loginDevice(t, a, "works-retention")
 	uid := s.User.ID
 	cfg, _ := a.settings()
 	for _, item := range []struct {
-		id string
+		id  string
 		age time.Duration
 	}{
 		{"workold01", 4 * 24 * time.Hour},
@@ -174,23 +173,17 @@ func TestWorksExpireAfterRetention(t *testing.T) {
 		}
 		a.saveWork(context.Background(), item.id, uid, cfg, Selection{Category: "male"})
 		if item.age > 0 {
-			// ????????3????????
 			a.db.Exec("UPDATE works SET created=? WHERE id=?", time.Now().Add(-item.age).Unix(), item.id)
 		}
 	}
 	a.cleanup()
 	var n int
 	a.db.QueryRow("SELECT COUNT(*) FROM works WHERE user_id=?", uid).Scan(&n)
-	if n != 1 {
-		t.Fatal("expired works were not cleaned:", n)
+	if n != 2 {
+		t.Fatal("aged works should stay permanently:", n)
 	}
-	var exists int
-	a.db.QueryRow("SELECT COUNT(*) FROM works WHERE user_id=? AND id='workold01'", uid).Scan(&exists)
-	if exists != 0 {
-		t.Fatal("expired work should be evicted")
-	}
-	if w := request(t, a, s, "GET", "/api/works/workold01/gif", nil); w.Code != 404 {
-		t.Fatal("expired work gif should be gone:", w.Code)
+	if w := request(t, a, s, "GET", "/api/works/workold01/gif", nil); w.Code != 200 {
+		t.Fatal("aged work gif should remain:", w.Code)
 	}
 }
 
