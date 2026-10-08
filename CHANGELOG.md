@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 2026-10-08 · 0.1.79
+
+- 部署依赖补充 `ffmpeg`：`check_env.sh` 与 README 首次部署说明要求本机安装，供管理后台「转成 MP4」使用。
+
 ## 2026-10-08 · 0.1.78
 
 - 首页页脚增加部署版本状态（对齐 AVS）：展示 `[更新时间  状态]`，状态取自 `.last_deployed_commit` 与 `origin/<branch>` 比较（`up-to-date` / `newer-commit-available` / `stuck` / `unknown`）；首页 `Cache-Control: no-cache`。静态资源改为 `style.v46.css`。
