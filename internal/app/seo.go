@@ -45,12 +45,13 @@ func (a *App) home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	nonce := token(16)
+	deployFooter := inspectHomeDeploy(r.Context(), a.env).FooterText()
 	var body bytes.Buffer
 	err = homeTemplate.Execute(&body, struct {
-		Title, Description, Canonical, Nonce string
-		StructuredData                       template.JS
-		FAQ                                  []faqItem
-	}{siteTitle, siteDescription, canonical, nonce, template.JS(structured), siteFAQs})
+		Title, Description, Canonical, Nonce, DeployFooter string
+		StructuredData                                     template.JS
+		FAQ                                                []faqItem
+	}{siteTitle, siteDescription, canonical, nonce, deployFooter, template.JS(structured), siteFAQs})
 	if err != nil {
 		fail(w, 500, "页面暂时不可用")
 		return
@@ -58,6 +59,7 @@ func (a *App) home(w http.ResponseWriter, r *http.Request) {
 	policy := w.Header().Get("Content-Security-Policy")
 	w.Header().Set("Content-Security-Policy", strings.Replace(policy, "script-src 'self';", "script-src 'self' 'nonce-"+nonce+"';", 1))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
 	w.Write(body.Bytes())
 }
 

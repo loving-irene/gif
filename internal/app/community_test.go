@@ -417,7 +417,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 	if !strings.Contains(body, `href="/community"`) || !strings.Contains(body, `class="community-link"`) {
 		t.Fatal("homepage missing community entry")
 	}
-	for _, asset := range []string{"/assets/app.v61.js", "/assets/style.v45.css"} {
+	for _, asset := range []string{"/assets/app.v61.js", "/assets/style.v46.css"} {
 		if !strings.Contains(body, asset) {
 			t.Fatal("homepage missing updated asset", asset)
 		}
@@ -458,7 +458,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 	if strings.Contains(source, "gallery-sheet") || strings.Contains(source, "保存原图") {
 		t.Fatal("frontend gallery must not show motion sheet; admin gallery only")
 	}
-	cssRaw, err := web.ReadFile("web/style.v45.css")
+	cssRaw, err := web.ReadFile("web/style.v46.css")
 	if err != nil {
 		t.Fatal(err)
 	}

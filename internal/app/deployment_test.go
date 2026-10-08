@@ -223,3 +223,66 @@ func TestAdminDeploymentVersionPageAndAuthorization(t *testing.T) {
 		t.Fatal("2x preview should use pixelated upscaling", pair)
 	}
 }
+
+func TestInspectHomeDeployUsesStateFile(t *testing.T) {
+	dir := deploymentTestRepo(t)
+	info := inspectHomeDeploy(context.Background(), Env{
+		DeployDir: dir, DeployBranch: "main", DeployStateFile: ".last_deployed_commit",
+	})
+	if info.Status != "up-to-date" {
+		t.Fatalf("status=%q want up-to-date", info.Status)
+	}
+	footer := info.FooterText()
+	if !strings.Contains(footer, "up-to-date") || !strings.HasPrefix(footer, "[") || !strings.HasSuffix(footer, "]") {
+		t.Fatalf("unexpected footer %q", footer)
+	}
+	if info.UpdatedAt == "" || info.UpdatedAt == "未知" {
+		t.Fatalf("updatedAt should come from state file mtime: %q", info.UpdatedAt)
+	}
+
+	deploymentTestGit(t, dir, "commit", "--allow-empty", "-m", "second")
+	second := deploymentTestGit(t, dir, "rev-parse", "HEAD")
+	deploymentTestGit(t, dir, "update-ref", "refs/remotes/origin/main", second)
+	info = inspectHomeDeploy(context.Background(), Env{
+		DeployDir: dir, DeployBranch: "main", DeployStateFile: ".last_deployed_commit",
+	})
+	// HEAD 已对齐 remote，状态文件仍是旧提交 → stuck。
+	if info.Status != "stuck" {
+		t.Fatalf("status=%q want stuck when HEAD==remote but state is old", info.Status)
+	}
+}
+
+func TestHomePageInjectsDeployFooter(t *testing.T) {
+	dir := deploymentTestRepo(t)
+	a := testApp(t)
+	a.env.DeployDir = dir
+	a.env.DeployBranch = "main"
+	a.env.DeployStateFile = ".last_deployed_commit"
+	w := request(t, a, nil, "GET", "/", nil)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	for _, want := range []string{
+		`class="home-deploy-footer`,
+		`data-deploy-status`,
+		"版本状态",
+		"up-to-date",
+		"/assets/style.v46.css",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatal("homepage missing deploy footer piece", want)
+		}
+	}
+	if w.Header().Get("Cache-Control") != "no-cache" {
+		t.Fatalf("homepage Cache-Control=%q want no-cache", w.Header().Get("Cache-Control"))
+	}
+	cssRaw, err := web.ReadFile("web/style.v46.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	css := string(cssRaw)
+	if !strings.Contains(css, ".home-deploy-footer") || !strings.Contains(css, ".home-deploy-footer__status") {
+		t.Fatal("homepage deploy footer styles missing")
+	}
+}

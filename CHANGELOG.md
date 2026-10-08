@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 2026-10-08 · 0.1.78
+
+- 首页页脚增加部署版本状态（对齐 AVS）：展示 `[更新时间  状态]`，状态取自 `.last_deployed_commit` 与 `origin/<branch>` 比较（`up-to-date` / `newer-commit-available` / `stuck` / `unknown`）；首页 `Cache-Control: no-cache`。静态资源改为 `style.v46.css`。
+
 ## 2026-10-08 · 0.1.77
 
 - 云端作品（GIF + 动作原图）改为永久保存：去掉按 3 天清理，仍每账号最多 30 件、超出淘汰最旧；定稿维持每账号最近 30 张。`/api/works` 的 `retentionSeconds` 改为 `0`；前端同步把「云端列表消失」视为删除或件数淘汰。FAQ / 首页 / README / 后台任务说明同步更新。静态资源改为 `app.v61.js`。

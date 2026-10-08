@@ -18,6 +18,26 @@ type deploymentVersionOutput struct {
 	ExitCode int    `json:"exitCode"`
 }
 
+// homeDeployInfo 是首页页脚展示的轻量部署状态，口径对齐 AVS：
+// [Asia/Shanghai 更新时间  状态关键字]。
+type homeDeployInfo struct {
+	UpdatedAt string
+	Status    string
+}
+
+// FooterText 返回首页页脚文案，格式 [最新更新时间  更新状态]。
+func (info homeDeployInfo) FooterText() string {
+	updated := info.UpdatedAt
+	if updated == "" {
+		updated = "未知"
+	}
+	status := info.Status
+	if status == "" {
+		status = "unknown"
+	}
+	return "[" + updated + "  " + status + "]"
+}
+
 func (a *App) adminDeploymentVersion(w http.ResponseWriter, r *http.Request) {
 	result, err := inspectDeploymentVersion(r.Context(), a.env)
 	if err != nil {
@@ -27,17 +47,121 @@ func (a *App) adminDeploymentVersion(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, result)
 }
 
-func inspectDeploymentVersion(parent context.Context, env Env) (deploymentVersionOutput, error) {
+func resolveDeployDir(env Env) (string, error) {
 	dir := strings.TrimSpace(env.DeployDir)
 	if dir == "" {
 		dir = "."
 	}
 	dir, err := filepath.Abs(dir)
 	if err != nil {
-		return deploymentVersionOutput{}, fmt.Errorf("resolve deployment directory: %w", err)
+		return "", fmt.Errorf("resolve deployment directory: %w", err)
 	}
 	if resolved, resolveErr := filepath.EvalSymlinks(dir); resolveErr == nil {
 		dir = resolved
+	}
+	return dir, nil
+}
+
+func deployStatePath(env Env, dir string) string {
+	state := env.DeployStateFile
+	if state == "" {
+		state = ".last_deployed_commit"
+	}
+	if filepath.IsAbs(state) {
+		return state
+	}
+	return filepath.Join(dir, state)
+}
+
+func deployBranch(env Env) string {
+	if env.DeployBranch != "" {
+		return env.DeployBranch
+	}
+	return "main"
+}
+
+// inspectHomeDeploy 用状态文件与 origin/<branch> 比较部署状态，不执行 fetch/部署。
+// 更新时间优先取 gif-server 二进制修改时间，其次状态文件，再次当前可执行文件。
+func inspectHomeDeploy(parent context.Context, env Env) homeDeployInfo {
+	out := homeDeployInfo{UpdatedAt: "未知", Status: "unknown"}
+	dir, err := resolveDeployDir(env)
+	if err != nil {
+		return out
+	}
+	stateFile := deployStatePath(env, dir)
+	branch := deployBranch(env)
+
+	for _, candidate := range []string{
+		filepath.Join(dir, "gif-server"),
+		filepath.Join(dir, "gif-server.exe"),
+		stateFile,
+	} {
+		if fileInfo, statErr := os.Stat(candidate); statErr == nil && !fileInfo.IsDir() {
+			out.UpdatedAt = formatAsiaShanghai(fileInfo.ModTime())
+			break
+		}
+	}
+	if out.UpdatedAt == "未知" {
+		if exe, exeErr := os.Executable(); exeErr == nil {
+			if fileInfo, statErr := os.Stat(exe); statErr == nil && !fileInfo.IsDir() {
+				out.UpdatedAt = formatAsiaShanghai(fileInfo.ModTime())
+			}
+		}
+	}
+
+	deployed := "未知"
+	if raw, readErr := os.ReadFile(stateFile); readErr == nil {
+		if rev := strings.TrimSpace(string(raw)); validDeployRevision(rev) {
+			deployed = rev
+		}
+	}
+	ctx, cancel := context.WithTimeout(parent, 3*time.Second)
+	defer cancel()
+	git := func(ref string) string {
+		cmd := exec.CommandContext(ctx, "git", "-c", "safe.directory="+filepath.ToSlash(dir), "-C", dir, "rev-parse", "--verify", "--quiet", ref+"^{commit}")
+		if raw, runErr := cmd.Output(); runErr == nil {
+			return strings.TrimSpace(string(raw))
+		}
+		return ""
+	}
+	head := git("HEAD")
+	remote := git("refs/remotes/origin/" + branch)
+	if deployed == "未知" || remote == "" {
+		return out
+	}
+	out.Status = "newer-commit-available"
+	if deployed == remote {
+		out.Status = "up-to-date"
+	} else if head != "" && head == remote {
+		out.Status = "stuck"
+	}
+	return out
+}
+
+func validDeployRevision(value string) bool {
+	if len(value) != 40 && len(value) != 64 {
+		return false
+	}
+	for _, ch := range value {
+		if !(ch >= '0' && ch <= '9' || ch >= 'a' && ch <= 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+func formatAsiaShanghai(value time.Time) string {
+	location, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		location = time.FixedZone("CST", 8*3600)
+	}
+	return value.In(location).Format("2006-01-02 15:04:05")
+}
+
+func inspectDeploymentVersion(parent context.Context, env Env) (deploymentVersionOutput, error) {
+	dir, err := resolveDeployDir(env)
+	if err != nil {
+		return deploymentVersionOutput{}, err
 	}
 
 	script := filepath.Join(dir, "scripts", "check_deploy_version.sh")
@@ -49,10 +173,7 @@ func inspectDeploymentVersion(parent context.Context, env Env) (deploymentVersio
 		return deploymentVersionOutput{}, fmt.Errorf("find bash: %w", err)
 	}
 
-	branch := env.DeployBranch
-	if branch == "" {
-		branch = "main"
-	}
+	branch := deployBranch(env)
 	if env.DeployStateFile == "" {
 		env.DeployStateFile = ".last_deployed_commit"
 	}
