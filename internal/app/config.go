@@ -145,8 +145,9 @@ const defaultStyleID = "default"
 // defaultServerSlots 是「服务端并行生成数」的默认值与兜底值：服务器同时执行 5 个生成任务。
 // 上限 maxServerSlots 用于约束后台可填范围，避免上游限流或内存占用失控。
 const (
-	defaultServerSlots = 5
-	maxServerSlots     = 8
+	defaultUserConcurrency = 5
+	defaultServerSlots     = 5
+	maxServerSlots         = 8
 )
 
 // styleIDs 固定画风的顺序与编号：默认、Q版、水墨风格。
@@ -214,7 +215,7 @@ func validateStyles(list []Style) error {
 
 func defaults(e Env) Settings {
 	return Settings{
-		DefaultCredits: 5, UserConcurrency: 5, ServerSlots: defaultServerSlots, ChargeOnFailure: true,
+		DefaultCredits: 5, UserConcurrency: defaultUserConcurrency, ServerSlots: defaultServerSlots, ChargeOnFailure: true,
 		APIBase: openRouterAPIBase, Model: "openai/gpt-image-2.5-sunburst", Quality: "high", AssetHosts: []string{"openrouter.ai"}, MailHost: aliyunMailHost, MailPort: aliyunMailPort, MailUser: e.AliyunMailSender, MailFrom: e.AliyunMailSender,
 		IdentityPrompt: "以自拍中的本人为身份参考，人物面部辨识度最高优先。将参考照片头部转绘为精致二维插画，准确保留脸型宽长比例、下颌轮廓、额头比例、眉形、眼型、眼距、鼻形、嘴形、耳朵形状与位置、五官相对位置、发际线、发型、发色、肤色与年龄感，以及清晰可见的眼镜、痣、雀斑。头部作为整体等比例放大，面部内部结构不随Q版夸张。不瘦脸、不尖下巴、不放大眼睛或瞳孔、不缩小鼻子、不美白、不改变年龄，不添加原图没有的身份特征。脸部与身体使用统一二维绘画语言，避免照片脸贴卡通身。",
 		DraftPrompt:    compareDraftPrompt,
@@ -460,7 +461,7 @@ func (a *App) settings() (Settings, error) {
 	s.MailPort = aliyunMailPort
 	// 兼容较早的配置：未设置单用户并发任务数时使用默认值 5。
 	if s.UserConcurrency < 1 {
-		s.UserConcurrency = 5
+		s.UserConcurrency = defaultUserConcurrency
 	}
 	// 兼容较早的配置：未设置服务端并行生成数时使用默认值 5。
 	if s.ServerSlots < 1 {

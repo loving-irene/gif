@@ -220,7 +220,7 @@ func (a *App) markRunning(id string) bool {
 }
 
 // applyResult 把上游返回的图片落盘、按配置规格合成 GIF、签发定稿凭证。
-func (a *App) applyResult(ctx context.Context, id, uid, kind, photoHash string, selection Selection, output string, spec motionSpec) (receipt, gifImage string, err error) {
+func (a *App) applyResult(ctx context.Context, id, uid, kind, photoHash, sourceSelfie string, selection Selection, output string, spec motionSpec) (receipt, gifImage string, err error) {
 	b, err := imageData(output, 20*1024*1024)
 	if err != nil {
 		return "", "", err
@@ -245,7 +245,11 @@ func (a *App) applyResult(ctx context.Context, id, uid, kind, photoHash string, 
 		rec := Receipt{User: uid, Selfie: photoHash, Selection: selection, Expires: time.Now().Add(30 * 24 * time.Hour).Unix(), Draft: hash(string(b))}
 		receipt = a.signReceipt(rec)
 		// 云端保存定稿（供同一账号在其他设备同步），失败不影响本次结果返回。
-		a.saveDraft(uid, receipt, selection, b, ctx)
+		selfie, selfieErr := imageData(sourceSelfie, 5*1024*1024)
+		if selfieErr != nil {
+			a.debug(ctx, "draft_selfie_save_error", map[string]any{"error": errorText(selfieErr)})
+		}
+		a.saveDraft(uid, receipt, selection, b, selfie, ctx)
 	}
 	return receipt, gifImage, nil
 }
@@ -254,9 +258,9 @@ func (a *App) applyResult(ctx context.Context, id, uid, kind, photoHash string, 
 const draftsPerUser = 30
 
 // saveDraft 把定稿写入 drafts 表并按账号淘汰最旧记录，实现同一账号跨设备的“我的定稿”同步。
-func (a *App) saveDraft(uid, receipt string, selection Selection, image []byte, ctx context.Context) {
+func (a *App) saveDraft(uid, receipt string, selection Selection, image, selfie []byte, ctx context.Context) {
 	selectionJSON, _ := json.Marshal(selection)
-	if _, err := a.db.Exec("INSERT OR REPLACE INTO drafts(receipt,user_id,created,selection,image) VALUES(?,?,?,?,?)", receipt, uid, time.Now().Unix(), string(selectionJSON), image); err != nil {
+	if _, err := a.db.Exec("INSERT OR REPLACE INTO drafts(receipt,user_id,created,selection,image,selfie) VALUES(?,?,?,?,?,?)", receipt, uid, time.Now().Unix(), string(selectionJSON), image, selfie); err != nil {
 		if ctx != nil {
 			a.debug(ctx, "draft_save_error", map[string]any{"error": errorText(err)})
 		}
@@ -430,7 +434,11 @@ func (a *App) runJob(id string, inline *jobInput) {
 		if a.ctx.Err() != nil {
 			return
 		}
-		receipt, gifImage, jobErr = a.applyResult(traceCtx, id, uid, kind, photoHash, selection, output, motionSpecOf(motionGrid))
+		sourceSelfie := ""
+		if kind == "draft" && input != nil && len(input.Images) > 0 {
+			sourceSelfie = input.Images[0]
+		}
+		receipt, gifImage, jobErr = a.applyResult(traceCtx, id, uid, kind, photoHash, sourceSelfie, selection, output, motionSpecOf(motionGrid))
 	}
 	if jobErr != nil && a.ctx.Err() != nil {
 		return

@@ -296,13 +296,11 @@ func renderPrompt(t string, s Selection, c Category, action string) string {
 }
 func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 	// 在读取大请求体之前限制并发，避免大量上传同时占用内存。
-	select {
-	case a.uploads <- struct{}{}:
-		defer func() { <-a.uploads }()
-	default:
+	if !a.uploads.tryAcquire() {
 		fail(w, 429, "照片处理繁忙，请稍后重试；本次未扣次")
 		return
 	}
+	defer a.uploads.release()
 	uid := current(r).User.ID
 	var in GenerateInput
 	if err := decode(w, r, &in, 15*1024*1024); err != nil {
@@ -584,7 +582,7 @@ func (a *App) calls(w http.ResponseWriter, r *http.Request) {
 // drafts 返回当前账号云端保存的定稿列表（不含图片本体），供页面与本机候选合并实现跨设备同步。
 func (a *App) drafts(w http.ResponseWriter, r *http.Request) {
 	uid := current(r).User.ID
-	rows, err := a.db.Query("SELECT receipt,created,selection FROM drafts WHERE user_id=? ORDER BY created DESC,rowid DESC LIMIT ?", uid, draftsPerUser)
+	rows, err := a.db.Query("SELECT receipt,created,selection,LENGTH(selfie)>0 FROM drafts WHERE user_id=? ORDER BY created DESC,rowid DESC LIMIT ?", uid, draftsPerUser)
 	if err != nil {
 		fail(w, 500, "读取失败")
 		return
@@ -594,10 +592,11 @@ func (a *App) drafts(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var receipt, selectionJSON string
 		var created int64
-		if rows.Scan(&receipt, &created, &selectionJSON) == nil {
+		var selfieAvailable int
+		if rows.Scan(&receipt, &created, &selectionJSON, &selfieAvailable) == nil {
 			selection := Selection{}
 			json.Unmarshal([]byte(selectionJSON), &selection)
-			out = append(out, map[string]any{"receipt": receipt, "created": created, "selection": selection})
+			out = append(out, map[string]any{"receipt": receipt, "created": created, "selection": selection, "selfieAvailable": selfieAvailable != 0})
 		}
 	}
 	respond(w, 200, map[string]any{"items": out})
@@ -615,6 +614,53 @@ func (a *App) draftImage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", http.DetectContentType(image))
 	w.Header().Set("Cache-Control", "private, max-age=86400")
 	w.Write(image)
+}
+
+// draftSelfie 返回定稿生成时绑定的自拍，供同一账号在其他设备继续制作动作。
+func (a *App) draftSelfie(w http.ResponseWriter, r *http.Request) {
+	uid := current(r).User.ID
+	receipt := r.PathValue("receipt")
+	var image []byte
+	if a.db.QueryRow("SELECT selfie FROM drafts WHERE receipt=? AND user_id=?", receipt, uid).Scan(&image) != nil || len(image) == 0 {
+		fail(w, 404, "定稿对应的自拍不存在")
+		return
+	}
+	w.Header().Set("Content-Type", http.DetectContentType(image))
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	w.Write(image)
+}
+
+// saveDraftSelfie 为历史定稿回填原自拍；服务端校验凭证中的自拍哈希，防止错误绑定。
+func (a *App) saveDraftSelfie(w http.ResponseWriter, r *http.Request) {
+	uid := current(r).User.ID
+	receipt := r.PathValue("receipt")
+	var in struct {
+		Selfie string `json:"selfie"`
+	}
+	if decode(w, r, &in, 8*1024*1024) != nil {
+		fail(w, 400, "自拍信息无效")
+		return
+	}
+	rec, err := a.readReceipt(receipt, uid)
+	if err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	image, err := imageData(in.Selfie, 5*1024*1024)
+	if err != nil || hash(string(image)) != rec.Selfie {
+		fail(w, 400, "自拍与定稿不匹配")
+		return
+	}
+	result, err := a.db.Exec("UPDATE drafts SET selfie=? WHERE receipt=? AND user_id=?", image, receipt, uid)
+	if err != nil {
+		fail(w, 500, "保存失败")
+		return
+	}
+	if n, _ := result.RowsAffected(); n != 1 {
+		fail(w, 404, "定稿不存在")
+		return
+	}
+	respond(w, 200, map[string]bool{"ok": true})
 }
 
 // works 返回当前账号云端保存的作品集列表（不含 GIF 本体），供页面与本机作品合并实现跨设备同步。

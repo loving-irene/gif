@@ -438,6 +438,9 @@ func TestUserConcurrencyConfigAndLimit(t *testing.T) {
 	if cfg.UserConcurrency != 5 {
 		t.Fatal("default user concurrency should be 5")
 	}
+	if a.uploads.limitValue() != cfg.UserConcurrency {
+		t.Fatalf("upload entry limit should follow user concurrency, got %d", a.uploads.limitValue())
+	}
 	// 前台配置接口应返回并发数与服务器生成槽位（动作批次据此估算并行宽度）。
 	s := loginDevice(t, a, "concurrency-one")
 	w := request(t, a, s, "GET", "/api/catalog", nil)
@@ -487,6 +490,9 @@ func TestUserConcurrencyConfigAndLimit(t *testing.T) {
 	newCfg.UserConcurrency = 2
 	if w := request(t, a, admin, "POST", "/api/admin/settings", map[string]any{"settings": newCfg}); w.Code != 200 {
 		t.Fatal("valid concurrency rejected:", w.Code, w.Body.String())
+	}
+	if a.uploads.limitValue() != newCfg.UserConcurrency {
+		t.Fatalf("upload entry limit did not update with user concurrency, got %d", a.uploads.limitValue())
 	}
 	release2 := blockingProvider(a)
 	for i := 0; i < 2; i++ {

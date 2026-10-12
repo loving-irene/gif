@@ -100,8 +100,10 @@ fi
 
 # ---- 并发估算 ----
 # 1) 重请求（生成/上传）：应用层硬限制，见 internal/app/app.go 的 slots/uploads 通道。
-GEN_SLOTS=2
-UPLOAD_SLOTS=2
+# 运行时分别读取 settings.serverSlots 与 settings.userConcurrency；这里使用默认值估算，
+# 也允许部署环境通过环境变量覆盖，避免把报告值误当成应用硬限制。
+GEN_SLOTS=${GEN_SLOTS:-5}
+UPLOAD_SLOTS=${UPLOAD_SLOTS:-5}
 heavy_app_cap=$((GEN_SLOTS + UPLOAD_SLOTS))
 
 # 2) 内存可支撑的重请求数：预算 = systemd MemoryMax（否则物理内存+15%系统预留），扣除基础与结果缓存。
@@ -170,7 +172,7 @@ fi
 echo ""
 echo "================ 并发估算 ================"
 echo "重请求（生成/上传，业务硬限制）:"
-echo "  - 全局并行生成任务 $GEN_SLOTS 个 + 上传通道 $UPLOAD_SLOTS 个 = $heavy_app_cap 个并行（internal/app/app.go，与机器配置无关）"
+echo "  - 全局并行生成任务 $GEN_SLOTS 个 + 上传通道 $UPLOAD_SLOTS 个 = $heavy_app_cap 个并行（运行时读取后台配置）"
 echo "  - 每账号同时 1 个生成任务；注册/限流进一步约束真实负载"
 if is_num "${heavy_by_mem:-}"; then
   echo "  - 内存校验: 预算 $(fmt_kib "$mem_budget_kib") − 预留 $(fmt_kib "$mem_reserve_kib")，按 ${PER_REQUEST_MIB}MiB/个 → 理论可支撑 $heavy_by_mem 个重请求"

@@ -16,15 +16,16 @@ func TestDraftsSyncAcrossDevices(t *testing.T) {
 	two := loginDevice(t, a, "drafts-two")
 
 	// 设备一生成定稿：成功后云端应出现该定稿。
-	id := jobID(t, request(t, a, one, "POST", "/api/generate", draftInput()))
+	input := draftInput()
+	id := jobID(t, request(t, a, one, "POST", "/api/generate", input))
 	if j := waitJob(t, a, one, id); j.Status != "succeeded" {
 		t.Fatal(j)
 	}
 	w := request(t, a, one, "GET", "/api/drafts", nil)
 	var list struct {
 		Items []struct {
-			Receipt  string    `json:"receipt"`
-			Created  int64     `json:"created"`
+			Receipt   string    `json:"receipt"`
+			Created   int64     `json:"created"`
 			Selection Selection `json:"selection"`
 		} `json:"items"`
 	}
@@ -40,6 +41,15 @@ func TestDraftsSyncAcrossDevices(t *testing.T) {
 	if w.Code != 200 || w.Header().Get("Content-Type") != "image/png" {
 		t.Fatal("draft image wrong:", w.Code, w.Header().Get("Content-Type"))
 	}
+	if w = request(t, a, one, "GET", "/api/drafts/"+first.Receipt+"/selfie", nil); w.Code != 200 || w.Header().Get("Content-Type") != "image/png" {
+		t.Fatal("draft selfie wrong:", w.Code, w.Header().Get("Content-Type"))
+	}
+	if _, err := a.db.Exec("UPDATE drafts SET selfie=X'' WHERE receipt=?", first.Receipt); err != nil {
+		t.Fatal(err)
+	}
+	if w = request(t, a, one, "POST", "/api/drafts/"+first.Receipt+"/selfie", map[string]string{"selfie": input.Selfie}); w.Code != 200 {
+		t.Fatal("draft selfie backfill failed:", w.Code, w.Body.String())
+	}
 	// 其他账号看不到也取不到。
 	if w = request(t, a, two, "GET", "/api/drafts", nil); w.Code != 200 {
 		t.Fatal(w.Body.String())
@@ -54,6 +64,9 @@ func TestDraftsSyncAcrossDevices(t *testing.T) {
 	if w = request(t, a, two, "GET", "/api/drafts/"+first.Receipt+"/image", nil); w.Code != 404 {
 		t.Fatal("draft image should stay private:", w.Code)
 	}
+	if w = request(t, a, two, "GET", "/api/drafts/"+first.Receipt+"/selfie", nil); w.Code != 404 {
+		t.Fatal("draft selfie should stay private:", w.Code)
+	}
 	// 未登录不可访问。
 	if w = request(t, a, nil, "GET", "/api/drafts", nil); w.Code != 401 {
 		t.Fatal("drafts should require auth")
@@ -67,7 +80,7 @@ func TestDraftsKeepLatestPerUser(t *testing.T) {
 	image := []byte("png-bytes")
 	// 连续保存超上限一张：只保留最新 30 张，最早的被淘汰。
 	for i := 0; i < draftsPerUser+1; i++ {
-		a.saveDraft(uid, fmt.Sprintf("receipt-%02d", i), Selection{Clothes: fmt.Sprintf("衣服%d", i)}, image, context.Background())
+		a.saveDraft(uid, fmt.Sprintf("receipt-%02d", i), Selection{Clothes: fmt.Sprintf("衣服%d", i)}, image, nil, context.Background())
 	}
 	var n int
 	if err := a.db.QueryRow("SELECT COUNT(*) FROM drafts WHERE user_id=?", uid).Scan(&n); err != nil || n != draftsPerUser {

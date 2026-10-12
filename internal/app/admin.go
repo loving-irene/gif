@@ -114,8 +114,9 @@ func (a *App) adminSettingsSave(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "保存失败")
 		return
 	}
-	// 保存成功后让新的「服务端并行生成数」立即生效：扩容马上补位，缩容等在跑的任务自然结束。
+	// 保存成功后让新的并发配置立即生效：生成槽位扩容马上补位，上传入口容量同步调整。
 	a.applyServerSlots(in.Settings.ServerSlots)
+	a.applyUploadSlots(in.Settings.UserConcurrency)
 	a.audit(current(r).User.ID, "settings_updated", "")
 	respond(w, 200, map[string]bool{"ok": true})
 }

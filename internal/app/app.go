@@ -33,7 +33,7 @@ var emailPattern = regexp.MustCompile(`^[a-z0-9_%+-]+(?:\.[a-z0-9_%+-]+)*@(?:[a-
 const networkErrorMessage = "网络异常，请稍后重试~"
 
 // 服务器同时执行的生成任务数上限由后台配置 settings.serverSlots 决定（默认 defaultServerSlots），
-// 存在 slotPool 里热调整；多出的任务按创建顺序排队。
+// 生成请求上传入口容量跟随 settings.userConcurrency 热调整；生成槽位多出的任务按创建顺序排队。
 // /api/catalog 会把它下发给前台，用于估算并行动作的整批用时。
 
 type App struct {
@@ -44,7 +44,7 @@ type App struct {
 	submitMu   sync.Mutex
 	jobs       map[string]*Job
 	slots      *slotPool
-	uploads    chan struct{}
+	uploads    *slotPool
 	dispatch   chan struct{}
 	ctx        context.Context
 	cancel     context.CancelFunc
@@ -94,7 +94,7 @@ func New(e Env) (*App, error) {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	a := &App{db: db, env: e, files: files, jobs: map[string]*Job{}, slots: newSlotPool(defaultServerSlots), uploads: make(chan struct{}, 2), dispatch: make(chan struct{}, 1), ctx: ctx, cancel: cancel}
+	a := &App{db: db, env: e, files: files, jobs: map[string]*Job{}, slots: newSlotPool(defaultServerSlots), uploads: newSlotPool(defaultUserConcurrency), dispatch: make(chan struct{}, 1), ctx: ctx, cancel: cancel}
 	if _, err = db.Exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
  CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,email TEXT UNIQUE,name TEXT,gift INTEGER NOT NULL CHECK(gift>=0),paid INTEGER NOT NULL DEFAULT 0 CHECK(paid>=0),disabled INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL,ip TEXT NOT NULL DEFAULT '');
@@ -105,7 +105,7 @@ func New(e Env) (*App, error) {
  CREATE TABLE IF NOT EXISTS email_codes(user_id TEXT NOT NULL,email TEXT NOT NULL,code TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,expires INTEGER NOT NULL,PRIMARY KEY(user_id,email));
  CREATE TABLE IF NOT EXISTS codes(hash TEXT PRIMARY KEY,label TEXT NOT NULL,credits INTEGER NOT NULL CHECK(credits>0),used_by TEXT REFERENCES users(id),used_at INTEGER,created INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),request_id TEXT NOT NULL,digest TEXT NOT NULL,kind TEXT NOT NULL,status TEXT NOT NULL,gift_cost INTEGER NOT NULL,paid_cost INTEGER NOT NULL,refund_failure INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL,started INTEGER NOT NULL DEFAULT 0,action TEXT NOT NULL DEFAULT '',receipt TEXT NOT NULL DEFAULT '',dup_digest TEXT NOT NULL DEFAULT '',upstream_task_id TEXT NOT NULL DEFAULT '',upstream_wait_ms INTEGER NOT NULL DEFAULT 0,timing_recorded INTEGER NOT NULL DEFAULT 0,error_message TEXT NOT NULL DEFAULT '',UNIQUE(user_id,request_id));
- CREATE TABLE IF NOT EXISTS drafts(receipt TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),created INTEGER NOT NULL,selection TEXT NOT NULL DEFAULT '{}',image BLOB NOT NULL);
+ CREATE TABLE IF NOT EXISTS drafts(receipt TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),created INTEGER NOT NULL,selection TEXT NOT NULL DEFAULT '{}',image BLOB NOT NULL,selfie BLOB NOT NULL DEFAULT X'');
  CREATE INDEX IF NOT EXISTS drafts_user ON drafts(user_id,created DESC);
  CREATE TABLE IF NOT EXISTS works(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),created INTEGER NOT NULL,name TEXT NOT NULL DEFAULT '',category TEXT NOT NULL DEFAULT '',action TEXT NOT NULL DEFAULT '',gif BLOB,sheet BLOB);
  CREATE INDEX IF NOT EXISTS works_user ON works(user_id,created DESC);
@@ -130,6 +130,10 @@ func New(e Env) (*App, error) {
 		a.Close()
 		return nil, err
 	}
+	if err = a.migrateDrafts(); err != nil {
+		a.Close()
+		return nil, err
+	}
 	if err = a.migrateCodeMarks(); err != nil {
 		a.Close()
 		return nil, err
@@ -151,9 +155,10 @@ func New(e Env) (*App, error) {
 		a.Close()
 		return nil, err
 	}
-	// 生成槽位容量以后台配置为准（默认 defaultServerSlots），启动时同步一次。
+	// 生成槽位与生成请求入口容量都以后台配置为准，启动时同步一次。
 	if cfg, cfgErr := a.settings(); cfgErr == nil {
 		a.slots.setLimit(cfg.ServerSlots)
+		a.uploads.setLimit(cfg.UserConcurrency)
 	}
 	for name, value := range map[string]string{"api_key": e.APIKey, aliyunMailPasswordKey: e.AliyunMailPassword} {
 		if value != "" && a.secret(name) == "" {
@@ -253,6 +258,31 @@ func (a *App) migrateUsers() error {
 		}
 	}
 	return nil
+}
+
+// migrateDrafts 为旧数据库补齐跨设备动作所需的定稿配对自拍列。
+func (a *App) migrateDrafts() error {
+	rows, err := a.db.Query("PRAGMA table_info(drafts)")
+	if err != nil {
+		return err
+	}
+	cols := map[string]bool{}
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, ctype string
+		var dflt sql.NullString
+		if rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk) == nil {
+			cols[name] = true
+		}
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	if !cols["selfie"] {
+		_, err = a.db.Exec("ALTER TABLE drafts ADD COLUMN selfie BLOB NOT NULL DEFAULT X''")
+	}
+	return err
 }
 
 // migrateJobs 为旧数据库补齐任务表的新列，并把“仅running唯一”索引升级为“排队+进行中唯一”。
@@ -410,6 +440,8 @@ func (a *App) Handler() http.Handler {
 	// 云端“我的定稿”：列表 + 图片，用于同一账号跨设备同步定稿。
 	mux.HandleFunc("GET /api/drafts", a.auth(a.drafts, false))
 	mux.HandleFunc("GET /api/drafts/{receipt}/image", a.auth(a.draftImage, false))
+	mux.HandleFunc("GET /api/drafts/{receipt}/selfie", a.auth(a.draftSelfie, false))
+	mux.HandleFunc("POST /api/drafts/{receipt}/selfie", a.auth(a.saveDraftSelfie, false))
 	// 云端“我的作品集”：列表 + GIF/原图 + 删除，用于同一账号跨设备同步作品。
 	mux.HandleFunc("GET /api/works", a.auth(a.works, false))
 	mux.HandleFunc("GET /api/works/{id}/gif", a.auth(a.workGif, false))
@@ -490,7 +522,7 @@ func (a *App) Handler() http.Handler {
 				a.debug(r.Context(), "local_http", map[string]any{
 					"route": r.URL.Path, "method": r.Method, "http_status": statusWriter.status,
 					"elapsed_ms": time.Since(started).Milliseconds(),
-					"origin": r.Header.Get("Origin"), "sec_fetch_site": r.Header.Get("Sec-Fetch-Site"),
+					"origin":     r.Header.Get("Origin"), "sec_fetch_site": r.Header.Get("Sec-Fetch-Site"),
 					"content_length": r.ContentLength,
 				})
 			}()
@@ -696,7 +728,7 @@ func (a *App) catalog(w http.ResponseWriter, r *http.Request) {
 	}
 	respond(w, 200, map[string]any{
 		"categories": s.Categories, "styles": s.Styles, "actions": catalogActions(s),
-		"outfits": catalogOutfits(),
+		"outfits":         catalogOutfits(),
 		"chargeOnFailure": s.ChargeOnFailure, "configured": a.secret("api_key") != "", "emailConfigured": a.mailConfigured(s), "feedbackConfigured": a.feedbackConfigured(s), "estimates": a.estimates(s), "redeemHelp": s.RedeemHelp, "userConcurrency": s.UserConcurrency, "generationSlots": a.slots.limitValue(), "motionGrid": s.MotionGrid,
 	})
 }

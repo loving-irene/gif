@@ -2,8 +2,8 @@ package app
 
 import "sync"
 
-// slotPool 是服务器同时执行的生成任务槽位池。容量来自后台配置的「服务端并行生成数」
-// （settings.serverSlots，默认 defaultServerSlots），可以在管理后台改完即时生效：
+// slotPool 是可热调整的并发槽位池。生成槽位容量来自后台配置的「服务端并行生成数」
+// （settings.serverSlots，默认 defaultServerSlots）；上传入口容量来自「单用户并发任务数」。
 //
 //   - 扩容：立即唤醒调度器补位，排队任务马上开工；
 //   - 缩容：不打断正在执行的任务，只是不再启动新任务，等它们自然结束后收敛到新容量。
@@ -72,4 +72,9 @@ func (a *App) applyServerSlots(limit int) {
 	if a.slots.setLimit(limit) {
 		a.signalDispatch()
 	}
+}
+
+// applyUploadSlots 让生成请求上传入口容量跟随后台的「单用户并发任务数」即时生效。
+func (a *App) applyUploadSlots(limit int) {
+	a.uploads.setLimit(limit)
 }
