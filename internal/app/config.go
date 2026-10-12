@@ -253,20 +253,7 @@ func defaultCategories() []Category {
 			{"airplane", "开小飞机", "✈", childActionAirplane},
 			{"carry_me", "要抱抱", "🤗", childActionCarryMe},
 		}},
-		{ID: "daily", Name: "日常", Subtitle: "情侣与年轻人的聊天贴纸", Icon: "☀", Clothes: []string{"白色翻领短袖与短裤", "宽松卫衣与长裤", "休闲T恤与牛仔裤"}, Colors: []string{"白与深蓝", "奶白与灰", "浅彩休闲"}, Weapons: []string{}, Prompt: "年轻人日常单人贴纸角色，服装简洁贴合微型身体，不增大体积。保留本人年龄与面部特征，表情自然可发聊天。全身必须保持极致Q版5:1头身比，单人出镜，不出现第二人。", Actions: []Action{
-			{"morning", "早呀", "☀", "微带困意揉眼一下（手不遮五官），再小幅挥手问好两次，浅笑，放下回站姿。举手幅度小，手臂保持短小，头顶与举手最高点距格顶至少约格高10%透明边距，脚底距格底同样留边；禁止邻格头顶渗进本格脚下。"},
-			{"eat_ask", "吃饭了么", "🍚", "关切表情，胸前端极小白碗向前递一点并点头，再收回回站姿。"},
-			{"eat", "干饭", "🍜", dailyActionEat},
-			{"hello_wave", "挥手问好", "👋", dailyActionHelloWave},
-			{"cry", "放声大哭", "😭", dailyActionCry},
-			{"dance", "转圈跳舞", "💃", dailyActionDance},
-			{"gift", "拆礼物", "🎁", dailyActionGift},
-			{"stomp", "生气跺脚", "💢", dailyActionStomp},
-			{"shock", "惊讶后仰", "😲", dailyActionShock},
-			{"heart", "双手比心", "♡", dailyActionHeart},
-			{"play", "出去玩", "🏃", "右手侧上招手两次，身体轻跳一次落回，开心浅笑；幅度小，不拉长四肢。"},
-			{"tease", "调侃你", "😜", "眨眼一下，再轻微吐舌或歪头坏笑点头，回平静站姿；吐舌幅度很小。"},
-		}},
+		{ID: "daily", Name: "日常", Subtitle: "从早安到晚安，陪爱人和好哥们聊日常", Icon: "☀", Clothes: []string{"白色翻领短袖与短裤", "宽松卫衣与长裤", "休闲T恤与牛仔裤"}, Colors: []string{"白与深蓝", "奶白与灰", "浅彩休闲"}, Weapons: []string{}, Prompt: "年轻人日常单人贴纸角色，服装简洁贴合微型身体，不增大体积。保留本人年龄与面部特征，表情自然可发聊天。全身必须保持极致Q版5:1头身比，单人出镜，不出现第二人。", Actions: defaultDailyActions()},
 	}
 }
 
@@ -294,15 +281,10 @@ func normalizeCategories(list []Category) []Category {
 				"bike", "basketball", "billiards", "smoke", "fish")
 		}
 		if c.ID == "daily" {
-			c.Actions = upgradeActionPrompt(c.Actions, d.Actions, "eat",
-				"捧小碗低头大口吃两口，腮帮微鼓，抬头满足呼气，回站姿；五官不糊。")
-			c.Actions = upgradeActionPrompt(c.Actions, d.Actions, "eat", dailyActionEatLegacy)
-			c.Actions = upgradeActionPrompt(c.Actions, d.Actions, "morning",
-				"微带困意揉眼一下（不遮五官），再挥手问好两次，浅笑，放下回站姿。")
-			c.Actions = migrateDailyMissToHeart(c.Actions)
-			c.Actions = ensureActions(c.Actions, d.Actions,
-				"hello_wave", "cry", "dance", "gift", "stomp", "shock", "heart")
-			c.Actions = dedupeDailyHeart(c.Actions)
+			c.Actions = normalizeDailyActions(c.Actions, d.Actions)
+			if c.Subtitle == "情侣与年轻人的聊天贴纸" {
+				c.Subtitle = d.Subtitle
+			}
 		}
 		if c.ID == "child" {
 			c.Actions = removeActions(c.Actions, childLegacyActionIDs...)
@@ -321,6 +303,10 @@ func normalizeCategories(list []Category) []Category {
 
 // ensureActions 若 missingIDs 中的动作不在现有列表里，则从 defs 中追加。
 func ensureActions(have, defs []Action, missingIDs ...string) []Action {
+	return ensureActionsWithLimit(have, defs, 12, missingIDs...)
+}
+
+func ensureActionsWithLimit(have, defs []Action, limit int, missingIDs ...string) []Action {
 	seen := map[string]bool{}
 	for _, a := range have {
 		seen[a.ID] = true
@@ -333,8 +319,9 @@ func ensureActions(have, defs []Action, missingIDs ...string) []Action {
 		if seen[id] {
 			continue
 		}
-		if a, ok := defByID[id]; ok && len(have) < 12 {
+		if a, ok := defByID[id]; ok && len(have) < limit {
 			have = append(have, a)
+			seen[id] = true
 		}
 	}
 	return have
@@ -387,36 +374,38 @@ func upgradeActionPrompt(have, defs []Action, id, oldPrompt string) []Action {
 
 // migrateDailyMissToHeart 把仍是旧短文案的「想你了」迁移为手册版「双手比心」。
 func migrateDailyMissToHeart(have []Action) []Action {
-	for i := range have {
-		if have[i].ID != "miss" {
-			continue
-		}
-		if strings.TrimSpace(have[i].Prompt) != dailyActionMissLegacy {
-			continue
-		}
-		have[i].ID = "heart"
-		have[i].Name = "双手比心"
-		have[i].Icon = "♡"
-		have[i].Prompt = dailyActionHeart
-	}
-	return have
-}
-
-// dedupeDailyHeart 若已有 heart，则去掉同义的旧 miss，避免占满 12 个动作名额。
-func dedupeDailyHeart(have []Action) []Action {
 	hasHeart := false
 	for _, a := range have {
 		if a.ID == "heart" {
 			hasHeart = true
-			break
 		}
-	}
-	if !hasHeart {
-		return have
 	}
 	out := have[:0]
 	for _, a := range have {
-		if a.ID == "miss" {
+		if a.ID == "miss" && strings.TrimSpace(a.Prompt) == dailyActionMissLegacy {
+			if hasHeart {
+				continue
+			}
+			a = Action{"heart", "双手比心", "♡", dailyActionHeart}
+			hasHeart = true
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
+// dedupeDailyHeart 去掉旧默认 miss 迁移出的重复 heart；保留自定义 miss。
+func dedupeDailyHeart(have []Action) []Action {
+	// 若旧 miss 与自定义 heart 同时存在，优先保留自定义内容。
+	heartIndex := -1
+	for i, a := range have {
+		if a.ID == "heart" && (heartIndex == -1 || a.Prompt != dailyActionHeart) {
+			heartIndex = i
+		}
+	}
+	out := have[:0]
+	for i, a := range have {
+		if a.ID == "heart" && i != heartIndex {
 			continue
 		}
 		out = append(out, a)
@@ -588,7 +577,7 @@ func validateSettings(s Settings) error {
 	}
 	seen := map[string]bool{}
 	for _, c := range s.Categories {
-		if !contains(categoryIDs, c.ID) || seen[c.ID] || len(c.Clothes) == 0 || len(c.Colors) == 0 || len(c.Actions) == 0 || len(c.Actions) > 12 {
+		if !contains(categoryIDs, c.ID) || seen[c.ID] || len(c.Clothes) == 0 || len(c.Colors) == 0 || len(c.Actions) == 0 || len(c.Actions) > categoryActionLimit(c.ID) {
 			return errors.New("分类配置无效")
 		}
 		seen[c.ID] = true

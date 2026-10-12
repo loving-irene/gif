@@ -53,8 +53,8 @@ func TestDefaultsUse5x5AndDaily(t *testing.T) {
 		t.Fatalf("categories=%+v", cfg.Categories)
 	}
 	daily := cfg.Categories[3]
-	if len(daily.Actions) != 12 {
-		t.Fatalf("daily should ship 12 handbook actions, got %d", len(daily.Actions))
+	if len(daily.Actions) != 28 {
+		t.Fatalf("daily should ship 28 handbook actions, got %d", len(daily.Actions))
 	}
 	wantIDs := []string{"eat", "hello_wave", "cry", "dance", "gift", "stomp", "shock", "heart"}
 	have := map[string]Action{}
@@ -116,8 +116,8 @@ func TestNormalizeCategoriesAddsHandbookDailyActions(t *testing.T) {
 			t.Fatal("missing ensured handbook action", id)
 		}
 	}
-	if len(got[3].Actions) > 12 {
-		t.Fatal("daily actions exceeded 12", len(got[3].Actions))
+	if len(got[3].Actions) > categoryActionLimit("daily") {
+		t.Fatal("daily actions exceeded capacity", len(got[3].Actions))
 	}
 }
 
