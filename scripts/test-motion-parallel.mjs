@@ -112,7 +112,10 @@ const local = async (store, op, arg) => {
 const context = vm.createContext({
   $,
   element: (tag, attrs, text) => makeNode(tag, attrs, text),
-  document: { createTextNode: (text) => String(text) },
+  document: {
+    createTextNode: (text) => String(text),
+    createElement: (tag) => makeNode(tag),
+  },
   console,
   setTimeout,
   clearTimeout,
@@ -188,7 +191,7 @@ assert.equal(
 );
 assert.equal(JSON.stringify(batch.left), "[]", "batch should submit every action");
 
-// 2) 没有空闲额度时一个都不提交，未提交的动作原样返回（保留在选择里）。
+// 2) 没有空闲额度且没有等待策略时一个都不提交，未提交的动作原样返回。
 const blocked = await run(`(async () => {
   let calls = 0;
   const left = await submitPaced([1, 2, 3], () => false, () => {
@@ -258,7 +261,8 @@ const gating = await run(`(() => {
   motionBatches.clear();
   motionInFlight.clear();
   catalog = { userConcurrency: 5, generationSlots: 2, configured: true, estimates: {} };
-  profile = { accepted: true, selection: { category: "male" } };
+  selfie = "selfie";
+  profile = { accepted: true, selection: { category: "male" }, draft: "draft", receipt: "receipt", selfie: "selfie", selfieGeneration: 0 };
   selectedActions.add("attack");
   tasks.set("motion-1", { kind: "motion", input: { kind: "motion", action: "guard" }, key: "motion-1" });
   motionInFlight.add("guard");
@@ -283,7 +287,7 @@ assert.equal(gating.whileRunning.disabled, false, "有动作在制作时也要�
 assert.equal(gating.whileRunning.stopHidden, true, "没有批次在提交时不显示停止按钮");
 assert.equal(gating.whileSubmitting.disabled, false, "批次提交中不应锁住生成按钮");
 assert.equal(gating.whileSubmitting.stopHidden, false, "批次提交中要显示“停止提交新动作”");
-assert.equal(gating.atLimit, true, "达到账号并发上限时才禁用生成按钮");
+assert.equal(gating.atLimit, false, "达到账号并发上限时仍允许提交动作批次");
 assert.equal(gating.nothingSelected, true, "没有选中动作时生成按钮保持禁用");
 
 // 7) 制作中的动作：卡片带“制作中”标记、不计入已选，继续挑别的动作不受影响。
@@ -355,7 +359,7 @@ await run(`(() => {
       { id: "guard", icon: "G", name: "格挡防御" },
     ] }],
   };
-  profile = { accepted: true, selection: { category: "male" }, draft: "draft", receipt: "receipt", selfie: "selfie" };
+  profile = { accepted: true, selection: { category: "male" }, draft: "draft", receipt: "receipt", selfie: "selfie", selfieGeneration: 0 };
   selfie = "selfie";
   account.credits = 5;
   selectedActions.add("attack");
