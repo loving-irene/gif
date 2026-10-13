@@ -1,0 +1,40 @@
+/* 保存时以原始动图为中心，沿用站内暖纸色弹窗和按钮。 */
+.save-media-dialog {
+  max-height: calc(100dvh - 28px);
+  overflow-y: auto;
+}
+.save-media-dialog .close {
+  min-width: 44px;
+  min-height: 44px;
+}
+.save-media-dialog h2 {
+  padding-right: 32px;
+}
+.save-media-dialog p {
+  font-size: 13px;
+  line-height: 1.7;
+}
+.save-media-preview {
+  display: block;
+  width: 100%;
+  height: min(36vh, 280px);
+  object-fit: contain;
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  -webkit-touch-callout: default;
+  user-select: auto;
+  -webkit-user-select: auto;
+}
+.save-media-dialog .button-row {
+  margin-top: 16px;
+}
+.save-media-dialog .button-row button {
+  flex: 1;
+  min-height: 44px;
+}
+.save-media-dialog .save-media-status {
+  margin-top: 12px;
+  margin-bottom: 0;
+}
