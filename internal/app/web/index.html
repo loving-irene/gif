@@ -22,9 +22,11 @@
     </script>
     <link rel="icon" href="/assets/icon.v1.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/assets/style.v46.css" />
+    <link rel="stylesheet" href="/assets/mobile-header.v1.css" />
     <link rel="stylesheet" href="/assets/image-display.v1.css" />
     <link rel="stylesheet" href="/assets/save-media.v1.css" />
     <script src="/assets/app.v65.js" type="module"></script>
+    <script src="/assets/mobile-header.v1.js" type="module"></script>
     <script src="/assets/share.v4.js" type="module"></script>
     <script src="/assets/contact.v1.js" type="module"></script>
     <script src="/assets/showcase.v2.js" type="module"></script>
@@ -56,7 +58,23 @@
         ><button id="accountBtn" class="avatar" aria-label="账号与邮箱">
           ☺
         </button>
+        <button
+          id="mobileAccountBtn"
+          class="avatar"
+          type="button"
+          aria-label="个人菜单"
+          popovertarget="mobileAccountMenu"
+        >
+          ☺
+        </button>
       </nav>
+      <div id="mobileAccountMenu" popover aria-label="个人菜单">
+        <button type="button" data-header-action="accountBtn">个人信息</button>
+        <button type="button" data-header-action="redeemOpenBtn">增加次数</button>
+        <button type="button" data-header-action="callsOpenBtn">调用记录</button>
+        <a href="/community">社区</a>
+        <button type="button" data-header-action="feedbackOpenBtn">反馈</button>
+      </div>
     </header>
     <main class="wrap">
       <div id="notice" class="notice" role="status" hidden></div>
@@ -343,6 +361,9 @@
       <button class="close" data-close aria-label="关闭">×</button
       ><h2>跨设备同步创作次数</h2>
       <p id="accountInfo" class="hint"></p>
+      <button id="mobileRedeemBtn" class="text-button" type="button">
+        增加创作次数 →
+      </button>
       <p id="accountLockedHint" class="hint" role="status" hidden></p>
       <form id="nameForm">
         <label

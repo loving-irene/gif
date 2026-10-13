@@ -1,0 +1,92 @@
+/* 首页移动端导航；桌面继续使用原有入口。 */
+#mobileAccountBtn,
+#mobileAccountMenu,
+#mobileRedeemBtn {
+  display: none;
+}
+
+@media (max-width: 800px) {
+  .header {
+    height: 83px;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  .header .brand {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .header nav {
+    width: auto;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .header nav > :not(#shareOpenBtn):not(#mobileAccountBtn) {
+    display: none;
+  }
+  #shareOpenBtn,
+  #mobileAccountBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+  }
+  #shareOpenBtn .share-open-label {
+    display: none;
+  }
+  #mobileAccountBtn {
+    font-size: 27px;
+  }
+  #mobileAccountMenu:popover-open {
+    display: grid;
+  }
+  #mobileAccountMenu {
+    position: absolute;
+    inset: 72px 32px auto auto;
+    width: 176px;
+    max-width: calc(100vw - 34px);
+    margin: 0;
+    padding: 6px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--bg);
+    color: var(--ink);
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1),
+      0 2px 4px -2px rgb(0 0 0 / 0.1);
+  }
+  #mobileAccountMenu > * {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    font-size: 14px;
+    text-align: left;
+  }
+  #mobileAccountMenu > :hover,
+  #mobileAccountMenu > :focus-visible {
+    background: var(--accent-light);
+    color: var(--accent);
+  }
+  #mobileAccountMenu > :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+  #mobileRedeemBtn {
+    display: inline-block;
+  }
+}
+
+@media (max-width: 600px) {
+  #mobileAccountMenu {
+    right: 17px;
+  }
+}
