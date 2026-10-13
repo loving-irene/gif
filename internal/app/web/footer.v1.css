@@ -1,0 +1,48 @@
+/* Shared footer overrides; keep immutable base stylesheets unchanged. */
+.footer .brand,
+.footer > .text-button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.footer .brand-mark {
+  flex-shrink: 0;
+}
+.footer .friend-links {
+  font-size: 12px;
+}
+.friend-links > * {
+  white-space: nowrap;
+}
+.friend-links .friend-links__site--drama {
+  color: #a96844;
+}
+.friend-links .friend-links__site--memory {
+  color: #55703f;
+}
+.friend-links .friend-links__site--drama:hover {
+  color: #8d4d2f;
+}
+.friend-links .friend-links__site--memory:hover {
+  color: #405d32;
+}
+.friend-links a:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+@media (max-width: 800px) {
+  .footer {
+    flex-wrap: wrap;
+    gap: 14px 16px;
+  }
+  .footer > .text-button {
+    margin-left: auto;
+  }
+  .footer .friend-links {
+    order: 3;
+    flex: 0 0 100%;
+    justify-content: flex-start;
+  }
+  .footer p {
+    display: none;
+  }
+}
