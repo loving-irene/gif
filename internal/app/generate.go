@@ -227,7 +227,8 @@ func findActionPrompt(cfg Settings, actionID string) (string, error) {
 }
 
 // builtInMotionPrefix 动作阶段固定前缀（不再由后台「动作序列图」提示词配置）。
-const builtInMotionPrefix = "图1是已确认角色定稿，图2是本人自拍。图1固定画风、服装、极致Q版比例（头:身体=5:1），只使用定稿右侧全身造型，不输出定稿的脸部近景；图2只核对人物身份，不恢复真人身体比例。【比例锁定——全程强制】头顶到下巴:下巴到脚底＝5:1，每一格都必须一致；禁止为配合动作拉长四肢、画大躯干或增加肩宽。动作："
+// 头身比、单人与全身入格在这里统一声明一次，动作文案不再逐条重复。
+const builtInMotionPrefix = "图1是已确认角色定稿，图2是本人自拍。图1固定画风、服装、配色和极致Q版比例（头:身体=5:1），只使用定稿右侧全身造型，不输出定稿的脸部近景；图2只核对人物身份，不恢复真人身体比例。每一格都保持同一5:1头身比，不为动作拉长四肢、画大躯干或增加肩宽；全程只有这一个角色，身体、四肢和鞋完整入格。动作："
 
 // buildMotionPrompt 用内置约束 + 动作过程 + 网格规格拼出动作阶段提示词。
 func buildMotionPrompt(action, grid string) string {

@@ -1,0 +1,48 @@
+# 拾光 GIF 文档索引
+
+从自拍生成专属角色，再制作动作 GIF 的轻量 Web 项目。完整的功能规则、部署与运维说明见仓库根目录的 [`README.md`](../README.md)，变更记录见 [`CHANGELOG.md`](../CHANGELOG.md)。
+
+## 目录结构
+
+- `cmd/server`：服务入口。
+- `internal/app`：业务逻辑、提示词、GIF 合成与内嵌的静态页面（`web/`）。
+- `scripts`：部署、清理与测试脚本。
+
+## 快速开始与测试
+
+```powershell
+cd D:\personal\work\gif
+Copy-Item .env.example .env   # 设置 GIF_SECRET（≥32字符）与 GIF_ADMIN_PASSWORD（≥16字符）
+$env:GOCACHE = Join-Path (Get-Location) '.cache/go-build'
+go run ./cmd/server -port 8096
+go test ./... -count=1
+```
+
+## 提示词结构
+
+一次动作生成的上游提示词由三段拼成（`internal/app/generate.go` 的 `buildMotionPrompt`）：
+
+1. `builtInMotionPrefix`：图1/图2 分工、5:1 头身比、单人、全身入格，只在这里声明一次。
+2. 动作过程：`internal/app/{male,female,child,daily}_action_prompts.go` 与 `daily_timeline_prompts.go`。只写起始、过程、结束和必要道具约束，用“准备、展开、重点、收势”描述阶段，不写帧号、触发原因或情绪。
+3. `motionSpecPrompt`（`internal/app/gif.go`）：网格尺寸、分格规则、背景与边缘规则、简化要求和帧间连续要求，4×4、5×5、10×10 共用。
+
+定稿提示词是 `internal/app/compare_prompts.go` 的 `compareDraftPrompt`，服装由 `{{clothes}}` 占位符填入。
+
+### 为什么这样写
+
+GIF 只表达情绪和动作感，成片每帧 128—256 像素，细节看不出来。切格合成后出现“杂质”的常见原因是：
+
+- 内容跨格：下一格的头顶出现在本格脚底，或道具、特效越过格线。
+- 半透明光晕、白边、外发光、投影、残影被切进帧边缘。
+- 漂浮的爱心、星星、光点等小元素落在格边缘。
+
+规格段对这几类都有明确禁令，动作文案也不再要求相关装饰。该约束仅依靠提示词，无法保证上游模型每次都遵守；程序端另有 `clearBottomBleed` 与主体包围盒裁切作为兜底。
+
+### 已有部署的升级
+
+后台动作与定稿提示词存放在数据库。读取配置时，仍与上一版出厂原文一致的条目会自动升级为新版（`internal/app/prompt_migration.go`，按 SHA-256 前 16 位比对）；管理员改过的条目不会被覆盖。
+
+## 常见问题
+
+- 生成的序列图仍有跨格内容：先在后台“动作序列图规格”试 4×4（单格像素更多），并查看管理端 `/compare` 横评不同模型。
+- `npm test` 中 `scripts/test-selfie-draft-reset.mjs` 在本次改动前就失败（断言 `actual: 1, expected: 0`），与提示词无关，尚未处理。

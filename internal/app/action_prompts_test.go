@@ -72,7 +72,7 @@ func TestAdminActionPromptsExportMatchesGenerate(t *testing.T) {
 		"参考图：定稿（image1）、自拍（image2）",
 		wantMotion,
 		"日常 · " + morning.Name,
-		"HTML padding",
+		"独立的小画布",
 	} {
 		if !strings.Contains(out.Export, want) {
 			t.Fatal("export missing", want)

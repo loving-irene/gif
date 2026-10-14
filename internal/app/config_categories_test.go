@@ -80,7 +80,7 @@ func TestDefaultsUse5x5AndDaily(t *testing.T) {
 	if !strings.Contains(got, "图1是已确认角色定稿") || !strings.Contains(got, "【动作：干饭】") {
 		t.Fatal("built-in motion prompt missing", got)
 	}
-	for _, want := range []string{"水平垂直居中", "HTML padding", "8%–12%", "禁止越往后越放大", "约80%", "独立生成"} {
+	for _, want := range []string{"水平垂直居中", "8%–12%", "禁止越往后越放大", "约80%", "独立的小画布", "不得越过格线", "外发光"} {
 		if !strings.Contains(got, want) {
 			t.Fatal("motion cell padding layout missing", want, got)
 		}
@@ -108,7 +108,7 @@ func TestNormalizeCategoriesAddsHandbookDailyActions(t *testing.T) {
 	if have["heart"].Name != "双手比心" || !strings.Contains(have["heart"].Prompt, "【动作：双手比心】") {
 		t.Fatal("miss should migrate to heart", have["heart"])
 	}
-	if !strings.Contains(have["eat"].Prompt, "必须完整处于本格内") {
+	if !strings.Contains(have["eat"].Prompt, "完整在格内") {
 		t.Fatal("eat legacy prompt should upgrade", have["eat"].Prompt)
 	}
 	for _, id := range []string{"hello_wave", "cry", "dance", "gift", "stomp", "shock"} {
@@ -187,7 +187,7 @@ func TestDefaultsAndNormalizeChildHandbookActions(t *testing.T) {
 		t.Fatalf("child should ship %d handbook actions, got id=%s n=%d", len(wantIDs), child.ID, len(child.Actions))
 	}
 	for i, a := range child.Actions {
-		if a.ID != wantIDs[i] || !strings.Contains(a.Prompt, "【动作：") || !strings.Contains(a.Prompt, "25格等间距连续递进") {
+		if a.ID != wantIDs[i] || !strings.Contains(a.Prompt, "【动作：") || !strings.Contains(a.Prompt, "主动作只有一条") {
 			t.Fatal("child handbook action malformed", a.ID)
 		}
 	}

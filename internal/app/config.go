@@ -297,6 +297,7 @@ func normalizeCategories(list []Category) []Category {
 			c.Actions = ensureActions(c.Actions, d.Actions,
 				"selfie_peace", "skirt_spin", "blush", "wish", "milk_tea", "petal")
 		}
+		c.Actions = upgradeRetiredActionPrompts(c.Actions, d.Actions)
 		out = append(out, c)
 	}
 	return out
@@ -493,7 +494,7 @@ func migratePromptsToV162(s Settings) Settings {
 	if s.IdentityPrompt == oldIdentity {
 		s.IdentityPrompt = def.IdentityPrompt
 	}
-	if s.DraftPrompt == "" || s.DraftPrompt == oldDraft {
+	if s.DraftPrompt == "" || s.DraftPrompt == oldDraft || promptDigest(s.DraftPrompt) == retiredDraftPromptHash {
 		s.DraftPrompt = def.DraftPrompt
 	}
 	s.DraftPrompt = migrateDraftClothesPlaceholder(s.DraftPrompt)
