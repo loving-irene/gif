@@ -12,7 +12,7 @@ import {
   userNotice,
   watchMediaImage,
   mediaResponse,
-} from "./common.v5.js";
+} from "./common.v8.js";
 let settings,
   editors = [],
   codeText = "",

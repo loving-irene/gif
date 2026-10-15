@@ -300,13 +300,20 @@ export async function download(blob, name) {
   const close = element("button", { type: "button", className: "close", autofocus: true }, "×");
   close.setAttribute("aria-label", "关闭保存预览");
   close.onclick = () => dialog.close();
+  const isVideo = /^video\//i.test(blob.type || "") || /\.mp4$/i.test(name);
+  const noun = isVideo ? "视频" : "图片";
   const hint = element("p", { id: "saveMediaHint" },
-    "长按下方图片，在浏览器菜单中选择“保存图片”或“存储到照片”。");
-  // 展示原始 Blob，不转成 canvas 或静态图片，保留 GIF 全部动画帧。
-  const preview = element("img", { className: "save-media-preview", src: url, alt: name });
+    `长按下方${noun}，在浏览器菜单中选择“保存${noun}”或“存储到图库”。`);
+  // 展示原始 Blob，保留 GIF 全部动画帧和 MP4 视频内容。
+  const preview = element(isVideo ? "video" : "img", { className: "save-media-preview", src: url, alt: name });
+  if (isVideo) {
+    preview.controls = true;
+    preview.playsInline = true;
+    preview.preload = "metadata";
+  }
   const status = element("p", { className: "save-media-status" });
   status.setAttribute("role", "status");
-  status.textContent = "若没有保存选项，请用 Safari 或 Chrome 打开本页后重试。下载文件通常保存在“文件”或“下载”中，不会直接存入相册。";
+  status.textContent = "若没有保存选项，请用 Safari 或 Chrome 打开本页后重试。下载文件通常保存在“文件”或“下载”中，不会直接存入图库。";
   const row = element("div", { className: "button-row" });
   if (file && canShareFile(file)) {
     const share = element("button", { type: "button", className: "primary" }, "系统分享");
@@ -315,25 +322,25 @@ export async function download(blob, name) {
       try {
         // 必须直接在此次点击内调用；不先读取文件或等待网络请求。
         await navigator.share({ files: [file], title: name });
-        status.textContent = "如系统面板没有“存储到照片/相册”，可尝试长按上方图片保存。是否提供相册选项由系统和浏览器决定。";
+        status.textContent = `如系统面板没有“存储到照片/图库”，可尝试长按上方${noun}保存。是否提供图库选项由系统和浏览器决定。`;
       } catch (error) {
         if (error?.name !== "AbortError")
-          status.textContent = "系统分享未能打开。请尝试长按上方图片保存，或下载文件。";
+          status.textContent = `系统分享未能打开。请尝试长按上方${noun}保存，或下载文件。`;
       } finally {
         share.disabled = false;
       }
     };
     row.append(share);
   } else {
-    status.textContent = "当前浏览器不支持分享此图片。请尝试长按保存；若没有保存选项，请用 Safari 或 Chrome 打开本页。下载文件不会直接存入相册。";
+    status.textContent = `当前浏览器不支持分享此${noun}。请尝试长按保存；若没有保存选项，请用 Safari 或 Chrome 打开本页。下载文件不会直接存入图库。`;
   }
   const save = element("button", { type: "button", className: "secondary" }, "下载文件");
   save.onclick = () => {
     downloadFile(blob, name);
-    status.textContent = "已请求下载，请在浏览器的下载列表或手机“文件”中查看。需要存入相册时，请尝试长按上方图片保存。";
+    status.textContent = `已请求下载，请在浏览器的下载列表或手机“文件”中查看。需要存入图库时，请尝试长按上方${noun}保存。`;
   };
   row.append(save);
-  dialog.append(close, element("h2", { id: "saveMediaTitle" }, "保存图片"), hint, preview, row, status);
+  dialog.append(close, element("h2", { id: "saveMediaTitle" }, `保存${noun}`), hint, preview, row, status);
   dialog.addEventListener("close", () => {
     // 其他异步任务可能在弹窗内显示全局 toast，关闭时保留该节点。
     const notice = $("toast");
