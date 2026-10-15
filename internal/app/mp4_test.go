@@ -61,17 +61,56 @@ func TestGifToMP4ConvertsWithFFmpeg(t *testing.T) {
 	if err := os.WriteFile(path, mp4, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	out, err := exec.CommandContext(ctx, ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path).Output()
+	out, err := exec.CommandContext(ctx, ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name,profile,width,height,avg_frame_rate,has_b_frames", "-of", "default=noprint_wrappers=1", path).Output()
 	if err != nil {
 		t.Fatal(err)
 	}
+	streamInfo := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		parts := strings.SplitN(strings.TrimSpace(line), "=", 2)
+		if len(parts) == 2 {
+			streamInfo[parts[0]] = parts[1]
+		}
+	}
+	for key, want := range map[string]string{
+		"codec_name":     "h264",
+		"width":          fmt.Sprint(mp4CanvasSize),
+		"height":         fmt.Sprint(mp4CanvasSize),
+		"avg_frame_rate": fmt.Sprintf("%d/1", mp4FPS),
+		"has_b_frames":   "0",
+	} {
+		if got := streamInfo[key]; got != want {
+			t.Fatalf("video %s=%q want %q (all=%v)", key, got, want, streamInfo)
+		}
+	}
+	if !strings.Contains(streamInfo["profile"], "Baseline") {
+		t.Fatalf("video profile=%q want baseline", streamInfo["profile"])
+	}
+	out, err = exec.CommandContext(ctx, ffprobe, "-v", "error", "-show_entries", "format=duration,size", "-of", "default=noprint_wrappers=1", path).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	formatInfo := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		parts := strings.SplitN(strings.TrimSpace(line), "=", 2)
+		if len(parts) == 2 {
+			formatInfo[parts[0]] = parts[1]
+		}
+	}
 	var duration float64
-	if _, err := fmt.Sscanf(strings.TrimSpace(string(out)), "%f", &duration); err != nil {
+	if _, err := fmt.Sscanf(formatInfo["duration"], "%f", &duration); err != nil {
 		t.Fatalf("parse duration %q: %v", out, err)
 	}
 	want := 0.3 * float64(mp4LoopCount)
 	if duration < want-0.15 || duration > want+0.25 {
 		t.Fatalf("mp4 duration=%.3fs want about %.1fs (%d loops)", duration, want, mp4LoopCount)
+	}
+	var size int64
+	if _, err := fmt.Sscanf(formatInfo["size"], "%d", &size); err != nil {
+		t.Fatalf("parse size %q: %v", out, err)
+	}
+	if size <= 0 || size > 2*1024*1024 {
+		t.Fatalf("mp4 size=%d want 0< size <=2MiB", size)
 	}
 }
 

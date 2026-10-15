@@ -163,7 +163,7 @@ cd /var/www
 git clone git@github.com:loving-irene/gif.git gif
 cd /var/www/gif
 chmod +x scripts/*.sh
-# 后台「转成 MP4」依赖本机 ffmpeg（Ubuntu/Debian）：
+# 后台「转成轻量 MP4」依赖本机 ffmpeg（Ubuntu/Debian）：
 sudo apt-get update && sudo apt-get install -y ffmpeg
 ./scripts/check_env.sh
 ./scripts/init_env.sh
@@ -179,6 +179,10 @@ curl -fsS https://gif.jcc666.top/healthz
 ```
 
 自动部署应由拥有仓库SSH读取权限、Go环境以及必要sudo权限的现有部署账号执行，与card一致。首次Certbot会要求填写证书联系邮箱及接受其条款，由部署者完成。运行账号www-data不应拥有源码写权限，数据库目录由部署脚本单独授权。已有服务器若未装 ffmpeg，执行上面的 `apt-get install -y ffmpeg` 后无需重启服务即可转 MP4（`LookPath` 每次转换时查找）。
+
+### 微信分享用 MP4 预设
+
+管理台图库的「转成轻量 MP4」会把 GIF 完整循环 3 次，输出无音轨的 H.264 视频：固定 `360×360`、`20fps`、Baseline profile，峰值码率 `900kbps`，并启用 `faststart` 让聊天预览更快出现。GIF 的透明区域会合成白底，因为 MP4/H.264 不保存透明通道。该预设针对微信聊天和朋友圈的短视频预览，避免沿用 ffmpeg 默认编码质量导致文件过大；实际大小还会随动作内容变化。
 
 `deploy.sh` 会先测试与构建，再原子替换二进制，重启并检查健康；健康失败自动恢复上一二进制并返回失败。自动部署只有成功后才更新 `.last_deployed_commit`。
 

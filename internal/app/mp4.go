@@ -16,11 +16,21 @@ import (
 
 var errFFmpegMissing = errors.New("ffmpeg missing")
 
-// mp4LoopCount 是转存 MP4 时 GIF 完整播放的次数（含首次）。
-const mp4LoopCount = 3
+const (
+	// mp4LoopCount 是转存 MP4 时 GIF 完整播放的次数（含首次）。三次足够让
+	// 朋友圈中的短动作看清楚，同时避免把循环次数变成文件体积的主要来源。
+	mp4LoopCount = 3
+	// 微信聊天气泡和朋友圈预览都会缩放视频；360px 能保留贴纸轮廓，且比
+	// 直接把 1024px 序列图带入视频小很多。小于该尺寸的 GIF 也会平滑放大，
+	// 避免 128px/256px 视频被平台再次放大后出现明显锯齿。
+	mp4CanvasSize = 360
+	mp4FPS        = 20
+)
 
-// gifToMP4 用本机 ffmpeg 把 GIF 转成适合网页播放的 H.264 MP4。
-// 输出会按 mp4LoopCount 完整循环；宽高取偶数以满足 yuv420p。
+// gifToMP4 用本机 ffmpeg 把 GIF 转成适合微信聊天和朋友圈分享的轻量 H.264 MP4。
+// 输出会按 mp4LoopCount 完整循环，统一为 360×360、20fps、白色不透明背景，
+// 并限制峰值码率，避免 ffmpeg 默认质量设置产生体积过大的视频。GIF 没有音轨，
+// 因此输出也明确禁用音频。
 // 失败时返回可读错误，不把 ffmpeg 原始输出直接给前端。
 func gifToMP4(ctx context.Context, gifBytes []byte) ([]byte, error) {
 	if len(gifBytes) == 0 {
@@ -42,15 +52,28 @@ func gifToMP4(ctx context.Context, gifBytes []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	// -stream_loop N 表示额外再读 N 次输入，总播放次数为 N+1。
+	// -stream_loop N 表示额外再读 N 次输入，总播放次数为 N+1。透明 GIF
+	// 先叠到白底再转 yuv420p；MP4/H.264 本身不保存 GIF 的透明通道，白底
+	// 比 ffmpeg 默认的黑底更接近聊天里的贴纸预览。
 	cmd := exec.CommandContext(ctx, ffmpeg,
 		"-hide_banner", "-loglevel", "error", "-y",
 		"-stream_loop", fmt.Sprintf("%d", mp4LoopCount-1),
 		"-i", inPath,
 		"-an",
+		"-filter_complex", fmt.Sprintf("[0:v]fps=%d,format=rgba,scale=%d:%d:flags=lanczos[fg];color=c=white:s=%dx%d:r=%d[bg];[bg][fg]overlay=shortest=1:format=auto,format=yuv420p[v]", mp4FPS, mp4CanvasSize, mp4CanvasSize, mp4CanvasSize, mp4CanvasSize, mp4FPS),
+		"-map", "[v]",
+		"-c:v", "libx264",
+		"-preset", "medium",
+		"-tune", "animation",
+		"-profile:v", "baseline",
+		"-level", "3.0",
+		// CRF 22 keeps the small character edges clean; maxrate/bufsize still
+		// bound the bitrate for the short clips used by the service.
+		"-crf", "22",
+		"-maxrate", "900k",
+		"-bufsize", "1800k",
+		"-g", fmt.Sprintf("%d", mp4FPS*2),
 		"-movflags", "+faststart",
-		"-pix_fmt", "yuv420p",
-		"-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
 		outPath,
 	)
 	var stderr bytes.Buffer
