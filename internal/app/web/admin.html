@@ -7,9 +7,9 @@
     <title>管理工作台 · 拾光 GIF</title>
     <link rel="stylesheet" href="/assets/style.v47.css" />
     <link rel="stylesheet" href="/assets/save-media.v1.css" />
-    <link rel="stylesheet" href="/assets/image-display.v9.css" />
+    <link rel="stylesheet" href="/assets/image-display.v10.css" />
     <link rel="icon" href="/assets/icon.v1.svg" />
-    <script type="module" src="/assets/admin.v58.js"></script>
+    <script type="module" src="/assets/admin.v59.js"></script>
   </head>
   <body>
     <header class="header wrap admin-wrap">
@@ -72,12 +72,20 @@
         <section id="gallerySection" class="admin-section admin-panel" hidden>
           <h2>图库</h2>
           <p class="hint">
-            展示全部保留的定稿图和 GIF。GIF 下方展示对应的动作序列原图，点击原图可查看原尺寸；未保存原图的作品会单独标注。有 GIF 的作品可点「转成轻量 MP4」下载适合微信聊天和朋友圈分享的视频（360×360、20fps、完整循环 3 次，透明背景转为白底）。图片按需加载。
+            展示全部保留的定稿图和 GIF。GIF 下方展示对应的动作序列原图，点击原图可查看原尺寸；未保存原图的作品会单独标注。下方提供微信聊天场景视频，点击“保存”会沿用首页的移动端预览、系统分享和下载流程。
           </p>
           <div class="gallery-toolbar">
             <label>搜索<input id="gallerySearch" type="search" maxlength="254" placeholder="账号、用户名、编号、动作" /></label>
             <button id="refreshGallery" class="text-button" type="button">↻ 刷新图库</button>
           </div>
+          <section class="admin-gallery-video" aria-labelledby="galleryVideoTitle">
+            <div class="admin-gallery-video-copy">
+              <h3 id="galleryVideoTitle">微信聊天场景</h3>
+              <p class="hint">已使用统一场景视频展示 GIF 在聊天中的实际发送效果。</p>
+              <button id="saveGalleryVideo" class="secondary" type="button">保存</button>
+            </div>
+            <video id="galleryVideo" class="admin-gallery-video-player" src="/assets/222.mp4" controls playsinline preload="metadata"></video>
+          </section>
           <h3 class="gallery-heading">定稿图 <span id="galleryDraftCount" class="hint"></span></h3>
           <div id="galleryDrafts" class="admin-gallery"></div>
           <p id="galleryDraftsEmpty" class="hint" hidden>没有符合条件的定稿图。</p>

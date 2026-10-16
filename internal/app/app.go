@@ -471,7 +471,6 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /api/admin/jobs/history", a.auth(a.adminJobHistory, true))
 	mux.HandleFunc("GET /api/admin/gallery", a.auth(a.adminGallery, true))
 	mux.HandleFunc("GET /api/admin/gallery/drafts/{receipt}/image", a.auth(a.adminDraftImage, true))
-	mux.HandleFunc("GET /api/admin/gallery/works/{id}/mp4", a.auth(a.adminWorkMP4, true))
 	mux.HandleFunc("GET /api/admin/gallery/works/{id}/{blob}", a.auth(a.adminWorkBlob, true))
 	mux.HandleFunc("GET /api/admin/dashboard", a.auth(a.adminDashboard, true))
 	mux.HandleFunc("POST /api/admin/dashboard/email", a.auth(a.adminDashboardEmail, true))
