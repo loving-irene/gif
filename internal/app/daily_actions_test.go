@@ -9,7 +9,7 @@ import (
 
 func TestDailyTimelineMigratesFullLegacyCatalog(t *testing.T) {
 	cfg := defaults(Env{})
-	legacyIDs := []string{"morning", "eat_ask", "eat", "hello_wave", "cry", "dance", "gift", "stomp", "shock", "heart", "play", "tease"}
+	legacyIDs := []string{"morning", "eat_ask", "eat", "hello_wave", "cry", "dance", "gift", "heart", "play", "tease"}
 	oldPrompts := map[string]string{
 		"morning": dailyActionMorningLegacy, "eat_ask": dailyActionEatAskLegacy,
 		"play": dailyActionPlayLegacy, "tease": dailyActionTeaseLegacy,
@@ -58,8 +58,8 @@ func TestDailyTimelinePreservesCustomActions(t *testing.T) {
 	if got.Subtitle != "我们的日常" || got.Actions[0] != customMorning {
 		t.Fatal("custom category or built-in action content was overwritten")
 	}
-	if len(got.Actions) != 39 || !reflect.DeepEqual(got.Actions[28:], customTail) {
-		t.Fatal("12-action legacy catalog must retain its custom actions and gain all timeline actions")
+	if len(got.Actions) != 37 || !reflect.DeepEqual(got.Actions[26:], customTail) {
+		t.Fatal("legacy catalog must retain its custom actions and gain all timeline actions")
 	}
 	if err := validateSettings(cfg); err != nil {
 		t.Fatal("migrated custom catalog cannot be saved", err)
@@ -107,10 +107,10 @@ func TestDailyTimelineSettingsRoundTrip(t *testing.T) {
 	var catalog struct {
 		Categories []Category `json:"categories"`
 	}
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &catalog) != nil || len(catalog.Categories) != 4 {
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &catalog) != nil || len(catalog.Categories) != 5 {
 		t.Fatal("cannot read public catalog", w.Code)
 	}
-	if len(catalog.Categories[3].Actions) != 28 {
+	if len(catalog.Categories[3].Actions) != 26 {
 		t.Fatal("public catalog missing timeline actions")
 	}
 	for i, action := range catalog.Categories[3].Actions {
@@ -121,7 +121,7 @@ func TestDailyTimelineSettingsRoundTrip(t *testing.T) {
 }
 
 func TestCategoryActionLimits(t *testing.T) {
-	for _, tc := range []struct{ index, limit int }{{0, 12}, {3, 48}} {
+	for _, tc := range []struct{ index, limit int }{{0, 12}, {3, 48}, {4, 12}} {
 		cfg := defaults(Env{})
 		cfg.Categories[tc.index].Actions = nil
 		for i := 0; i < tc.limit; i++ {

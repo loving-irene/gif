@@ -16,8 +16,8 @@ func TestNormalizeCategoriesAddsDailyAndMaleSports(t *testing.T) {
 	legacy[0] = male
 
 	got := normalizeCategories(legacy)
-	if len(got) != 4 || got[3].ID != "daily" {
-		t.Fatalf("expected daily as 4th category, got %+v", got)
+	if len(got) != 5 || got[3].ID != "daily" || got[4].ID != "emotion" {
+		t.Fatalf("expected daily and emotion as the last categories, got %+v", got)
 	}
 	have := map[string]bool{}
 	for _, a := range got[0].Actions {
@@ -49,14 +49,14 @@ func TestDefaultsUse5x5AndDaily(t *testing.T) {
 	if cfg.MotionGrid != "5x5" {
 		t.Fatal(cfg.MotionGrid)
 	}
-	if len(cfg.Categories) != 4 || cfg.Categories[3].ID != "daily" {
+	if len(cfg.Categories) != 5 || cfg.Categories[3].ID != "daily" || cfg.Categories[4].ID != "emotion" {
 		t.Fatalf("categories=%+v", cfg.Categories)
 	}
 	daily := cfg.Categories[3]
-	if len(daily.Actions) != 28 {
-		t.Fatalf("daily should ship 28 handbook actions, got %d", len(daily.Actions))
+	if len(daily.Actions) != 26 {
+		t.Fatalf("daily should ship 26 handbook actions, got %d", len(daily.Actions))
 	}
-	wantIDs := []string{"eat", "hello_wave", "cry", "dance", "gift", "stomp", "shock", "heart"}
+	wantIDs := []string{"eat", "hello_wave", "cry", "dance", "gift", "heart"}
 	have := map[string]Action{}
 	for _, a := range daily.Actions {
 		have[a.ID] = a
@@ -76,6 +76,16 @@ func TestDefaultsUse5x5AndDaily(t *testing.T) {
 	if !strings.Contains(cfg.IdentityPrompt, "面部辨识度最高优先") {
 		t.Fatal("identity prompt not updated")
 	}
+	emotion := cfg.Categories[4]
+	wantEmotion := []string{"happy", "confused", "shock", "stomp", "contempt"}
+	if len(emotion.Actions) != len(wantEmotion) {
+		t.Fatalf("emotion should ship %d handbook actions, got %d", len(wantEmotion), len(emotion.Actions))
+	}
+	for i, id := range wantEmotion {
+		if emotion.Actions[i].ID != id || emotion.Actions[i].Name == "" || !strings.Contains(emotion.Actions[i].Prompt, "【动作：") {
+			t.Fatal("emotion action malformed", i, emotion.Actions[i])
+		}
+	}
 	got := buildMotionPrompt(have["eat"].Prompt, "5x5")
 	if !strings.Contains(got, "图1是已确认角色定稿") || !strings.Contains(got, "【动作：干饭】") {
 		t.Fatal("built-in motion prompt missing", got)
@@ -84,6 +94,33 @@ func TestDefaultsUse5x5AndDaily(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatal("motion cell padding layout missing", want, got)
 		}
+	}
+}
+
+func TestNormalizeCategoriesMovesLegacyEmotionActions(t *testing.T) {
+	legacy := defaultCategories()[:4]
+	legacy[3].Actions = append(legacy[3].Actions,
+		Action{"shock", "惊讶后仰", "😲", dailyActionShock},
+		Action{"stomp", "生气跺脚", "💢", dailyActionStomp},
+	)
+	got := normalizeCategories(legacy)
+	if got[3].ID != "daily" || got[4].ID != "emotion" {
+		t.Fatalf("unexpected category order: %+v", got)
+	}
+	for _, a := range got[3].Actions {
+		if a.ID == "shock" || a.ID == "stomp" {
+			t.Fatal("legacy emotion action remained in daily", a)
+		}
+	}
+	seen := map[string]Action{}
+	for _, a := range got[4].Actions {
+		seen[a.ID] = a
+	}
+	if seen["shock"].Name != "惊讶" || seen["stomp"].Name != "愤怒" || seen["shock"].Prompt != emotionActionSurprised || seen["stomp"].Prompt != emotionActionAngry {
+		t.Fatal("legacy emotion actions were not upgraded", seen)
+	}
+	if err := validateSettings(defaults(Env{})); err != nil {
+		t.Fatal("emotion defaults should validate", err)
 	}
 }
 
@@ -111,9 +148,18 @@ func TestNormalizeCategoriesAddsHandbookDailyActions(t *testing.T) {
 	if !strings.Contains(have["eat"].Prompt, "完整在格内") {
 		t.Fatal("eat legacy prompt should upgrade", have["eat"].Prompt)
 	}
-	for _, id := range []string{"hello_wave", "cry", "dance", "gift", "stomp", "shock"} {
+	for _, id := range []string{"hello_wave", "cry", "dance", "gift"} {
 		if _, ok := have[id]; !ok {
 			t.Fatal("missing ensured handbook action", id)
+		}
+	}
+	emotion := map[string]Action{}
+	for _, a := range got[4].Actions {
+		emotion[a.ID] = a
+	}
+	for _, id := range []string{"stomp", "shock"} {
+		if _, ok := emotion[id]; !ok {
+			t.Fatal("missing ensured emotion action", id)
 		}
 	}
 	if len(got[3].Actions) > categoryActionLimit("daily") {

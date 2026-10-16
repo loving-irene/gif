@@ -29,10 +29,18 @@ func defaultDailyActions() []Action {
 		{"cry", "放声大哭", "😭", dailyActionCry},
 		{"dance", "转圈跳舞", "💃", dailyActionDance},
 		{"gift", "拆礼物", "🎁", dailyActionGift},
-		{"stomp", "生气跺脚", "💢", dailyActionStomp},
-		{"shock", "惊讶后仰", "😲", dailyActionShock},
 		{"heart", "双手比心", "♡", dailyActionHeart},
 		{"tease", "调侃你", "😜", dailyActionTease},
+	}
+}
+
+func defaultEmotionActions() []Action {
+	return []Action{
+		{"happy", "开心", "😊", emotionActionHappy},
+		{"confused", "疑惑", "🤔", emotionActionConfused},
+		{"shock", "惊讶", "😲", emotionActionSurprised},
+		{"stomp", "愤怒", "💢", emotionActionAngry},
+		{"contempt", "鄙视", "😏", emotionActionContempt},
 	}
 }
 

@@ -23,7 +23,7 @@ go test ./... -count=1
 一次动作生成的上游提示词由三段拼成（`internal/app/generate.go` 的 `buildMotionPrompt`）：
 
 1. `builtInMotionPrefix`：图1/图2 分工、5:1 头身比、单人、全身入格，只在这里声明一次。
-2. 动作过程：`internal/app/{male,female,child,daily}_action_prompts.go` 与 `daily_timeline_prompts.go`。只写起始、过程、结束和必要道具约束，用“准备、展开、重点、收势”描述阶段，不写帧号、触发原因或情绪。
+2. 动作过程：`internal/app/{male,female,child,daily,emotion}_action_prompts.go` 与 `daily_timeline_prompts.go`。日常动作只写起始、过程、结束和必要道具约束，用“准备、展开、重点、收势”描述阶段；情绪动作则直接描述对应表情与肢体变化。
 3. `motionSpecPrompt`（`internal/app/gif.go`）：网格尺寸、分格规则、背景与边缘规则、简化要求和帧间连续要求，4×4、5×5、10×10 共用。
 
 定稿提示词是 `internal/app/compare_prompts.go` 的 `compareDraftPrompt`，服装由 `{{clothes}}` 占位符填入。
@@ -37,6 +37,10 @@ GIF 只表达情绪和动作感，成片每帧 128—256 像素，细节看不�
 - 漂浮的爱心、星星、光点等小元素落在格边缘。
 
 规格段对这几类都有明确禁令，动作文案也不再要求相关装饰。该约束仅依靠提示词，无法保证上游模型每次都遵守；程序端另有 `clearBottomBleed` 与主体包围盒裁切作为兜底。
+
+### 分类与动作迁移
+
+默认分类为男生、女生、小朋友、日常和情绪。情绪分类内置开心、疑惑、惊讶、愤怒、鄙视五个动作。读取旧数据库配置时，日常分类中的「惊讶后仰」「生气跺脚」按原动作编号迁移到情绪分类；自定义动作过程会保留，使用旧内置提示词的动作会升级为情绪分类版本。
 
 ### 已有部署的升级
 

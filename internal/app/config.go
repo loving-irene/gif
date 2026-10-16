@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -226,8 +227,8 @@ func defaults(e Env) Settings {
 	}
 }
 
-// categoryIDs 固定可选人物分类编号：男生/女生/小朋友专属 + 通用日常。
-var categoryIDs = []string{"male", "female", "child", "daily"}
+// categoryIDs 固定可选人物分类编号：男生/女生/小朋友专属 + 通用日常与情绪。
+var categoryIDs = []string{"male", "female", "child", "daily", "emotion"}
 
 func defaultCategories() []Category {
 	return []Category{
@@ -255,12 +256,13 @@ func defaultCategories() []Category {
 			{"carry_me", "要抱抱", "🤗", childActionCarryMe},
 		}},
 		{ID: "daily", Name: "日常", Subtitle: "从早安到晚安，陪爱人和好哥们聊日常", Icon: "☀", Clothes: []string{"白色翻领短袖与短裤", "宽松卫衣与长裤", "休闲T恤与牛仔裤"}, Colors: []string{"白与深蓝", "奶白与灰", "浅彩休闲"}, Weapons: []string{}, Prompt: "年轻人日常单人贴纸角色，服装简洁贴合微型身体，不增大体积。保留本人年龄与面部特征，表情自然可发聊天。全身必须保持极致Q版5:1头身比，单人出镜，不出现第二人。", Actions: defaultDailyActions()},
+		{ID: "emotion", Name: "情绪", Subtitle: "用简单动作表达当下心情", Icon: "☺", Clothes: []string{"白色翻领短袖与短裤", "宽松卫衣与长裤", "休闲T恤与牛仔裤"}, Colors: []string{"白与深蓝", "奶白与灰", "浅彩休闲"}, Weapons: []string{}, Prompt: "通用情绪贴纸角色，通过简洁表情与肢体动作表达单一心情。保留本人年龄与面部特征，服装简洁，不添加第二人或无关道具。全身保持极致Q版5:1头身比。", Actions: defaultEmotionActions()},
 	}
 }
 
-// normalizeCategories 保证男生/女生/小朋友/日常齐全且顺序固定。
+// normalizeCategories 保证男生/女生/小朋友/日常/情绪齐全且顺序固定。
 // 已有分类保留后台自定义字段；缺类时补默认；男生移除旧武将动作并补入运动类动作；
-// 女生移除旧短文案动作并补入手册动作。
+// 女生移除旧短文案动作并补入手册动作；旧日常情绪动作迁移到情绪分类。
 func normalizeCategories(list []Category) []Category {
 	defs := defaultCategories()
 	byID := map[string]Category{}
@@ -269,6 +271,7 @@ func normalizeCategories(list []Category) []Category {
 			byID[c.ID] = c
 		}
 	}
+	moveLegacyEmotionActions(byID)
 	out := make([]Category, 0, len(defs))
 	for _, d := range defs {
 		c, ok := byID[d.ID]
@@ -287,6 +290,27 @@ func normalizeCategories(list []Category) []Category {
 				c.Subtitle = d.Subtitle
 			}
 		}
+		if c.ID == "emotion" {
+			if c.Name == "" {
+				c.Name = d.Name
+			}
+			if c.Subtitle == "" {
+				c.Subtitle = d.Subtitle
+			}
+			if c.Icon == "" {
+				c.Icon = d.Icon
+			}
+			if len(c.Clothes) == 0 {
+				c.Clothes = append([]string(nil), d.Clothes...)
+			}
+			if len(c.Colors) == 0 {
+				c.Colors = append([]string(nil), d.Colors...)
+			}
+			if c.Prompt == "" {
+				c.Prompt = d.Prompt
+			}
+			c.Actions = normalizeEmotionActions(c.Actions, d.Actions)
+		}
 		if c.ID == "child" {
 			c.Actions = removeActions(c.Actions, childLegacyActionIDs...)
 			c.Actions = ensureActions(c.Actions, d.Actions,
@@ -301,6 +325,75 @@ func normalizeCategories(list []Category) []Category {
 		out = append(out, c)
 	}
 	return out
+}
+
+// moveLegacyEmotionActions 把旧日常分类中的「惊讶后仰」「生气跺脚」移到情绪分类。
+// 动作编号保持不变，避免已有任务、作品和历史统计失去对应关系；管理员自定义的动作过程原样保留。
+func moveLegacyEmotionActions(byID map[string]Category) {
+	daily, ok := byID["daily"]
+	if !ok {
+		return
+	}
+	emotion := byID["emotion"]
+	if emotion.ID == "" {
+		emotion.ID = "emotion"
+	}
+	seen := map[string]bool{}
+	for _, a := range emotion.Actions {
+		seen[a.ID] = true
+	}
+	keep := daily.Actions[:0]
+	for _, a := range daily.Actions {
+		if a.ID != "shock" && a.ID != "stomp" {
+			keep = append(keep, a)
+			continue
+		}
+		if !seen[a.ID] {
+			emotion.Actions = append(emotion.Actions, a)
+			seen[a.ID] = true
+		}
+	}
+	daily.Actions = keep
+	byID["daily"] = daily
+	if len(emotion.Actions) > 0 {
+		byID["emotion"] = emotion
+	}
+}
+
+func normalizeEmotionActions(have, defs []Action) []Action {
+	for i := range have {
+		switch have[i].ID {
+		case "shock":
+			if strings.TrimSpace(have[i].Name) == "惊讶后仰" {
+				have[i].Name, have[i].Icon = "惊讶", "😲"
+			}
+			if strings.TrimSpace(have[i].Prompt) == dailyActionShock {
+				have[i].Prompt = emotionActionSurprised
+			}
+		case "stomp":
+			if strings.TrimSpace(have[i].Name) == "生气跺脚" {
+				have[i].Name, have[i].Icon = "愤怒", "💢"
+			}
+			if strings.TrimSpace(have[i].Prompt) == dailyActionStomp {
+				have[i].Prompt = emotionActionAngry
+			}
+		}
+	}
+	ids := make([]string, 0, len(defs))
+	order := make(map[string]int, len(defs))
+	for i, a := range defs {
+		ids = append(ids, a.ID)
+		order[a.ID] = i
+	}
+	have = ensureActionsWithLimit(have, defs, categoryActionLimit("emotion"), ids...)
+	rank := func(id string) int {
+		if i, ok := order[id]; ok {
+			return i
+		}
+		return len(defs)
+	}
+	sort.SliceStable(have, func(i, j int) bool { return rank(have[i].ID) < rank(have[j].ID) })
+	return have
 }
 
 // ensureActions 若 missingIDs 中的动作不在现有列表里，则从 defs 中追加。
@@ -474,7 +567,7 @@ func (a *App) settings() (Settings, error) {
 	}
 	// 兼容较早的配置：缺少画风定义时补入默认的默认、Q版与水墨风格。
 	s.Styles = normalizeStyles(s.Styles)
-	// 兼容较早的配置：补入「日常」分类，并按固定编号顺序排列。
+	// 兼容较早的配置：补入「日常」「情绪」分类，并按固定编号顺序排列。
 	s.Categories = normalizeCategories(s.Categories)
 	// 一次性迁移：旧动作图序（自拍为图1）改为定稿为图1；旧轻度Q提示词升级为5:1。
 	s = migratePromptsToV162(s)
@@ -543,7 +636,7 @@ func validateSettings(s Settings) error {
 	if len([]rune(s.RedeemHelp)) > 2000 {
 		return errors.New("获取兑换码内容不能超过2000字")
 	}
-	if s.DefaultCredits < 0 || s.DefaultCredits > 1000 || len(s.Categories) < 3 || len(s.Categories) > 4 {
+	if s.DefaultCredits < 0 || s.DefaultCredits > 1000 || len(s.Categories) < 3 || len(s.Categories) > 5 {
 		return errors.New("次数或分类配置超出范围")
 	}
 	if s.UserConcurrency < 1 || s.UserConcurrency > 20 {
@@ -594,7 +687,7 @@ func validateSettings(s Settings) error {
 			return errors.New("男生分类需要武器选项")
 		}
 	}
-	// 男生、女生、小朋友必须存在；日常为可选第四类。
+	// 男生、女生、小朋友必须存在；日常和情绪为可选扩展分类，旧配置可暂时省略。
 	for _, id := range []string{"male", "female", "child"} {
 		if !seen[id] {
 			return errors.New("分类配置无效")
