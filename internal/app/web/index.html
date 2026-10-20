@@ -21,13 +21,13 @@
       {{.StructuredData}}
     </script>
     <link rel="icon" href="/assets/icon.v1.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/assets/style.v46.css" />
+    <link rel="stylesheet" href="/assets/style.v48.css" />
     <link rel="stylesheet" href="/assets/footer.v1.css" />
-    <link rel="stylesheet" href="/assets/mobile-header.v1.css" />
+    <link rel="stylesheet" href="/assets/mobile-header.v2.css" />
     <link rel="stylesheet" href="/assets/image-display.v1.css" />
     <link rel="stylesheet" href="/assets/save-media.v1.css" />
-    <script src="/assets/app.v67.js" type="module"></script>
-    <script src="/assets/mobile-header.v1.js" type="module"></script>
+    <script src="/assets/app.v68.js" type="module"></script>
+    <script src="/assets/mobile-header.v2.js" type="module"></script>
     <script src="/assets/share.v4.js" type="module"></script>
     <script src="/assets/contact.v1.js" type="module"></script>
     <script src="/assets/showcase.v2.js" type="module"></script>
@@ -54,6 +54,22 @@
         ><button id="redeemOpenBtn" class="nav-link" type="button">
           增加次数
         </button
+        ><button
+          id="freeQuotaOpenBtn"
+          class="free-quota-open"
+          type="button"
+          aria-label="免费创作机会"
+          aria-haspopup="dialog"
+        >
+          <img
+            class="free-quota-icon"
+            src="/assets/icon.v1.svg"
+            alt=""
+            width="18"
+            height="18"
+            decoding="async"
+          /><span class="free-quota-label">免费</span>
+        </button
         ><button id="creditsBtn" class="pill">
           <span>✦</span> <strong id="credits">—</strong> 次创作</button
         ><button id="accountBtn" class="avatar" aria-label="账号与邮箱">
@@ -71,6 +87,7 @@
       </nav>
       <div id="mobileAccountMenu" popover aria-label="个人菜单">
         <button type="button" data-header-action="accountBtn">个人信息</button>
+        <button type="button" data-header-action="freeQuotaOpenBtn">免费</button>
         <button type="button" data-header-action="redeemOpenBtn">增加次数</button>
         <button type="button" data-header-action="callsOpenBtn">调用记录</button>
         <a href="/community">社区</a>
@@ -409,6 +426,36 @@
         <span>✿</span>
         <h3>还没有记录</h3>
       </div>
+    </dialog>
+    <dialog
+      id="freeQuotaDialog"
+      class="free-quota-dialog"
+      aria-labelledby="freeQuotaTitle"
+    >
+      <button
+        id="freeQuotaCloseBtn"
+        class="close"
+        type="button"
+        aria-label="关闭免费创作机会"
+      >
+        ×
+      </button>
+      <h2 id="freeQuotaTitle">免费创作机会</h2>
+      <p class="free-quota-tip">扫码添加可获赠5次创作机会</p>
+      <p id="freeQuotaStatus" class="hint" role="status">正在载入二维码…</p>
+      <img
+        id="freeQuotaQR"
+        class="free-quota-qr"
+        alt="微信二维码：扫码添加可获赠5次创作机会"
+      />
+      <a
+        id="saveFreeQuotaQR"
+        class="secondary free-quota-save"
+        href="/assets/wechat.v1.jpg"
+        download="微信联系二维码.jpg"
+        hidden
+        >↓ 保存二维码</a
+      >
     </dialog>
     <dialog id="redeemDialog">
       <button class="close" data-close aria-label="关闭">×</button

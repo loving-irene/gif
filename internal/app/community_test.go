@@ -420,7 +420,13 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 	if !strings.Contains(body, "扫描添加好友获赠 5 次创作机会") {
 		t.Fatal("homepage redeem dialog missing WeChat reward copy")
 	}
-	for _, asset := range []string{"/assets/app.v67.js", "/assets/style.v46.css", "/assets/save-media.v1.css"} {
+	if !strings.Contains(body, `id="freeQuotaOpenBtn"`) || !strings.Contains(body, "扫码添加可获赠5次创作机会") {
+		t.Fatal("homepage missing free-quota header entry or tip")
+	}
+	if !strings.Contains(body, "/assets/mobile-header.v2.css") {
+		t.Fatal("homepage should reference mobile-header.v2 for free-quota visibility")
+	}
+	for _, asset := range []string{"/assets/app.v68.js", "/assets/style.v48.css", "/assets/save-media.v1.css"} {
 		if !strings.Contains(body, asset) {
 			t.Fatal("homepage missing updated asset", asset)
 		}
@@ -428,7 +434,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 			t.Fatal("updated asset not embedded", asset, err)
 		}
 	}
-	raw, err := web.ReadFile("web/app.v67.js")
+	raw, err := web.ReadFile("web/app.v68.js")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -456,6 +462,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 		"已切换定稿与对应自拍。",
 		"已分享到社区，获赠",
 		"扫描添加好友可获赠 5 次创作机会",
+		"function openFreeQuota()",
 	} {
 		if !strings.Contains(source, want) {
 			t.Fatal("homepage motion quality contract missing", want)
@@ -464,7 +471,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 	if strings.Contains(source, "gallery-sheet") || strings.Contains(source, "保存原图") {
 		t.Fatal("frontend gallery must not show motion sheet; admin gallery only")
 	}
-	cssRaw, err := web.ReadFile("web/style.v46.css")
+	cssRaw, err := web.ReadFile("web/style.v48.css")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -492,7 +499,7 @@ func TestHomepageAccountEntryStaysClickable(t *testing.T) {
 	if !strings.Contains(body, `id="accountLockedHint"`) {
 		t.Fatal("account dialog missing locked hint")
 	}
-	raw, err := web.ReadFile("web/app.v67.js")
+	raw, err := web.ReadFile("web/app.v68.js")
 	if err != nil {
 		t.Fatal("homepage script not embedded", err)
 	}

@@ -272,7 +272,7 @@ func TestHomePageInjectsDeployFooter(t *testing.T) {
 		`data-deploy-status`,
 		"版本状态",
 		"up-to-date",
-		"/assets/style.v46.css",
+		"/assets/style.v48.css",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatal("homepage missing deploy footer piece", want)
@@ -281,7 +281,7 @@ func TestHomePageInjectsDeployFooter(t *testing.T) {
 	if w.Header().Get("Cache-Control") != "no-cache" {
 		t.Fatalf("homepage Cache-Control=%q want no-cache", w.Header().Get("Cache-Control"))
 	}
-	cssRaw, err := web.ReadFile("web/style.v46.css")
+	cssRaw, err := web.ReadFile("web/style.v48.css")
 	if err != nil {
 		t.Fatal(err)
 	}
