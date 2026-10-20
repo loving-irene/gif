@@ -21,6 +21,7 @@ var creditEventNames = map[string]string{
 	creditEventRegister: "注册赠送",
 	creditEventRedeem:   "兑换码兑换",
 	creditEventAdmin:    "后台增加",
+	creditEventShare:    "分享奖励",
 }
 
 // creditEventUnits 是次数来源的计量单位，用于“（2 个兑换码）”式补充说明。
@@ -28,6 +29,7 @@ var creditEventUnits = map[string]string{
 	creditEventRegister: "个账号",
 	creditEventRedeem:   "个兑换码",
 	creditEventAdmin:    "笔",
+	creditEventShare:    "人",
 }
 
 // creditEventStat 是单个次数来源在统计窗口内的聚合值。
@@ -163,7 +165,7 @@ func dailyStatsBody(day string, stats dailyStats, cfg Settings) string {
 	}
 	if len(stats.Events) > 0 {
 		b.WriteString("\r\n次数来源\r\n")
-		for _, event := range []string{creditEventRedeem, creditEventRegister, creditEventAdmin} {
+		for _, event := range []string{creditEventRedeem, creditEventRegister, creditEventAdmin, creditEventShare} {
 			s := stats.Events[event]
 			if s.Count == 0 {
 				continue

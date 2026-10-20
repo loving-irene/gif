@@ -7,11 +7,12 @@ import (
 	"strings"
 )
 
-// 次数历史的三类来源：注册赠送、兑换码兑换、后台手动增加。
+// 次数历史来源：注册赠送、兑换码兑换、后台手动增加、分享奖励。
 const (
 	creditEventRegister = "register"
 	creditEventRedeem   = "redeem"
 	creditEventAdmin    = "admin"
+	creditEventShare    = "share"
 )
 
 type creditExecer interface {
@@ -99,7 +100,7 @@ WHERE u.gift+COALESCE((SELECT SUM(j.gift_cost) FROM jobs j WHERE j.user_id=u.id)
 	return tx.Commit()
 }
 
-// adminCredits 返回次数兑换/赠送历史：注册赠送、兑换码兑换与后台手动增加，
+// adminCredits 返回次数兑换/赠送历史：注册赠送、兑换码兑换、后台手动增加与分享奖励，
 // 按时间倒序分页，可按账户名、邮箱或账号编号过滤。
 func (a *App) adminCredits(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))

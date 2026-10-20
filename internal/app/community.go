@@ -31,13 +31,15 @@ const (
 
 // shareItem 是社区列表与分享结果对外返回的一条分享。
 type shareItem struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Action   string `json:"action"`
-	Category string `json:"category"`
-	Sharer   string `json:"sharerName"`
-	Created  int64  `json:"created"`
-	Mine     bool   `json:"mine"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Action        string `json:"action"`
+	Category      string `json:"category"`
+	Sharer        string `json:"sharerName"`
+	Created       int64  `json:"created"`
+	Mine          bool   `json:"mine"`
+	RewardCredits int    `json:"rewardCredits,omitempty"`
+	Credits       int    `json:"credits,omitempty"`
 }
 
 const (
@@ -187,7 +189,16 @@ func (a *App) communityShare(w http.ResponseWriter, r *http.Request) {
 	}
 	a.db.Exec("DELETE FROM community_shares WHERE sharer=? AND id NOT IN (SELECT id FROM community_shares WHERE sharer=? ORDER BY created DESC,rowid DESC LIMIT ?)", s.User.ID, s.User.ID, communityPerUser)
 	a.audit(s.User.ID, "community_share", in.ID)
-	respond(w, 200, shareItem{ID: realID, Name: name, Action: action, Category: category, Sharer: s.User.Name, Created: created, Mine: true})
+	item := shareItem{ID: realID, Name: name, Action: action, Category: category, Sharer: s.User.Name, Created: created, Mine: true}
+	// 分享成功后按北京时间自然日赠送 1 次创作机会，每人每天上限 1 次。
+	if reward, err := a.tryGrantShareReward(s.User.ID, time.Now()); err == nil && reward > 0 {
+		item.RewardCredits = reward
+		a.audit(s.User.ID, "share_reward", fmt.Sprint(reward))
+	}
+	if u, err := a.readUser(s.User.ID); err == nil {
+		item.Credits = u.Credits
+	}
+	respond(w, 200, item)
 }
 
 // communityStates 返回当前账号已分享的作品编号与对应分享条目编号，供作品集卡片显示“取消分享”。

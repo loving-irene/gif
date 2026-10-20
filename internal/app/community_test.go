@@ -417,7 +417,10 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 	if !strings.Contains(body, `href="/community"`) || !strings.Contains(body, `class="community-link"`) {
 		t.Fatal("homepage missing community entry")
 	}
-	for _, asset := range []string{"/assets/app.v66.js", "/assets/style.v46.css", "/assets/save-media.v1.css"} {
+	if !strings.Contains(body, "扫描添加好友获赠 5 次创作机会") {
+		t.Fatal("homepage redeem dialog missing WeChat reward copy")
+	}
+	for _, asset := range []string{"/assets/app.v67.js", "/assets/style.v46.css", "/assets/save-media.v1.css"} {
 		if !strings.Contains(body, asset) {
 			t.Fatal("homepage missing updated asset", asset)
 		}
@@ -425,7 +428,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 			t.Fatal("updated asset not embedded", asset, err)
 		}
 	}
-	raw, err := web.ReadFile("web/app.v66.js")
+	raw, err := web.ReadFile("web/app.v67.js")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -451,6 +454,8 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 		`btn.classList.add("is-loading")`,
 		"上一张照片的定稿已保留在「我的定稿」中",
 		"已切换定稿与对应自拍。",
+		"已分享到社区，获赠",
+		"扫描添加好友可获赠 5 次创作机会",
 	} {
 		if !strings.Contains(source, want) {
 			t.Fatal("homepage motion quality contract missing", want)
@@ -487,7 +492,7 @@ func TestHomepageAccountEntryStaysClickable(t *testing.T) {
 	if !strings.Contains(body, `id="accountLockedHint"`) {
 		t.Fatal("account dialog missing locked hint")
 	}
-	raw, err := web.ReadFile("web/app.v66.js")
+	raw, err := web.ReadFile("web/app.v67.js")
 	if err != nil {
 		t.Fatal("homepage script not embedded", err)
 	}

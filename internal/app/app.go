@@ -114,8 +114,9 @@ func New(e Env) (*App, error) {
  CREATE TABLE IF NOT EXISTS community_shares(id TEXT PRIMARY KEY,sharer TEXT NOT NULL REFERENCES users(id),work_id TEXT NOT NULL,name TEXT NOT NULL DEFAULT '',image BLOB NOT NULL,action TEXT NOT NULL DEFAULT '',category TEXT NOT NULL DEFAULT '',created INTEGER NOT NULL,updated INTEGER NOT NULL,UNIQUE(sharer,work_id));
  CREATE INDEX IF NOT EXISTS community_shares_created ON community_shares(created DESC);
  CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT,actor TEXT NOT NULL,event TEXT NOT NULL,target TEXT NOT NULL,created INTEGER NOT NULL);
- CREATE TABLE IF NOT EXISTS credit_history(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id TEXT NOT NULL REFERENCES users(id),event TEXT NOT NULL CHECK(event IN ('register','redeem','admin')),credits INTEGER NOT NULL CHECK(credits>0),note TEXT NOT NULL DEFAULT '',created INTEGER NOT NULL);
+ CREATE TABLE IF NOT EXISTS credit_history(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id TEXT NOT NULL REFERENCES users(id),event TEXT NOT NULL CHECK(event IN ('register','redeem','admin','share')),credits INTEGER NOT NULL CHECK(credits>0),note TEXT NOT NULL DEFAULT '',created INTEGER NOT NULL);
  CREATE INDEX IF NOT EXISTS credit_history_created ON credit_history(created,id);
+ CREATE TABLE IF NOT EXISTS share_daily_rewards(user_id TEXT NOT NULL REFERENCES users(id),day TEXT NOT NULL,credits INTEGER NOT NULL CHECK(credits>0),created INTEGER NOT NULL,PRIMARY KEY(user_id,day));
  CREATE TABLE IF NOT EXISTS usage_stats(id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT NOT NULL UNIQUE,user_id TEXT NOT NULL,kind TEXT NOT NULL,category TEXT NOT NULL DEFAULT '',action TEXT NOT NULL DEFAULT '',created INTEGER NOT NULL);
  CREATE INDEX IF NOT EXISTS usage_stats_created ON usage_stats(created);`); err != nil {
 		db.Close()
@@ -139,6 +140,10 @@ func New(e Env) (*App, error) {
 		return nil, err
 	}
 	if err = a.migrateCreditHistory(); err != nil {
+		a.Close()
+		return nil, err
+	}
+	if err = a.migrateShareRewardSchema(); err != nil {
 		a.Close()
 		return nil, err
 	}
