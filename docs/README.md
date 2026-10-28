@@ -51,6 +51,11 @@ GIF 只表达情绪和动作感，成片每帧 128—256 像素，细节看不�
 - 生成的序列图仍有跨格内容：先在后台“动作序列图规格”试 4×4（单格像素更多），并查看管理端 `/compare` 横评不同模型。
 - `npm test` 中 `scripts/test-selfie-draft-reset.mjs` 在本次改动前就失败（断言 `actual: 1, expected: 0`），与提示词无关，尚未处理。
 
+## 友情链接
+
+- 首页与社区页页脚友情链接：剧查查（`https://jcc666.top`）、大树记忆法（`https://card.jcc666.top`）、蓝光港湾（`https://movies.jcc666.top`）。
+- 相关文件：`internal/app/web/index.html`、`internal/app/web/community.html`、`internal/app/web/footer.v2.css`。
+
 ## 创作次数获取
 
 - **扫描添加好友**：页头「免费」入口（GIF 图标 +「免费」）与「增加次数」弹窗均可打开微信二维码；「免费」弹窗提示「扫码添加可获赠5次创作机会」。实际发放由运营侧确认后通过兑换码或后台加次完成。
