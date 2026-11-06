@@ -28,7 +28,7 @@ func TestNormalizeCategoriesAddsDailyAndMaleSports(t *testing.T) {
 			t.Fatal("legacy male warrior action should be removed", id)
 		}
 	}
-	for _, id := range []string{"bike", "basketball", "billiards", "smoke", "fish"} {
+	for _, id := range []string{"bike", "basketball", "dunk", "billiards", "smoke", "fish"} {
 		if !have[id] {
 			t.Fatal("normalizeCategories should ensure male sport action", id)
 		}
@@ -276,7 +276,7 @@ func TestNormalizeCategoriesAddsMaleSportActions(t *testing.T) {
 			t.Fatal("legacy male warrior action should be removed", id)
 		}
 	}
-	for _, id := range []string{"bike", "basketball", "billiards", "smoke", "fish"} {
+	for _, id := range []string{"bike", "basketball", "dunk", "billiards", "smoke", "fish"} {
 		a, ok := have[id]
 		if !ok || strings.TrimSpace(a.Prompt) == "" {
 			t.Fatal("male missing handbook action", id, a)
@@ -285,11 +285,17 @@ func TestNormalizeCategoriesAddsMaleSportActions(t *testing.T) {
 			t.Fatal("male sport action should keep structured body", id)
 		}
 	}
-	if len(got[0].Actions) != 5 {
-		t.Fatalf("male should keep 5 sport actions, got %d", len(got[0].Actions))
+	dunk := have["dunk"]
+	for _, phrase := range []string{"接球", "罚球线", "起跳", "滑翔", "扣进篮筐", "禁止出现传球者"} {
+		if !strings.Contains(dunk.Prompt, phrase) {
+			t.Fatalf("dunk prompt missing %q: %s", phrase, dunk.Prompt)
+		}
+	}
+	if len(got[0].Actions) != 6 {
+		t.Fatalf("male should keep 6 sport actions, got %d", len(got[0].Actions))
 	}
 	cfg := defaults(Env{})
-	if len(cfg.Categories[0].Actions) != 5 {
-		t.Fatalf("male defaults should ship 5 actions, got %d", len(cfg.Categories[0].Actions))
+	if len(cfg.Categories[0].Actions) != 6 {
+		t.Fatalf("male defaults should ship 6 actions, got %d", len(cfg.Categories[0].Actions))
 	}
 }

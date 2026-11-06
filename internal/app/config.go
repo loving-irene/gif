@@ -237,6 +237,7 @@ func defaultCategories() []Category {
 		{ID: "male", Name: "男生", Subtitle: "披上铠甲，做自己的英雄", Icon: "⚔", Clothes: []string{"古代札甲", "古代鳞甲", "轻甲与短披风"}, Colors: []string{"玄黑与暗金", "银灰与藏蓝", "深红与铁灰"}, Weapons: []string{"长剑", "长枪", "关刀", "战斧"}, Prompt: "中国古代武将，英气精神有亲和力，保留年龄感，不添加胡须或夸张肌肉。护肩护腕腰带战裙战靴结构明确，细节简化。露出完整面部与发型，不用遮面头盔，短披风不挡动作。武器造型长度配色惯用手始终一致。全身保持极致Q版5:1头身比。", Actions: []Action{
 			{"bike", "骑自行车", "🚲", maleActionBike},
 			{"basketball", "打篮球", "🏀", maleActionBasketball},
+			{"dunk", "扣篮", "🏀", maleActionDunk},
 			{"billiards", "打台球", "🎱", maleActionBilliards},
 			{"smoke", "抽烟", "🚬", maleActionSmoke},
 			{"fish", "钓鱼", "🎣", maleActionFish},
@@ -284,7 +285,7 @@ func normalizeCategories(list []Category) []Category {
 		if c.ID == "male" {
 			c.Actions = removeActions(c.Actions, maleLegacyActionIDs...)
 			c.Actions = ensureActions(c.Actions, d.Actions,
-				"bike", "basketball", "billiards", "smoke", "fish")
+				"bike", "basketball", "dunk", "billiards", "smoke", "fish")
 		}
 		if c.ID == "daily" {
 			c.Actions = normalizeDailyActions(c.Actions, d.Actions)

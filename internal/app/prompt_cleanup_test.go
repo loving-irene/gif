@@ -86,8 +86,8 @@ func TestRetiredDefaultPromptsUpgradeButCustomPromptsStay(t *testing.T) {
 	}
 	for _, c := range defaultCategories() {
 		for _, a := range c.Actions {
-			// 情绪分类是当前版本新增的动作集合，没有上一版出厂摘要可迁移。
-			if c.ID != "emotion" {
+			// 情绪分类和本版本新增的扣篮动作没有上一版出厂摘要可迁移。
+			if c.ID != "emotion" && a.ID != "dunk" {
 				if _, ok := retiredActionPromptHashes[a.ID]; !ok {
 					t.Fatal("retired hash missing for", a.ID)
 				}
