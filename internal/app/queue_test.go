@@ -623,6 +623,7 @@ func TestJobResultsSurviveMemoryCacheLoss(t *testing.T) {
 
 func TestMotionJobDeliversServerGIF(t *testing.T) {
 	a := testApp(t)
+	useLegacySheetModel(t, a)
 	s := loginDevice(t, a, "motion")
 	a.providerCall = asProviderCall(func(ctx context.Context, cfg Settings, prompt string, images []string) (string, error) {
 		if len(images) == 2 {
@@ -665,6 +666,7 @@ func TestMotionJobDeliversServerGIF(t *testing.T) {
 // 服务器按 5×5 切格合成 25 帧、每帧 128×128 的 GIF。
 func TestMotionJobDeliversServerGIF5x5(t *testing.T) {
 	a := testApp(t)
+	useLegacySheetModel(t, a)
 	s := loginDevice(t, a, "motion-5x5")
 	cfg, _ := a.settings()
 	cfg.MotionGrid = "5x5"
@@ -707,6 +709,7 @@ func TestMotionJobDeliversServerGIF5x5(t *testing.T) {
 
 func TestMotionJobRequests2048For10x10(t *testing.T) {
 	a := testApp(t)
+	useLegacySheetModel(t, a)
 	s := loginDevice(t, a, "motion-10x10")
 	cfg, _ := a.settings()
 	cfg.MotionGrid = "10x10"
@@ -754,6 +757,7 @@ func TestMotionJobRequests2048For10x10(t *testing.T) {
 // 服务端只按单账号并发上限与全局生成槽位排队，不会被串行化成一个一个做。
 func TestParallelMotionActionsRunTogether(t *testing.T) {
 	a := testApp(t)
+	useLegacySheetModel(t, a)
 	s := loginDevice(t, a, "motion-parallel")
 	a.db.Exec("UPDATE users SET gift=10 WHERE id=?", s.User.ID)
 	a.providerCall = asProviderCall(func(context.Context, Settings, string, []string) (string, error) {

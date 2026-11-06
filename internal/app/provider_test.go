@@ -48,6 +48,7 @@ func TestOpenRouterAdapterPayloadAndSyncResult(t *testing.T) {
 		})}
 	}
 	cfg, _ := a.settings()
+	cfg.Model = "openai/gpt-image-2.5-sunburst"
 	result, err := a.callProvider(context.Background(), cfg, "保留本人特征", []string{fixture, fixture}, "2048x2048", nil)
 	if err != nil || result != fixture || calls != 1 {
 		t.Fatalf("adapter failed: calls=%d err=%v result_prefix=%q", calls, err, truncate(result, 40))

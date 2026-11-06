@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [Unreleased]
+
+### Added
+
+- 2026-11-06：接入 OpenRouter GPT Image 2.6 的 GIF 输出；动作阶段直接请求多帧动图，校验格式、帧数、时长和解码预算，保存与恢复保持原始 GIF 字节。横评页同步支持直出，浏览器重新保存 GIF 不再进入 Canvas 切格。
+- 2026-11-06：增加公开模型目录快照与 `node scripts/update-openrouter-models.mjs` 更新命令；63 条参数记录，43 个双参考图位图模型可选，请求按模型实际支持的参数约束发送。
+
+### Changed
+
+- 2026-11-06：默认模型改为 `openai/gpt-image-2.6-sunburst`，旧默认值启动时一次性迁移，保留其他供应商和模型选择；横评默认仅选 Sunburst。GPT Image 2.6 保留 xhigh/max 质量。
+- 2026-11-06：首页按钮为「一键生成 GIF」，后台标明网格仅作用于序列图模型；静态资源升级为 app.v69.js、admin.v61.js、compare.v7.js。新任务持久化供应商、模型与输出格式，使排队/重启后的格式与提示词一致；旧在途任务继续请求静态图。
+
+
 ## 2026-10-20 · Unreleased
 
 - 页脚友情链接新增「蓝光港湾」（`https://movies.jcc666.top`）；页脚样式升级为 `footer.v2.css`。

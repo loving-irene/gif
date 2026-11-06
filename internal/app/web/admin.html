@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="/assets/save-media.v1.css" />
     <link rel="stylesheet" href="/assets/image-display.v10.css" />
     <link rel="icon" href="/assets/icon.v1.svg" />
-    <script type="module" src="/assets/admin.v60.js"></script>
+    <script type="module" src="/assets/admin.v61.js"></script>
   </head>
   <body>
     <header class="header wrap admin-wrap">
@@ -310,10 +310,10 @@
           >
             <h2>角色定稿与动作</h2>
             <p class="hint">
-              前台流程：上传自拍 → 选动作 → 一次生成定稿与动画。定稿提示词用于静态定稿；各动作的「动作过程」用于序列图，系统会在末尾附加以所选规格为准的说明。修改仅作用于之后的请求。
+              前台流程：上传自拍 → 选动作 → 一次生成定稿与动画。定稿提示词用于静态定稿；各动作的「动作过程」用于生成动画：GPT Image 2.6 直接输出 GIF，其他模型按所选网格规格生成序列图后合成。修改仅作用于之后的请求。
             </p>
             <label
-              >动作序列图规格<select id="motionGrid">
+              >动作序列图规格（直出 GIF 模型不使用）<select id="motionGrid">
                 <option value="5x5">5×5 · 25格 · 每帧128×128（默认）</option>
                 <option value="4x4">4×4 · 16格 · 每帧256×256</option>
                 <option value="10x10">10×10 · 源2048×2048 · GIF 256×256</option>

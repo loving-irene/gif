@@ -62,6 +62,7 @@ func (a *App) compareModels(w http.ResponseWriter, r *http.Request) {
 	a.debug(r.Context(), "compare_models", map[string]any{"count": len(latestImageModels())})
 	respond(w, 200, map[string]any{
 		"models":        latestImageModels(),
+		"defaultModel":  defaultImageModel,
 		"draftPrompt":   compareDraftPrompt,
 		"motionPresets": compareMotionPresets(),
 		"apiKeySet":     a.secret("api_key") != "",
@@ -143,9 +144,9 @@ func (a *App) compareRun(w http.ResponseWriter, r *http.Request) {
 	a.debug(r.Context(), "compare_run_recv", map[string]any{
 		"body_bytes": len(body), "selfie_bytes": selfieBytes, "models": in.Models,
 		"motion_id": in.MotionID, "quality": in.Quality,
-		"draft_prompt_chars": utf8.RuneCountInString(in.DraftPrompt),
+		"draft_prompt_chars":  utf8.RuneCountInString(in.DraftPrompt),
 		"motion_prompt_chars": utf8.RuneCountInString(in.MotionPrompt),
-		"origin": r.Header.Get("Origin"), "sec_fetch_site": r.Header.Get("Sec-Fetch-Site"),
+		"origin":              r.Header.Get("Origin"), "sec_fetch_site": r.Header.Get("Sec-Fetch-Site"),
 	})
 	if _, err := imageData(in.Selfie, 12<<20); err != nil {
 		a.debug(r.Context(), "compare_run_reject", map[string]any{"reason": "selfie", "error": errorText(err)})
@@ -280,7 +281,7 @@ func (a *App) runComparePipeline(batchID string, job *compareJobItem, selfie, dr
 		a.debug(trace, "compare_job_failed", map[string]any{"phase": "settings", "error": errorText(err)})
 		return
 	}
-	cfg.Model, cfg.Quality = job.Model, quality
+	cfg.Model, cfg.Quality, cfg.APIBase = job.Model, quality, openRouterAPIBase
 	ctx, cancel := context.WithTimeout(trace, 20*time.Minute)
 	defer cancel()
 
@@ -302,6 +303,10 @@ func (a *App) runComparePipeline(batchID string, job *compareJobItem, selfie, dr
 
 	set(func() { job.AnimStatus = "running" })
 	t1 := time.Now()
+	cfg.OutputFormat = motionOutputFormat(cfg, "motion")
+	if cfg.OutputFormat == "gif" {
+		motionPrompt = directGIFPrompt(motionPrompt)
+	}
 	sheet, err := a.providerCall(ctx, cfg, motionPrompt, []string{selfie, draft}, "1024x1024", nil)
 	if err != nil {
 		set(func() {
@@ -311,21 +316,23 @@ func (a *App) runComparePipeline(batchID string, job *compareJobItem, selfie, dr
 		a.debug(trace, "compare_job_failed", map[string]any{"phase": "motion", "error": trimErr(err), "elapsed_ms": time.Since(t1).Milliseconds()})
 		return
 	}
-	raw, err := imageData(sheet, 20<<20)
-	if err != nil {
-		set(func() {
-			job.AnimMs = time.Since(t1).Milliseconds()
-			job.AnimStatus, job.AnimError = "failed", "动作序列图无效"
-		})
-		a.debug(trace, "compare_job_failed", map[string]any{"phase": "sheet_decode", "error": errorText(err)})
-		return
+	var gifBytes []byte
+	if cfg.OutputFormat == "gif" {
+		gifBytes, err = animatedGIFData(sheet)
+	} else {
+		var raw []byte
+		raw, err = imageData(sheet, 20<<20)
+		if err == nil {
+			gifBytes, err = synthesizeGIF(raw, motionSpecOf("5x5"))
+		}
 	}
-	gifBytes, err := synthesizeGIF(raw, motionSpecOf("5x5"))
 	set(func() {
 		job.AnimMs = time.Since(t1).Milliseconds()
-		job.SheetImage = sheet
+		if cfg.OutputFormat != "gif" {
+			job.SheetImage = sheet
+		}
 		if err != nil {
-			job.AnimStatus, job.AnimError = "failed", "切格合成失败："+err.Error()
+			job.AnimStatus, job.AnimError = "failed", "动作生成失败："+err.Error()
 			return
 		}
 		job.AnimStatus = "succeeded"

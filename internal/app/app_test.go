@@ -555,6 +555,7 @@ func TestBrowserHarness(t *testing.T) {
 		t.Skip("manual browser integration harness")
 	}
 	a := testApp(t)
+	useLegacySheetModel(t, a)
 	a.env.BaseURL = "http://localhost:8097"
 	cfg, _ := a.settings()
 	cfg.DefaultCredits = 30

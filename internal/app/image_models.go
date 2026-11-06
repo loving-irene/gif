@@ -85,8 +85,8 @@ func geekAIImageModels() []ImageModel {
 	}
 }
 
-// latestImageModels 每个系列取 OpenRouter 文生图能力最强的 2 个（来自 /api/v1/images/models）。
-func latestImageModels() []ImageModel {
+// legacyImageModels 保留历史配置与在途任务使用的模型 ID。
+func legacyImageModels() []ImageModel {
 	return []ImageModel{
 		{ID: "openai/gpt-5.4-image-2", Name: "GPT-5.4 Image 2", Vendor: "OpenAI", Family: "openai", Latest: true, Supports: true},
 		{ID: "openai/gpt-image-2.5-sunburst", Name: "GPT Image 2.5 Sunburst", Vendor: "OpenAI", Family: "openai", Latest: true, Supports: true},
@@ -143,6 +143,12 @@ func allowedImageModelIDs() []string {
 			out = append(out, m.ID)
 		}
 	}
+	for _, m := range legacyImageModels() {
+		if !seen[m.ID] {
+			out = append(out, m.ID)
+			seen[m.ID] = true
+		}
+	}
 	// 兼容旧后台仍可能存着的 OpenRouter 变体。
 	for _, id := range []string{
 		"openai/gpt-image-2.5-flare", "openai/gpt-image-2", "openai/gpt-5-image", "openai/gpt-5-image-mini",
@@ -170,6 +176,11 @@ func modelAllowedForAPIBase(apiBase, model string) bool {
 	}
 	// 兼容列表中的历史 ID：仅当当前供应商是 OpenRouter 时放行。
 	if p, ok := imageProviderByAPIBase(apiBase); ok && p.ID == "openrouter" {
+		for _, m := range legacyImageModels() {
+			if m.ID == model {
+				return true
+			}
+		}
 		return contains([]string{
 			"openai/gpt-image-2.5-flare", "openai/gpt-image-2", "openai/gpt-5-image", "openai/gpt-5-image-mini",
 		}, model)
@@ -181,6 +192,10 @@ func modelFamily(id string) string {
 	if m, ok := imageModelByID(id); ok {
 		return m.Family
 	}
+	return modelFamilyPrefix(id)
+}
+
+func modelFamilyPrefix(id string) string {
 	switch {
 	case stringsHasPrefix(id, "openai/gpt") || stringsHasPrefix(id, "gpt-image"):
 		return "openai"
@@ -236,6 +251,9 @@ func buildImagePayload(model, prompt, imageSize, quality string, images []string
 		// GPT Image 走 aspect_ratio，不接受 size=1K；5.4 系 background 无 transparent。
 		payload["n"] = 1
 		payload["quality"] = openRouterQuality(quality)
+		if strings.HasPrefix(model, "openai/gpt-image-2.6-") && (quality == "xhigh" || quality == "max") {
+			payload["quality"] = quality
+		}
 		if strings.Contains(model, "gpt-5.4") || strings.Contains(model, "/gpt-5-image") {
 			payload["background"] = "auto"
 		} else {
@@ -288,7 +306,7 @@ func buildImagePayload(model, prompt, imageSize, quality string, images []string
 		}
 		payload["input_references"] = refs
 	}
-	return payload
+	return constrainImagePayload(model, payload)
 }
 
 // buildGeekAIPayload 使用 GeekAI 异步 generations 接口字段（size / image|images / async）。
@@ -352,7 +370,7 @@ func normalizeProviderSettings(s Settings) Settings {
 				s.Model = mapped
 			}
 			if !modelAllowedForAPIBase(s.APIBase, s.Model) {
-				s.Model = "openai/gpt-image-2.5-sunburst"
+				s.Model = defaultImageModel
 			}
 			if len(s.AssetHosts) == 0 {
 				s.AssetHosts = append([]string{}, p.AssetHosts...)

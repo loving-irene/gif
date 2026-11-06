@@ -49,6 +49,7 @@ type workList struct {
 
 func TestWorksSyncAcrossDevices(t *testing.T) {
 	a := testApp(t)
+	useLegacySheetModel(t, a)
 	one := loginDevice(t, a, "works-one")
 	two := loginDevice(t, a, "works-two")
 	selfie, draft, receipt := acceptedDraft(t, a, one)
@@ -126,6 +127,7 @@ func TestWorksSyncAcrossDevices(t *testing.T) {
 // GIF ???????????????????????????????????????
 func TestWorkStoresSheetWhenGIFMissing(t *testing.T) {
 	a := testApp(t)
+	useLegacySheetModel(t, a)
 	s := loginDevice(t, a, "works-sheet")
 	selfie, draft, receipt := acceptedDraft(t, a, s)
 	// ???????????????????GIF ????
@@ -189,6 +191,7 @@ func TestWorksSurviveAgeCleanup(t *testing.T) {
 
 func TestWorksKeepLatestPerUser(t *testing.T) {
 	a := testApp(t)
+	useLegacySheetModel(t, a)
 	one := loginDevice(t, a, "works-cap")
 	uid := one.User.ID
 	cfg, _ := a.settings()

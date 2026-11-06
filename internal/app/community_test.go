@@ -426,7 +426,7 @@ func TestHomepageLinksToCommunity(t *testing.T) {
 	if !strings.Contains(body, "/assets/mobile-header.v2.css") {
 		t.Fatal("homepage should reference mobile-header.v2 for free-quota visibility")
 	}
-	for _, asset := range []string{"/assets/app.v68.js", "/assets/style.v48.css", "/assets/save-media.v1.css"} {
+	for _, asset := range []string{"/assets/app.v69.js", "/assets/style.v48.css", "/assets/save-media.v1.css"} {
 		if !strings.Contains(body, asset) {
 			t.Fatal("homepage missing updated asset", asset)
 		}

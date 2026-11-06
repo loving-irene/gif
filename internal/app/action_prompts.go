@@ -56,18 +56,18 @@ func (a *App) adminActionPrompts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	draftPrompt := buildDraftPrompt(cfg, sel, cat)
-	motionPrompt := buildMotionPrompt(actionText, cfg.MotionGrid)
+	motionPrompt := motionPromptForModel(cfg, actionText)
 	export := formatActionPromptExport(cat.Name, in.ActionName, draftPrompt, motionPrompt)
 	respond(w, 200, map[string]any{
-		"category":      cat.ID,
-		"categoryName":  cat.Name,
-		"actionName":    strings.TrimSpace(in.ActionName),
-		"selection":     sel,
-		"motionGrid":    motionSpecOf(cfg.MotionGrid).id,
-		"draftPrompt":   draftPrompt,
-		"motionPrompt":  motionPrompt,
-		"export":        export,
-		"draftImages":   []string{"selfie"},
-		"motionImages":  []string{"draft", "selfie"},
+		"category":     cat.ID,
+		"categoryName": cat.Name,
+		"actionName":   strings.TrimSpace(in.ActionName),
+		"selection":    sel,
+		"motionGrid":   motionSpecOf(cfg.MotionGrid).id,
+		"draftPrompt":  draftPrompt,
+		"motionPrompt": motionPrompt,
+		"export":       export,
+		"draftImages":  []string{"selfie"},
+		"motionImages": []string{"draft", "selfie"},
 	})
 }

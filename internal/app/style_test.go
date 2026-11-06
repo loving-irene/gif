@@ -96,6 +96,7 @@ func TestGenerateAppliesSelectedStyle(t *testing.T) {
 // 画风仍绑定在定稿凭证中：默认补齐后动作可通过；换画风必须先重新定稿。
 func TestStyleIsBoundToDraftReceipt(t *testing.T) {
 	a := testApp(t)
+	useLegacySheetModel(t, a)
 	s := loginDevice(t, a, "style-receipt")
 	var prompts []string
 	a.providerCall = asProviderCall(func(_ context.Context, _ Settings, prompt string, _ []string) (string, error) {

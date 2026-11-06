@@ -228,6 +228,14 @@ func (a *App) callProvider(ctx context.Context, cfg Settings, prompt string, ima
 		async = true
 	default:
 		payload = buildImagePayload(cfg.Model, prompt, imageSize, cfg.Quality, images)
+		if cfg.OutputFormat == "gif" {
+			if !supportsDirectGIF(cfg) {
+				return "", errors.New("所选模型不支持直接输出 GIF")
+			}
+			payload["output_format"] = "gif"
+		} else if supportsDirectGIF(cfg) {
+			payload["output_format"] = "png"
+		}
 	}
 	b, err := json.Marshal(payload)
 	if err != nil {
@@ -315,7 +323,11 @@ func (a *App) pollProvider(ctx context.Context, cfg Settings, client *http.Clien
 	if item.Base64 != "" {
 		mime := item.MediaType
 		if mime == "" {
-			mime = "image/png"
+			decoded, err := base64.StdEncoding.DecodeString(item.Base64)
+			if err != nil {
+				return "", errors.New("invalid provider image base64")
+			}
+			mime = http.DetectContentType(decoded)
 		}
 		a.debug(ctx, "provider_image", map[string]any{"format": "b64_json", "media_type": mime, "encoded_chars": len(item.Base64)})
 		return "data:" + mime + ";base64," + item.Base64, nil

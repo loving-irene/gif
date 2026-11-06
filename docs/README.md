@@ -18,9 +18,14 @@ go run ./cmd/server -port 8096
 go test ./... -count=1
 ```
 
+## OpenRouter 与一键 GIF
+
+- [模型目录、默认模型迁移、直接 GIF 协议与验证](openrouter-gif.md)。默认使用 GPT Image 2.6 Sunburst，上传自拍并选择动作后点击「一键生成 GIF」；缺少定稿时自动生成定稿并继续动作。已有定稿可复用。
+- `OPENROUTER_API_KEY` 或后台保存 API Key；不新增环境变量。模型、质量与备用序列图规格在 `/who` 配置。
+
 ## 提示词结构
 
-一次动作生成的上游提示词由三段拼成（`internal/app/generate.go` 的 `buildMotionPrompt`）：
+GPT Image 2.6 使用 `direct_gif.go` 的动画输出要求，明确生成真正多帧、透明背景的循环 GIF，不追加网格规格；模型实际输出的尺寸、帧数和时长原样保留。其他模型一次动作生成的上游提示词由三段拼成（`internal/app/generate.go` 的 `buildMotionPrompt`）：
 
 1. `builtInMotionPrefix`：图1/图2 分工、5:1 头身比、单人、全身入格，只在这里声明一次。
 2. 动作过程：`internal/app/{male,female,child,daily,emotion}_action_prompts.go` 与 `daily_timeline_prompts.go`。日常动作只写起始、过程、结束和必要道具约束，用“准备、展开、重点、收势”描述阶段；情绪动作则直接描述对应表情与肢体变化。

@@ -266,7 +266,11 @@ func formatActionPromptExport(categoryName, actionName, draftPrompt, motionPromp
 	b.WriteString("参考图：自拍（image1）\n\n")
 	b.WriteString(strings.TrimSpace(draftPrompt))
 	b.WriteString("\n\n")
-	b.WriteString("【动作序列图请求】\n")
+	if strings.Contains(motionPrompt, "【最终输出要求】直接输出") {
+		b.WriteString("【GIF 动图请求】\n")
+	} else {
+		b.WriteString("【动作序列图请求】\n")
+	}
 	b.WriteString("参考图：定稿（image1）、自拍（image2）\n\n")
 	b.WriteString(strings.TrimSpace(motionPrompt))
 	b.WriteString("\n")
@@ -364,7 +368,7 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, err.Error())
 			return
 		}
-		prompt = buildMotionPrompt(action, cfg.MotionGrid)
+		prompt = motionPromptForModel(cfg, action)
 		// 图1定稿锁比例服装，图2自拍核身份。
 		images = []string{in.Draft, in.Selfie}
 	}
@@ -420,7 +424,7 @@ func (a *App) generate(w http.ResponseWriter, r *http.Request) {
 			a.signalDispatch()
 		}
 	}()
-	input := &jobInput{Prompt: prompt, Images: images, ImageSize: providerImageSize(in.Kind, cfg.MotionGrid), MotionGrid: cfg.MotionGrid, Selection: in.Selection, PhotoHash: photoHash}
+	input := &jobInput{APIBase: cfg.APIBase, Model: cfg.Model, OutputFormat: motionOutputFormat(cfg, in.Kind), Prompt: prompt, Images: images, ImageSize: providerImageSize(in.Kind, cfg.MotionGrid), MotionGrid: cfg.MotionGrid, Selection: in.Selection, PhotoHash: photoHash}
 	id := token(16)
 	created := time.Now().Unix()
 	committed := false

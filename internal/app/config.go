@@ -113,8 +113,10 @@ type Style struct {
 	Prompt   string `json:"prompt"`
 }
 type Settings struct {
-	DefaultCredits  int `json:"defaultCredits"`
-	UserConcurrency int `json:"userConcurrency"`
+	// OutputFormat 由单次任务决定，不是管理员持久配置。
+	OutputFormat    string `json:"-"`
+	DefaultCredits  int    `json:"defaultCredits"`
+	UserConcurrency int    `json:"userConcurrency"`
 	// ServerSlots 是服务器同时执行的生成任务数上限（1..maxServerSlots，默认 defaultServerSlots）；
 	// 与单账号的 UserConcurrency 是两层限制：前者限全局并行，后者限单账号可挂的任务数。
 	ServerSlots     int      `json:"serverSlots"`
@@ -217,7 +219,7 @@ func validateStyles(list []Style) error {
 func defaults(e Env) Settings {
 	return Settings{
 		DefaultCredits: 5, UserConcurrency: defaultUserConcurrency, ServerSlots: defaultServerSlots, ChargeOnFailure: true,
-		APIBase: openRouterAPIBase, Model: "openai/gpt-image-2.5-sunburst", Quality: "high", AssetHosts: []string{"openrouter.ai"}, MailHost: aliyunMailHost, MailPort: aliyunMailPort, MailUser: e.AliyunMailSender, MailFrom: e.AliyunMailSender,
+		APIBase: openRouterAPIBase, Model: defaultImageModel, Quality: "high", AssetHosts: []string{"openrouter.ai"}, MailHost: aliyunMailHost, MailPort: aliyunMailPort, MailUser: e.AliyunMailSender, MailFrom: e.AliyunMailSender,
 		IdentityPrompt: "以自拍中的本人为身份参考，人物面部辨识度最高优先。将参考照片头部转绘为精致二维插画，准确保留脸型宽长比例、下颌轮廓、额头比例、眉形、眼型、眼距、鼻形、嘴形、耳朵形状与位置、五官相对位置、发际线、发型、发色、肤色与年龄感，以及清晰可见的眼镜、痣、雀斑。头部作为整体等比例放大，面部内部结构不随Q版夸张。不瘦脸、不尖下巴、不放大眼睛或瞳孔、不缩小鼻子、不美白、不改变年龄，不添加原图没有的身份特征。脸部与身体使用统一二维绘画语言，避免照片脸贴卡通身。",
 		DraftPrompt:    compareDraftPrompt,
 		MotionPrompt:   "图1是已确认角色定稿，图2是本人自拍。图1固定画风、服装、极致Q版比例（头:身体=5:1），只使用定稿右侧全身造型，不输出定稿的脸部近景；图2只核对人物身份，不恢复真人身体比例。动作全程保持同一5:1头身比，禁止把身体画大或拉长四肢。动作：{{action}}。输出一张透明PNG，按后台动作序列图规格排列连续帧。仅全身角色连续动作。镜头固定，大小稳定，地面基准线一致。允许合理位移，跳跃允许离地，结尾回起始位置，自然衔接第一帧。每格无边框无间隙无编号无文字；每一帧角色须水平垂直居中于单格内，像 HTML padding 一样在上、右、下、左四周预留约格边长8%–12%的透明内边距，全程同一取景尺度，禁止越往后越放大或贴边裁切；角色须完整缩在单格内，禁止邻格内容渗入本格——尤其禁止下一格头顶出现在本格脚底下方。角色武器特效不跨格、不裁切。真实透明背景，不画棋盘格。脸部可见，避免转背、过度模糊、遮脸、五官变形、肢体错误和重复静止帧。",

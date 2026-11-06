@@ -161,6 +161,10 @@ func New(e Env) (*App, error) {
 		return nil, err
 	}
 	// 生成槽位与生成请求入口容量都以后台配置为准，启动时同步一次。
+	if err = a.migrateDefaultImageModel(); err != nil {
+		a.Close()
+		return nil, err
+	}
 	if cfg, cfgErr := a.settings(); cfgErr == nil {
 		a.slots.setLimit(cfg.ServerSlots)
 		a.uploads.setLimit(cfg.UserConcurrency)

@@ -54,7 +54,7 @@ func TestAdminActionPromptsExportMatchesGenerate(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantDraft := buildDraftPrompt(cfg, sel, cat)
-	wantMotion := buildMotionPrompt(morning.Prompt, "5x5")
+	wantMotion := motionPromptForModel(cfg, morning.Prompt)
 	if out.DraftPrompt != wantDraft {
 		t.Fatal("draft prompt mismatch")
 	}
@@ -68,11 +68,11 @@ func TestAdminActionPromptsExportMatchesGenerate(t *testing.T) {
 		"【定稿图请求】",
 		"参考图：自拍（image1）",
 		wantDraft,
-		"【动作序列图请求】",
+		"【GIF 动图请求】",
 		"参考图：定稿（image1）、自拍（image2）",
 		wantMotion,
 		"日常 · " + morning.Name,
-		"独立的小画布",
+		"多帧 GIF",
 	} {
 		if !strings.Contains(out.Export, want) {
 			t.Fatal("export missing", want)

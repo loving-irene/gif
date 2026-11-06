@@ -10,12 +10,15 @@ import (
 
 // jobInput 是排队任务在服务器上暂存的生成输入，调度器启动任务时读回。
 type jobInput struct {
-	Prompt     string    `json:"prompt"`
-	Images     []string  `json:"images"`
-	ImageSize  string    `json:"imageSize,omitempty"`
-	MotionGrid string    `json:"motionGrid,omitempty"`
-	Selection  Selection `json:"selection"`
-	PhotoHash  string    `json:"photoHash"`
+	APIBase      string    `json:"apiBase,omitempty"`
+	Model        string    `json:"model,omitempty"`
+	OutputFormat string    `json:"outputFormat,omitempty"`
+	Prompt       string    `json:"prompt"`
+	Images       []string  `json:"images"`
+	ImageSize    string    `json:"imageSize,omitempty"`
+	MotionGrid   string    `json:"motionGrid,omitempty"`
+	Selection    Selection `json:"selection"`
+	PhotoHash    string    `json:"photoHash"`
 }
 
 // 任务状态：queued（等待服务器槽位）、running（正在执行）、pending_upstream（已提交上游、
@@ -221,6 +224,19 @@ func (a *App) markRunning(id string) bool {
 
 // applyResult 把上游返回的图片落盘、按配置规格合成 GIF、签发定稿凭证。
 func (a *App) applyResult(ctx context.Context, id, uid, kind, photoHash, sourceSelfie string, selection Selection, output string, spec motionSpec) (receipt, gifImage string, err error) {
+	if kind == "motion" && strings.HasPrefix(output, "data:image/gif;base64,") {
+		b, err := animatedGIFData(output)
+		if err != nil {
+			return "", "", err
+		}
+		if err = a.saveFile(id, "image", b); err != nil {
+			return "", "", err
+		}
+		if err = a.saveFile(id, "gif", b); err != nil {
+			return "", "", err
+		}
+		return "", dataURL("image/gif", b), nil
+	}
 	b, err := imageData(output, 20*1024*1024)
 	if err != nil {
 		return "", "", err
@@ -295,6 +311,10 @@ func (a *App) saveWork(ctx context.Context, id, uid string, cfg Settings, select
 	}
 	gif, gifErr := a.readFile(id, "gif")
 	sheet, _ := a.readFile(id, "image")
+	// Native animations have no grid source; keep only the original GIF in works.
+	if len(sheet) >= 6 && (string(sheet[:6]) == "GIF89a" || string(sheet[:6]) == "GIF87a") {
+		sheet = nil
+	}
 	if gifErr != nil {
 		gif = nil
 	}
@@ -389,6 +409,10 @@ func (a *App) runJob(id string, inline *jobInput) {
 	motionGrid := cfg.MotionGrid
 	selection := Selection{}
 	if input != nil {
+		if input.Model != "" {
+			cfg.Model, cfg.APIBase = input.Model, input.APIBase
+		}
+		cfg.OutputFormat = input.OutputFormat
 		prompt, photoHash, selection = input.Prompt, input.PhotoHash, input.Selection
 		if input.MotionGrid != "" {
 			motionGrid = input.MotionGrid
@@ -438,7 +462,12 @@ func (a *App) runJob(id string, inline *jobInput) {
 		if kind == "draft" && input != nil && len(input.Images) > 0 {
 			sourceSelfie = input.Images[0]
 		}
-		receipt, gifImage, jobErr = a.applyResult(traceCtx, id, uid, kind, photoHash, sourceSelfie, selection, output, motionSpecOf(motionGrid))
+		if cfg.OutputFormat == "gif" && !strings.HasPrefix(output, "data:image/gif;base64,") {
+			jobErr = errors.New("图像服务未返回 GIF 动图")
+		}
+		if jobErr == nil {
+			receipt, gifImage, jobErr = a.applyResult(traceCtx, id, uid, kind, photoHash, sourceSelfie, selection, output, motionSpecOf(motionGrid))
+		}
 	}
 	if jobErr != nil && a.ctx.Err() != nil {
 		return

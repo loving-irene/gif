@@ -72,13 +72,19 @@ func TestLatestImageModelsNonEmpty(t *testing.T) {
 	if !contains(allowedImageModelIDs(), "openai/gpt-image-2.5-sunburst") {
 		t.Fatal("sunburst missing")
 	}
-	vendors := map[string]int{}
+	seen := map[string]bool{}
 	for _, m := range list {
-		vendors[m.Vendor]++
-	}
-	for v, n := range vendors {
-		if n != 2 {
-			t.Fatalf("vendor %s has %d models, want 2", v, n)
+		if seen[m.ID] || !m.Supports || !modelAllowedForAPIBase(openRouterAPIBase, m.ID) {
+			t.Fatalf("invalid model: %+v", m)
 		}
+		seen[m.ID] = true
+	}
+	for _, id := range []string{defaultImageModel, "openai/gpt-image-2.6-flare", "sourceful/riverflow-v2.6-pro", "krea/k3-edit", "google/gemini-nano-banana-2.1", "black-forest-labs/flux-3-image"} {
+		if !seen[id] {
+			t.Fatalf("current model missing: %s", id)
+		}
+	}
+	if seen["krea/krea-2-large"] || seen["recraft/recraft-v4-styles-vector"] {
+		t.Fatal("incompatible models offered for two-reference raster flow")
 	}
 }
